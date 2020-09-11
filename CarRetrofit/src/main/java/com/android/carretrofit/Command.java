@@ -3,26 +3,35 @@ package com.android.carretrofit;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-public abstract class Command {
-    public abstract Object invoke(Object[] args) throws Throwable;
+public interface Command {
 
-    public abstract CommandType type();
+    void setKey(int key);
 
-    public abstract boolean fromApply();
+    int getKey();
 
-    public abstract boolean fromInject();
+    void setArea(int area);
 
-    public abstract Method getMethod();
+    int getArea();
 
-    public abstract Field getField();
+    void setSource(DataSource source);
 
-    public abstract String getName();
+    DataSource getSource();
 
-    public abstract int getKey();
+    Object invoke(Object[] args) throws Throwable;
 
-    public abstract int getArea();
+    CommandType type();
 
-    public enum CommandType {
+    boolean fromApply();
+
+    boolean fromInject();
+
+    Method getMethod();
+
+    Field getField();
+
+    String getName();
+
+    enum CommandType {
         SET,
         GET,
         TRACK,

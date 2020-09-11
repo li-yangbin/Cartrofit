@@ -666,7 +666,7 @@ public final class CarRetrofit {
         }
     }
 
-    private abstract class CommandImpl extends Command {
+    private abstract class CommandImpl implements Command {
         int key;
         int area;
         DataSource source;
@@ -718,8 +718,28 @@ public final class CarRetrofit {
         }
 
         @Override
+        public boolean fromInject() {
+            return false;
+        }
+
+        @Override
+        public boolean fromApply() {
+            return false;
+        }
+
+        @Override
+        public void setKey(int key) {
+            this.key = key;
+        }
+
+        @Override
         public int getKey() {
             return key;
+        }
+
+        @Override
+        public void setArea(int area) {
+            this.area = area;
         }
 
         @Override
@@ -728,13 +748,13 @@ public final class CarRetrofit {
         }
 
         @Override
-        public boolean fromInject() {
-            return false;
+        public void setSource(DataSource source) {
+            this.source = source;
         }
 
         @Override
-        public boolean fromApply() {
-            return false;
+        public DataSource getSource() {
+            return source;
         }
     }
 
@@ -1089,7 +1109,7 @@ public final class CarRetrofit {
 
     private class CommandTrack extends CommandImpl {
 
-        int getKey;
+//        int getKey;
         boolean stickyTrack;
         boolean stickyUseCache;
         Field injectField;
@@ -1109,11 +1129,11 @@ public final class CarRetrofit {
 
             resolveArea(apiScope, track.area());
 
-            Sticky sticky = track.sticky();
-            if (!EMPTY_VALUE.equals(sticky.token())) {
-                stickyTrack = true;
-                stickyUseCache = sticky.useCache();
-                getKey = sticky.get();
+            StickyType stickyType = track.sticky();
+            if (stickyType != StickyType.NO_SET) {
+                stickyTrack = stickyType != StickyType.OFF;
+                stickyUseCache = stickyType == StickyType.ON;
+//                getKey = sticky.get();
             }
         }
 
@@ -1241,7 +1261,7 @@ public final class CarRetrofit {
                     break;
             }
             if (stickyTrack) {
-                result = new StickFlow<>(result, source, this);
+                result = new StickFlow<>(result, this);
             }
             Object obj = resultConverter != null ? resultConverter.convert(result) : result;
             return !valueMapped && mapConverter != null && resultConverter != null ?
@@ -1308,15 +1328,12 @@ public final class CarRetrofit {
     }
 
     private static class StickFlow<T> extends FlowWrapper<T, T, T> implements StickyFlow<T> {
-        private DataSource source;
-
         private T lastValue;
         private boolean valueReceived;
         private CommandTrack trackCommand;
 
-        private StickFlow(Flow<T> base, DataSource source, CommandTrack trackCommand) {
+        private StickFlow(Flow<T> base, CommandTrack trackCommand) {
             super(base, null, null);
-            this.source = source;
             this.trackCommand = trackCommand;
         }
 
@@ -1340,7 +1357,7 @@ public final class CarRetrofit {
             T result;
             try {
                 result = trackCommand.stickyUseCache && valueReceived ?
-                        lastValue : source.get(trackCommand.getKey, trackCommand.area, trackCommand.type);
+                        lastValue : trackCommand.source.get(trackCommand.key, trackCommand.area, trackCommand.type);
             } catch (Exception e) {
                 throw new CarRetrofitException(e);
             }

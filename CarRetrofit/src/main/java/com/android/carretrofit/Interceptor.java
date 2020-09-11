@@ -7,7 +7,7 @@ public interface Interceptor {
     Object process(Command command, Object[] parameters) throws Throwable;
 }
 
-class InterceptorChain extends Command {
+class InterceptorChain implements Command {
     InterceptorChain parent;
     Interceptor interceptor;
     Command command;
@@ -59,12 +59,32 @@ class InterceptorChain extends Command {
     }
 
     @Override
+    public void setKey(int key) {
+        command.setKey(key);
+    }
+
+    @Override
     public int getKey() {
         return command.getKey();
     }
 
     @Override
+    public void setArea(int area) {
+        command.setArea(area);
+    }
+
+    @Override
     public int getArea() {
         return command.getArea();
+    }
+
+    @Override
+    public void setSource(DataSource source) {
+        command.setSource(source);
+    }
+
+    @Override
+    public DataSource getSource() {
+        return command.getSource();
     }
 }

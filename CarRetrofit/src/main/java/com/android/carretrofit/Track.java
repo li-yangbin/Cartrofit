@@ -18,5 +18,5 @@ public @interface Track {
 
     int area() default CarApi.DEFAULT_AREA_ID;
 
-    Sticky sticky() default @Sticky(token = CarRetrofit.EMPTY_VALUE);
+    StickyType sticky() default StickyType.NO_SET;
 }
