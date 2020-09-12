@@ -19,6 +19,8 @@ import android.car.hardware.CarPropertyConfig;
 import android.car.hardware.hvac.CarHvacManager;
 import android.content.Context;
 
+import com.android.car.hvac.R;
+
 import java.util.List;
 
 public class HvacPolicy {

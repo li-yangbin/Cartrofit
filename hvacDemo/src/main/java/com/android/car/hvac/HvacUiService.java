@@ -27,7 +27,6 @@ import android.content.res.Resources;
 import android.graphics.PixelFormat;
 import android.os.Handler;
 import android.os.IBinder;
-import android.os.UserHandle;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Gravity;
@@ -35,6 +34,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
 
+import com.android.car.hvac.R;
 import com.android.car.hvac.controllers.HvacPanelController;
 import com.android.car.hvac.ui.TemperatureBarOverlay;
 
