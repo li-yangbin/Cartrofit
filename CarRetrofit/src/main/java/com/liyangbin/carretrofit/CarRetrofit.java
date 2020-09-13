@@ -257,25 +257,28 @@ public final class CarRetrofit {
         }
 
         private boolean checkConverter(Class<?> from, Class<?> to) {
-            ConverterStore parentStore = this.parentStore;
-            this.parentStore = null;
-            boolean hasConverter = find(null, from, to) != null;
-            this.parentStore = parentStore;
-            return hasConverter;
+            return findWithoutCommand(from, to) != null;
         }
 
-        private Converter<?, ?> find(Command command, Class<?> from, Class<?> to) {
-            if (command != null && commandPredictorList.size() > 0) {
+        private Converter<?, ?> findWithCommand(Command command, Class<?> from, Class<?> to) {
+            if (command == null) {
+                return null;
+            }
+            if (commandPredictorList.size() > 0) {
                 for (int i = 0; i < commandPredictorList.size(); i++) {
                     ConverterWrapper<?, ?> converterWrapper = commandPredictorList.get(i);
-                    Converter<?, ?> converter = converterWrapper.asConverter(from, to);
-                    if (converter != null) {
-                        if (((CommandPredictor) converter).checkCommand(command)) {
+                    if (converterWrapper.checkCommand(command)) {
+                        Converter<?, ?> converter = converterWrapper.asConverter(from, to);
+                        if (converter != null) {
                             return converter;
                         }
                     }
                 }
             }
+            return parentStore != null ? parentStore.findWithCommand(command, from, to) : null;
+        }
+
+        private Converter<?, ?> findWithoutCommand(Class<?> from, Class<?> to) {
             for (int i = 0; i < converterWrapperList.size(); i++) {
                 ConverterWrapper<?, ?> converterWrapper = converterWrapperList.get(i);
                 Converter<?, ?> converter = converterWrapper.asConverter(from, to);
@@ -283,7 +286,7 @@ public final class CarRetrofit {
                     return converter;
                 }
             }
-            return parentStore != null ? parentStore.find(command, from, to) : null;
+            return parentStore != null ? parentStore.findWithoutCommand(from, to) : null;
         }
 
         private static Class<?> boxTypeOf(Class<?> primitive) {
@@ -306,8 +309,12 @@ public final class CarRetrofit {
                                     ConverterStore store) {
             from = from.isPrimitive() ? boxTypeOf(from) : from;
             to = to.isPrimitive() ? boxTypeOf(to) : to;
-            Converter<?, ?> converter = store.find(command, from, to);
+            Converter<?, ?> converter = store.findWithCommand(command, from, to);
             if (from == to || converter != null) {
+                return converter;
+            }
+            converter = store.findWithoutCommand(from, to);
+            if (converter != null) {
                 return converter;
             }
             throw new CarRetrofitException("Can not resolve converter from:"
@@ -1496,6 +1503,11 @@ public final class CarRetrofit {
                 return this;
             }
             return null;
+        }
+
+        boolean checkCommand(Command command) {
+            return oneWayConverter instanceof CommandPredictor
+                    && ((CommandPredictor) oneWayConverter).checkCommand(command);
         }
 
         @Override
