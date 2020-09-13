@@ -1,4 +1,6 @@
-package com.liyangbin.carretrofit;
+package com.liyangbin.carretrofit.annotation;
+
+import com.liyangbin.carretrofit.CarType;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;

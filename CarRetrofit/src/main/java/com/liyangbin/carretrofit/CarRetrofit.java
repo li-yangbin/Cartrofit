@@ -2,6 +2,17 @@ package com.liyangbin.carretrofit;
 
 import android.car.hardware.CarPropertyValue;
 
+import com.liyangbin.carretrofit.annotation.Apply;
+import com.liyangbin.carretrofit.annotation.ApplySuper;
+import com.liyangbin.carretrofit.annotation.CarApi;
+import com.liyangbin.carretrofit.annotation.CarValue;
+import com.liyangbin.carretrofit.annotation.Get;
+import com.liyangbin.carretrofit.annotation.Inject;
+import com.liyangbin.carretrofit.annotation.InjectSuper;
+import com.liyangbin.carretrofit.annotation.Set;
+import com.liyangbin.carretrofit.annotation.Track;
+import com.liyangbin.carretrofit.annotation.WrappedData;
+
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Field;
@@ -23,11 +34,10 @@ import java.util.function.Function;
 
 public final class CarRetrofit {
 
-    static final String EMPTY_VALUE = "car_retrofit_empty_value";
     private static final ConverterStore GLOBAL_CONVERTER = new ConverterStore(null);
     private static final Object SKIP = new Object();
     private static CarRetrofit sDefault;
-    private static final HashMap<Class<?>, ApiRecord<?>> sDefaultApiCache = new HashMap<>();
+    private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
 
     private HashMap<String, DataSource> mDataMap;
     private HashMap<Method, MethodHandler> mHandlerCache = new HashMap<>();
@@ -47,43 +57,25 @@ public final class CarRetrofit {
         if (mDataMap.isEmpty()) {
             throw new IllegalArgumentException("CarRetrofit must be setup with data source");
         }
-        if (builder.converterWrappers.size() > 0) {
-            mConverterStore.converterWrapperList.addAll(builder.converterWrappers);
-        }
         for (int i = 0; i < builder.converters.size(); i++) {
-            addConverter(builder.converters.get(i));
+            mConverterStore.addConverter(builder.converters.get(i));
         }
         for (int i = 0; i < builder.interceptors.size(); i++) {
-            addInterceptor(builder.interceptors.get(i));
+            mChainHead = new InterceptorChain(mChainHead, builder.interceptors.get(i));
         }
     }
 
     public static void setDefault(CarRetrofit retrofit) {
-        synchronized (sDefaultApiCache) {
-            if (sDefault != retrofit) {
-                sDefaultApiCache.clear();
-                sDefault = Objects.requireNonNull(retrofit);
-            }
-        }
+        sDefault = Objects.requireNonNull(retrofit);
     }
 
     public static CarRetrofit getDefault() {
         return Objects.requireNonNull(sDefault);
     }
 
-    @SuppressWarnings("unchecked")
-    public static <T> T from(Class<T> api) {
-        ApiRecord<T> record;
-        synchronized (sDefaultApiCache) {
-            record = (ApiRecord<T>) sDefaultApiCache.get(api);
-            if (record == null) {
-                record = new ApiRecord<>(api);
-                sDefaultApiCache.put(api, record);
-                record.apiObj = Objects.requireNonNull(sDefault,
-                        "Call setDefault() before use").create(api, record);
-            }
-        }
-        return record.apiObj;
+    public static <T> T fromDefault(Class<T> api) {
+        return Objects.requireNonNull(sDefault,
+                "Call setDefault() before calling fromDefault()").from(api);
     }
 
     private static Class<?> getClassFromType(Type type) {
@@ -96,26 +88,65 @@ public final class CarRetrofit {
         return null;
     }
 
-    static class ApiRecord<T> {
-        private static final String INTERCEPTOR_NAME = "INTERCEPTOR";
+    private class ApiRecord<T> {
+        private static final String INTERCEPTOR_PREFIX = "INTERCEPTOR";
+        private static final String CONVERTER_PREFIX = "CONVERTER";
+
         Class<T> clazz;
+        String dataScope;
+        int apiArea;
         T apiObj;
-        Interceptor apiSelfInterceptor;
+
+        ArrayList<Interceptor> apiSelfInterceptorList = new ArrayList<>();
+        ArrayList<Converter<?, ?>> apiSelfConverterList = new ArrayList<>();
+
+        InterceptorChain interceptorChain;
+        ConverterStore converterStore;
 
         ApiRecord(Class<T> clazz) {
             this.clazz = clazz;
+            CarApi carApi = Objects.requireNonNull(clazz.getAnnotation(CarApi.class));
+            this.dataScope = carApi.scope();
+            this.apiArea = carApi.area();
 
             try {
-                Field selfInterceptorField = clazz.getDeclaredField(INTERCEPTOR_NAME);
-                apiSelfInterceptor = (Interceptor) selfInterceptorField.get(null);
+                Field[] fields = clazz.getDeclaredFields();
+                for (Field selfField : fields) {
+                    if (Modifier.isStatic(selfField.getModifiers())) {
+                        String name = selfField.getName();
+                        if (name.startsWith(INTERCEPTOR_PREFIX)) {
+                            apiSelfInterceptorList.add((Interceptor) selfField.get(null));
+                        } else if (name.startsWith(CONVERTER_PREFIX)) {
+                            apiSelfConverterList.add((Converter<?, ?>) selfField.get(null));
+                        }
+                    }
+                }
             } catch (ReflectiveOperationException e) {
                 e.printStackTrace();
+            }
+
+            if (apiSelfInterceptorList.size() > 0) {
+                for (int i = 0; i < apiSelfInterceptorList.size(); i++) {
+                    interceptorChain = new InterceptorChain(interceptorChain,
+                            apiSelfInterceptorList.get(i));
+                }
+                interceptorChain.connect(mChainHead);
+            }
+
+            if (apiSelfConverterList.size() > 0) {
+                converterStore = new ConverterStore("api:" + clazz);
+                for (int i = 0; i < apiSelfConverterList.size(); i++) {
+                    converterStore.addConverter(apiSelfConverterList.get(i));
+                }
+                converterStore.addParent(mConverterStore);
             }
         }
     }
 
     public static class ConverterStore {
         final ArrayList<ConverterWrapper<?, ?>> converterWrapperList = new ArrayList<>();
+        final ArrayList<ConverterWrapper<?, ?>> commandPredictorList = new ArrayList<>();
+        final ArrayList<Converter<?, ?>> allConverters = new ArrayList<>();
         String scopeName;
         ConverterStore parentStore;
 
@@ -207,12 +238,18 @@ public final class CarRetrofit {
             }
 
             if (convertFrom != null && convertTo != null) {
-                if (checkConverter(convertFrom, convertTo)) {
-                    throw new CarRetrofitException("Can not add duplicate converter from:" +
-                            toClassString(convertFrom) + " to:" + toClassString(convertTo));
+                if (converter instanceof CommandPredictor) {
+                    commandPredictorList.add(new ConverterWrapper<>(convertFrom, convertTo,
+                            converter));
+                } else {
+                    if (checkConverter(convertFrom, convertTo)) {
+                        throw new CarRetrofitException("Can not add duplicate converter from:" +
+                                toClassString(convertFrom) + " to:" + toClassString(convertTo));
+                    }
+                    converterWrapperList.add(new ConverterWrapper<>(convertFrom, convertTo,
+                            converter));
                 }
-                converterWrapperList.add(new ConverterWrapper<>(convertFrom, convertTo,
-                        converter));
+                allConverters.add(converter);
             } else {
                 throw new CarRetrofitException("invalid converter class:" + implementsBy
                         + " type:" + Arrays.toString(ifTypes));
@@ -222,14 +259,22 @@ public final class CarRetrofit {
         private boolean checkConverter(Class<?> from, Class<?> to) {
             ConverterStore parentStore = this.parentStore;
             this.parentStore = null;
-            boolean hasConverter = find(from, to) != null;
+            boolean hasConverter = find(null, from, to) != null;
             this.parentStore = parentStore;
             return hasConverter;
         }
 
-        private Converter<?, ?> find(Class<?> from, Class<?> to) {
-            if (from == to) {
-                return null;
+        private Converter<?, ?> find(Command command, Class<?> from, Class<?> to) {
+            if (command != null && commandPredictorList.size() > 0) {
+                for (int i = 0; i < commandPredictorList.size(); i++) {
+                    ConverterWrapper<?, ?> converterWrapper = commandPredictorList.get(i);
+                    Converter<?, ?> converter = converterWrapper.asConverter(from, to);
+                    if (converter != null) {
+                        if (((CommandPredictor) converter).checkCommand(command)) {
+                            return converter;
+                        }
+                    }
+                }
             }
             for (int i = 0; i < converterWrapperList.size(); i++) {
                 ConverterWrapper<?, ?> converterWrapper = converterWrapperList.get(i);
@@ -238,7 +283,7 @@ public final class CarRetrofit {
                     return converter;
                 }
             }
-            return parentStore != null ? parentStore.find(from, to) : null;
+            return parentStore != null ? parentStore.find(command, from, to) : null;
         }
 
         private static Class<?> boxTypeOf(Class<?> primitive) {
@@ -257,21 +302,17 @@ public final class CarRetrofit {
             }
         }
 
-        static Converter<?, ?> find(Class<?> from, Class<?> to, ConverterStore store) {
-            if (from == to) {
-                return null;
-            }
+        static Converter<?, ?> find(Command command, Class<?> from, Class<?> to,
+                                    ConverterStore store) {
             from = from.isPrimitive() ? boxTypeOf(from) : from;
             to = to.isPrimitive() ? boxTypeOf(to) : to;
-            if (from == to) {
-                return null;
-            }
-            Converter<?, ?> converter = store.find(from, to);
-            if (converter != null) {
+            Converter<?, ?> converter = store.find(command, from, to);
+            if (from == to || converter != null) {
                 return converter;
             }
             throw new CarRetrofitException("Can not resolve converter from:"
-                    + toClassString(from) + " to:" + toClassString(to));
+                    + toClassString(from) + " to:" + toClassString(to)
+                    + " with command:" + command);
         }
 
         private static String toClassString(Class<?> clazz) {
@@ -281,7 +322,6 @@ public final class CarRetrofit {
 
     public static final class Builder {
         private ArrayList<Converter<?, ?>> converters = new ArrayList<>();
-        private ArrayList<ConverterWrapper<?, ?>> converterWrappers = new ArrayList<>();
         private HashMap<String, DataSource> dataMap = new HashMap<>();
         private ArrayList<Interceptor> interceptors = new ArrayList<>();
 
@@ -301,7 +341,7 @@ public final class CarRetrofit {
         }
 
         public Builder addConverter(CarRetrofit retrofit) {
-            converterWrappers.addAll(retrofit.mConverterStore.converterWrapperList);
+            converters.addAll(retrofit.mConverterStore.allConverters);
             return this;
         }
 
@@ -325,83 +365,14 @@ public final class CarRetrofit {
         }
     }
 
-    public void addConverter(Converter<?, ?> converter) {
-        mConverterStore.addConverter(converter);
-    }
-
-    public void addInterceptor(Interceptor interceptor) {
-        mChainHead = new InterceptorChain(mChainHead, interceptor);
-    }
-
-//    public void inject(Object obj) {
-//        inject(obj, null);
-//    }
-//
-//    private void inject(Object obj, ConverterScope scope) {
-//        new MethodHandler(obj.getClass(), true, scope).invoke(new Object[]{obj});
-//    }
-//
-//    public void apply(Object obj) {
-//        apply(obj, null);
-//    }
-//
-//    private void apply(Object obj, ConverterScope scope) {
-//        new MethodHandler(obj.getClass(), false, scope).invoke(new Object[]{obj});
-//    }
-
-//    public final class ConverterScope {
-//        ConverterStore store;
-//
-//        private ConverterScope(String name) {
-//            store = new ConverterStore(name);
-//            store.addParent(mConverterStore);
-//        }
-//
-//        public ConverterScope addConverter(Converter<?, ?> converter) {
-//            store.addConverter(converter);
-//            return this;
-//        }
-//
-//        public <T> T create(Class<T> api) {
-//            return CarRetrofit.this.create(api, this);
-//        }
-//
-//        public void inject(Object obj) {
-//            CarRetrofit.this.inject(obj, this);
-//        }
-//
-//        public void apply(Object obj) {
-//            CarRetrofit.this.apply(obj, this);
-//        }
-//    }
-//
-//    public ConverterScope obtainConverterScope() {
-//        return obtainConverterScope(null);
-//    }
-//
-//    public ConverterScope obtainConverterScope(String scopeName) {
-//        if (scopeName == null) {
-//            return new ConverterScope(null);
-//        }
-//        ConverterScope scope = mScopeMap.get(scopeName);
-//        if (scope == null) {
-//            mScopeMap.put(scopeName, scope = new ConverterScope(scopeName));
-//        }
-//        return scope;
-//    }
-//
-//    public <T> T create(Class<T> api) {
-//        return create(api, (ConverterScope) null);
-//    }
-//
-//    public <T> T create(Class<T> api, String scopeName) {
-//        return create(api, Objects.requireNonNull(mScopeMap.get(scopeName),
-//                "Add scope with name:" + scopeName + " before create()"));
-//    }
-
     @SuppressWarnings("unchecked")
-    private <T> T create(Class<T> api, ApiRecord<T> record) {
-        return (T) Proxy.newProxyInstance(api.getClassLoader(), new Class<?>[]{api},
+    public <T> T from(Class<T> api) {
+        ApiRecord<T> record = fromApi(api);
+        synchronized (mApiCache) {
+            if (record.apiObj != null) {
+                return record.apiObj;
+            }
+            record.apiObj = (T) Proxy.newProxyInstance(api.getClassLoader(), new Class<?>[]{api},
                 new InvocationHandler() {
                     @Override
                     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
@@ -410,7 +381,7 @@ public final class CarRetrofit {
                         }
                         if (method.isDefault()) {
                             throw new UnsupportedOperationException(
-                                    "Do not declare any default method in CarRetrofit interface");
+                                "Do not declare any default method in CarRetrofit interface");
                         }
                         if (args != null && args.length > 1) {
                             throw new UnsupportedOperationException(
@@ -418,16 +389,26 @@ public final class CarRetrofit {
                         }
                         MethodHandler handler = mHandlerCache.get(method);
                         if (handler == null) {
-                            handler = new MethodHandler(record, method);
+                            handler = new MethodHandler(method);
                             mHandlerCache.put(method, handler);
                         }
                         return handler.invoke(args != null ? args[0] : null);
                     }
                 });
+        }
+        return record.apiObj;
     }
 
-    public <T> T create(Class<T> api) {
-        return create(api, new ApiRecord<>(api));
+    @SuppressWarnings("unchecked")
+    private <T> ApiRecord<T> fromApi(Class<T> api) {
+        synchronized (mApiCache) {
+            ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
+            if (record == null) {
+                record = new ApiRecord<>(api);
+                mApiCache.put(api, record);
+            }
+            return record;
+        }
     }
 
     private static boolean hasUnresolvableType(Type type) {
@@ -469,18 +450,27 @@ public final class CarRetrofit {
                 | FLAG_PARSE_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY;
 
         Method method;
+        DataSource source;
         CommandImpl operationCommand;
+        ConverterStore converterStore;
         InterceptorChain chain;
         ApiRecord<?> apiClassRecord;
 
-        private MethodHandler(ApiRecord<?> record, Method method) {
+        private MethodHandler(Method method) {
             this.method = method;
-            this.apiClassRecord = record;
-            if (record.apiSelfInterceptor != null) {
-                chain = new InterceptorChain(mChainHead, record.apiSelfInterceptor);
+            this.apiClassRecord = fromApi(method.getDeclaringClass());
+            if (apiClassRecord.interceptorChain != null) {
+                this.chain = apiClassRecord.interceptorChain;
             } else {
-                chain = mChainHead;
+                this.chain = mChainHead;
             }
+            if (apiClassRecord.converterStore != null) {
+                this.converterStore = apiClassRecord.converterStore;
+            } else {
+                this.converterStore = mConverterStore;
+            }
+            this.source = Objects.requireNonNull(mDataMap.get(apiClassRecord.dataScope),
+                    "Make sure use a valid scope id passed by Builder().addDataSource()");
 
             Annotation[] methodAnnotation = method.getDeclaredAnnotations();
             for (Annotation annotation : methodAnnotation) {
@@ -518,7 +508,7 @@ public final class CarRetrofit {
             CommandImpl command = null;
             if ((flag & FLAG_PARSE_SET) != 0 && annotation instanceof Set) {
                 command = new CommandSet();
-                command.init(areaScope, annotation);
+                command.init(this, annotation);
             } /*else if ((flag & FLAG_PARSE_SET) != 0 && annotation instanceof MultiSet) {
                 MultiSet multiSet = (MultiSet) annotation;
                 CommandGroup group = new CommandGroup();
@@ -528,10 +518,10 @@ public final class CarRetrofit {
                 command = group;
             }*/ else if ((flag & FLAG_PARSE_GET) != 0 && annotation instanceof Get) {
                 command = new CommandGet();
-                command.init(areaScope, annotation);
+                command.init(this, annotation);
             } else if ((flag & FLAG_PARSE_TRACK) != 0 && annotation instanceof Track) {
                 command = new CommandTrack();
-                command.init(areaScope, annotation);
+                command.init(this, annotation);
             } else if ((flag & FLAG_PARSE_INJECT) != 0 && annotation instanceof Inject) {
                 for (int i = 0; i < method.getParameterCount(); i++) {
                     Class<?> clazz = method.getParameterTypes()[i];
@@ -617,8 +607,7 @@ public final class CarRetrofit {
             if (injectCommand.childrenField.size() == 0) {
                 throw new CarRetrofitException("failed to parse Inject command from type:" + targetClass);
             }
-            injectCommand.init(parentAreaScope, annotation);
-            injectCommand.setInvokeChain(chain);
+            injectCommand.init(this, annotation);
             return injectCommand;
         }
 
@@ -671,14 +660,13 @@ public final class CarRetrofit {
             if (applyCommand.childrenField.size() == 0) {
                 throw new CarRetrofitException("failed to parse Apply command from type:" + targetClass);
             }
-            applyCommand.init(parentAreaScope, annotation);
-            applyCommand.setInvokeChain(chain);
+            applyCommand.init(this, annotation);
             return applyCommand;
         }
 
         Object invoke(Object parameter) {
             try {
-                return operationCommand.invokeWithChain(chain, parameter);
+                return operationCommand.invokeWithChain(parameter);
             } catch (Throwable e) {
                 throw new CarRetrofitException(e);
             }
@@ -690,24 +678,28 @@ public final class CarRetrofit {
         }
     }
 
-    private abstract class CommandImpl implements ICommand {
+    private static abstract class CommandImpl implements Command {
         int key;
         int area;
         String token;
+        ConverterStore store;
+        InterceptorChain chain;
         DataSource source;
+        Method method;
+        Field field;
 
-        void init(Class<?> apiScope, Annotation annotation) {
-            CarApi carApi = Objects.requireNonNull(apiScope.getAnnotation(CarApi.class));
-            this.source = Objects.requireNonNull(mDataMap.get(carApi.scope()));
+        void init(MethodHandler handler, Annotation annotation) {
+            this.source = handler.source;
+            this.store = handler.converterStore;
+            this.chain = handler.chain;
         }
 
-        final void resolveArea(Class<?> apiScope, int userDeclaredArea) {
+        final void resolveArea(ApiRecord<?> record, int userDeclaredArea) {
             if (userDeclaredArea != CarApi.DEFAULT_AREA_ID) {
                 this.area = userDeclaredArea;
             } else {
-                CarApi carApi = Objects.requireNonNull(apiScope.getAnnotation(CarApi.class));
-                if (carApi.area() != CarApi.DEFAULT_AREA_ID) {
-                    this.area = carApi.area();
+                if (record.apiArea != CarApi.DEFAULT_AREA_ID) {
+                    this.area = record.apiArea;
                 } else {
                     this.area = CarApi.GLOBAL_AREA_ID;
                 }
@@ -715,24 +707,26 @@ public final class CarRetrofit {
         }
 
         void dispatchArgs(Method method, Field field) {
+            this.method = method;
+            this.field = field;
         }
 
         @Override
         public Method getMethod() {
-            return null;
+            return method;
         }
 
         @Override
         public Field getField() {
-            return null;
+            return field;
         }
 
         @Override
         public String getName() {
-            if (getMethod() != null) {
-                return getMethod().getName();
-            } else if (getField() != null) {
-                return getField().getName();
+            if (field != null) {
+                return field.getName();
+            } else if (method != null) {
+                return method.getName();
             } else {
                 return null;
             }
@@ -787,13 +781,16 @@ public final class CarRetrofit {
         public String toString() {
             String stable = this.getClass().getSimpleName() + " key:0x"
                     + Integer.toHexString(key) + " area:0x" + Integer.toHexString(area);
-            if (getMethod() != null) {
-                stable += " from method:" + getMethod().getName();
+            if (method != null) {
+                stable += " from method:" + method.getName();
+            }
+            if (field != null) {
+                stable += " from field:" + field.getName();
             }
             return stable;
         }
 
-        final Object invokeWithChain(InterceptorChain chain, Object parameter) throws Throwable {
+        final Object invokeWithChain(Object parameter) throws Throwable {
             if (chain != null) {
                 return chain.doProcess(this, parameter);
             } else {
@@ -802,7 +799,7 @@ public final class CarRetrofit {
         }
     }
 
-    private class CommandApply extends CommandGroup {
+    private static class CommandApply extends CommandGroup {
 
         Class<?> targetClass;
 
@@ -816,8 +813,8 @@ public final class CarRetrofit {
         }
 
         @Override
-        void init(Class<?> apiScope, Annotation annotation) {
-            super.init(apiScope, annotation);
+        void init(MethodHandler handler, Annotation annotation) {
+            super.init(handler, annotation);
             String userSet = ((Apply) annotation).token();
             if (userSet.length() > 0) {
                 token = userSet;
@@ -855,13 +852,13 @@ public final class CarRetrofit {
                     try {
                         Object applyFrom = field.get(target);
                         if (applyFrom != null) {
-                            command.invokeWithChain(invokeChain, applyFrom);
+                            command.invokeWithChain(applyFrom);
                         }
                     } catch (IllegalAccessException ie) {
                         throw new CarRetrofitException("Apply failed", ie);
                     }
                 } else {
-                    command.invokeWithChain(invokeChain, target);
+                    command.invokeWithChain(target);
                 }
             }
 
@@ -886,7 +883,7 @@ public final class CarRetrofit {
         }
     }
 
-    private class CommandInject extends CommandGroup {
+    private static class CommandInject extends CommandGroup {
 
         Class<?> targetClass;
         boolean doReturn;
@@ -897,8 +894,8 @@ public final class CarRetrofit {
         }
 
         @Override
-        void init(Class<?> apiScope, Annotation annotation) {
-            super.init(apiScope, annotation);
+        void init(MethodHandler handler, Annotation annotation) {
+            super.init(handler, annotation);
             String userSet = ((Inject) annotation).token();
             if (userSet.length() > 0) {
                 token = userSet;
@@ -947,12 +944,12 @@ public final class CarRetrofit {
                     if (command instanceof CommandInject) {
                         Object injectTarget = field.get(target);
                         if (injectTarget != null) {
-                            command.invokeWithChain(invokeChain, injectTarget);
+                            command.invokeWithChain(injectTarget);
                         } else {
-                            field.set(target, command.invokeWithChain(invokeChain, null));
+                            field.set(target, command.invokeWithChain(null));
                         }
                     } else {
-                        field.set(target, command.invokeWithChain(invokeChain, null));
+                        field.set(target, command.invokeWithChain(null));
                     }
                 } catch (IllegalAccessException e) {
                     throw new CarRetrofitException("Inject failed", e);
@@ -980,25 +977,19 @@ public final class CarRetrofit {
         }
     }
 
-    private abstract class CommandGroup extends CommandImpl {
+    private static abstract class CommandGroup extends CommandImpl {
         ArrayList<CommandImpl> childrenCommand = new ArrayList<>();
         ArrayList<Field> childrenField = new ArrayList<>();
         Method method;
         Field field;
-        InterceptorChain invokeChain;
 
         @Override
         void dispatchArgs(Method method, Field field) {
-            this.method = method;
-            this.field = field;
+            super.dispatchArgs(method, field);
             for (int i = 0; i < childrenCommand.size(); i++) {
                 CommandImpl childCommand = childrenCommand.get(i);
                 childCommand.dispatchArgs(method, childrenField.get(i));
             }
-        }
-
-        void setInvokeChain(InterceptorChain chain) {
-            this.invokeChain = chain;
         }
 
         @Override
@@ -1012,20 +1003,17 @@ public final class CarRetrofit {
         }
     }
 
-    private class CommandSet extends CommandImpl {
+    private static class CommandSet extends CommandImpl {
         BuildInValue buildInValue;
         Converter<Object, ?> argConverter;
-        Field applyField;
-        Method method;
-//        int argIndex = -1;
 
         @Override
-        void init(Class<?> apiScope, Annotation annotation) {
-            super.init(apiScope, annotation);
+        void init(MethodHandler handler, Annotation annotation) {
+            super.init(handler, annotation);
             Set set = (Set) annotation;
             key = set.key();
             buildInValue = BuildInValue.build(set.value());
-            resolveArea(apiScope, set.area());
+            resolveArea(handler.apiClassRecord, set.area());
             String userSet = set.token();
             if (userSet.length() > 0) {
                 token = userSet;
@@ -1034,8 +1022,7 @@ public final class CarRetrofit {
 
         @Override
         void dispatchArgs(Method method, Field field) {
-            this.method = method;
-            this.applyField = field;
+            super.dispatchArgs(method, field);
             if (buildInValue != null) {
                 return;
             }
@@ -1060,7 +1047,8 @@ public final class CarRetrofit {
             } catch (Exception e) {
                 throw new CarRetrofitException(e);
             }
-            Converter<?, ?> converter = ConverterStore.find(userArgClass, carArgClass, mConverterStore);
+            Converter<?, ?> converter = ConverterStore.find(this,
+                    userArgClass, carArgClass, store);
             if (converter != null) {
                 argConverter = (Converter<Object, ?>) converter;
             }
@@ -1071,9 +1059,9 @@ public final class CarRetrofit {
                 return buildInValue.extractValue(source.extractValueType(key));
             }
             Object rawArg;
-            if (applyField != null) {
+            if (field != null) {
                 try {
-                    rawArg = applyField.get(parameter);
+                    rawArg = field.get(parameter);
                 } catch (IllegalAccessException ex) {
                     throw new CarRetrofitException("Can not access to parameter", ex);
                 }
@@ -1096,57 +1084,53 @@ public final class CarRetrofit {
 
         @Override
         public boolean fromApply() {
-            return applyField != null;
-        }
-
-        @Override
-        public Field getField() {
-            return applyField;
-        }
-
-        @Override
-        public Method getMethod() {
-            return method;
-        }
-
-        @Override
-        public String toString() {
-            if (applyField != null) {
-                return super.toString() + " apply field:" + applyField.getName();
-            }
-            return super.toString();
+            return field != null;
         }
     }
 
-    private class CommandGet extends CommandImpl {
+    private static class CommandGet extends CommandImpl {
 
         Converter<Object, ?> resultConverter;
         CarType type;
-        Field injectField;
+        boolean stickyGet;
 
         @Override
-        void init(Class<?> apiScope, Annotation annotation) {
-            super.init(apiScope, annotation);
-            Get get = (Get) annotation;
-            key = get.key();
-            type = get.type();
-            if (type == CarType.ALL) {
-                throw new CarRetrofitException("Can not use type ALL mode in Get operation");
-            }
-            resolveArea(apiScope, get.area());
-            String userSet = get.token();
-            if (userSet.length() > 0) {
-                token = userSet;
+        void init(MethodHandler handler, Annotation annotation) {
+            super.init(handler, annotation);
+            if (annotation instanceof Get) {
+                Get get = (Get) annotation;
+                key = get.key();
+                type = get.type();
+                if (type == CarType.ALL) {
+                    throw new CarRetrofitException("Can not use type ALL mode in Get operation");
+                }
+                resolveArea(handler.apiClassRecord, get.area());
+                String userSet = get.token();
+                if (userSet.length() > 0) {
+                    token = userSet;
+                }
+            } else if (annotation instanceof Track) {
+                Track track = (Track) annotation;
+                key = track.key();
+                type = track.type();
+                resolveArea(handler.apiClassRecord, track.area());
+                String userSet = track.token();
+                if (userSet.length() > 0) {
+                    token = userSet;
+                }
+                stickyGet = true;
             }
         }
 
         @Override
         void dispatchArgs(Method method, Field field) {
-            injectField = field;
-            if (field != null) {
-                resolveResultConverter(field.getType());
-            } else {
-                resolveResultConverter(method.getReturnType());
+            super.dispatchArgs(method, field);
+            if (!stickyGet) {
+                if (field != null) {
+                    resolveResultConverter(field.getType());
+                } else {
+                    resolveResultConverter(method.getReturnType());
+                }
             }
         }
 
@@ -1158,57 +1142,60 @@ public final class CarRetrofit {
             } catch (Exception e) {
                 throw new CarRetrofitException(e);
             }
-            Converter<?, ?> converter = ConverterStore.find(carReturnClass, userReturnClass, mConverterStore);
+            Converter<?, ?> converter = ConverterStore.find(this, carReturnClass,
+                    userReturnClass, store);
             resultConverter = (Converter<Object, ?>) converter;
         }
 
         @Override
         public Object invoke(Object parameter) throws Throwable {
-            Object obj = source.get(key, area, type);
-            return resultConverter != null ? resultConverter.convert(obj) : obj;
+            Object obj;
+            if (stickyGet && type == CarType.ALL) {
+                obj = source.get(key, area, CarType.VALUE);
+                obj = new CarPropertyValue<>(key, area,
+                        resultConverter != null ? resultConverter.convert(obj) : obj);
+                return obj;
+            } else {
+                obj = source.get(key, area, type);
+                return resultConverter != null ? resultConverter.convert(obj) : obj;
+            }
         }
 
         @Override
         public CommandType type() {
-            return CommandType.GET;
+            return stickyGet ? CommandType.STICKY_GET : CommandType.GET;
         }
 
         @Override
         public boolean fromInject() {
-            return injectField != null;
-        }
-
-        @Override
-        public Field getField() {
-            return injectField;
+            return field != null;
         }
 
         @Override
         public String toString() {
             String stable = super.toString();
+            if (stickyGet) {
+                stable += " stickyGet";
+            }
             if (type != CarType.VALUE) {
                 stable += " valueType:" + type;
-            }
-            if (injectField != null) {
-                return stable + " inject field:" + injectField.getName();
             }
             return stable;
         }
     }
 
-    private class CommandTrack extends CommandImpl {
+    private static class CommandTrack extends CommandImpl {
 
-//        int getKey;
         boolean stickyTrack;
         boolean stickyUseCache;
-        Field injectField;
         CarType type;
         Converter<Flow<?>, ?> resultConverter;
         Converter<Object, ?> mapConverter;
+        CommandGet stickyGet;
 
         @Override
-        void init(Class<?> apiScope, Annotation annotation) {
-            super.init(apiScope, annotation);
+        void init(MethodHandler handler, Annotation annotation) {
+            super.init(handler, annotation);
             Track track = (Track) annotation;
             key = track.key();
             type = track.type();
@@ -1216,23 +1203,26 @@ public final class CarRetrofit {
                 throw new CarRetrofitException("Can not use type CONFIG mode in Track operation");
             }
 
-            resolveArea(apiScope, track.area());
+            resolveArea(handler.apiClassRecord, track.area());
 
             StickyType stickyType = track.sticky();
             if (stickyType != StickyType.NO_SET) {
                 stickyTrack = stickyType != StickyType.OFF;
                 stickyUseCache = stickyType == StickyType.ON;
-//                getKey = sticky.get();
             }
             String userSet = track.token();
             if (userSet.length() > 0) {
                 token = userSet;
             }
+            if (stickyTrack) {
+                stickyGet = new CommandGet();
+                stickyGet.init(handler, annotation);
+            }
         }
 
         @Override
         void dispatchArgs(Method method, Field field) {
-            injectField = field;
+            super.dispatchArgs(method, field);
             if (field != null) {
                 resolveResultConverter(field.getType());
                 resolveMapConverter(field.getGenericType(), field);
@@ -1240,23 +1230,23 @@ public final class CarRetrofit {
                 resolveResultConverter(method.getReturnType());
                 resolveMapConverter(method.getGenericReturnType(), method);
             }
+            if (stickyGet != null) {
+                stickyGet.dispatchArgs(method, field);
+            }
         }
 
         @Override
         public boolean fromInject() {
-            return injectField != null;
-        }
-
-        @Override
-        public Field getField() {
-            return injectField;
+            return field != null;
         }
 
         private void resolveResultConverter(Class<?> userReturnClass) {
-            Converter<?, ?> converter = ConverterStore.find(Flow.class, userReturnClass, mConverterStore);
+            Converter<?, ?> converter = ConverterStore.find(this, Flow.class,
+                    userReturnClass, store);
             resultConverter = (Converter<Flow<?>, ?>) converter;
         }
 
+        @SuppressWarnings("unchecked")
         private void resolveMapConverter(Type targetType, AccessibleObject refObj) {
             if (type == CarType.ALL
                     || (resultConverter != null && resultConverter instanceof ConverterMapper)) {
@@ -1316,8 +1306,12 @@ public final class CarRetrofit {
                             throw new CarRetrofitException(e);
                         }
                     }
-                    Converter<?, ?> converter = ConverterStore.find(carType, userTargetType, mConverterStore);
-                    mapConverter = (Converter<Object, ?>) converter;
+                    mapConverter = (Converter<Object, ?>) ConverterStore
+                            .find(this, carType, userTargetType, store);
+                    if (stickyGet != null && type == CarType.ALL) {
+                        stickyGet.resultConverter = (Converter<Object, ?>) ConverterStore
+                                .find(stickyGet, carType, userTargetType, store);
+                    }
                 }
             }
         }
@@ -1330,29 +1324,36 @@ public final class CarRetrofit {
             boolean valueMapped = false;
             switch (type) {
                 case VALUE:
-                    result = new FlowWrapper<>(flow, CarPropertyValue::getValue,
-                            mapConverter);
+                    if (mapConverter != null) {
+                        result = new MediatorFlow<>(flow,
+                                carPropertyValue -> mapConverter.apply(carPropertyValue.getValue()));
+                    } else {
+                        result = new MediatorFlow<>(flow, CarPropertyValue::getValue);
+                    }
                     break;
                 case AVAILABILITY:
-                    result = new FlowWrapper<>(flow,
-                            value -> value != null && value.getStatus() == CarPropertyValue.STATUS_AVAILABLE,
-                            mapConverter);
+                    if (mapConverter != null) {
+                        result = new MediatorFlow<>(flow, value -> mapConverter.apply(value != null
+                                && value.getStatus() == CarPropertyValue.STATUS_AVAILABLE));
+                    } else {
+                        result = new MediatorFlow<>(flow, value -> value != null
+                                && value.getStatus() == CarPropertyValue.STATUS_AVAILABLE);
+                    }
                     break;
                 case ALL:
                     if (mapConverter != null) {
-                        result = new FlowWrapper<>(flow, null,
-                                (Function<CarPropertyValue<Object>, CarPropertyValue<Object>>) raw ->
-                                        new CarPropertyValue<>(raw.getPropertyId(),
-                                        raw.getAreaId(),
-                                        raw.getStatus(),
-                                        raw.getTimestamp(),
-                                        mapConverter.apply(raw.getValue())));
+                        result = new MediatorFlow<>(flow, rawValue -> new CarPropertyValue<>(
+                                rawValue.getPropertyId(),
+                                rawValue.getAreaId(),
+                                rawValue.getStatus(),
+                                rawValue.getTimestamp(),
+                                mapConverter.apply(rawValue.getValue())));
                         valueMapped = true;
                     }
                     break;
             }
             if (stickyTrack) {
-                result = new StickFlow<>(result, this);
+                result = new StickyFlowImpl<>(result, stickyUseCache, stickyGet);
             }
             Object obj = resultConverter != null ? resultConverter.convert(result) : result;
             return !valueMapped && mapConverter != null && resultConverter != null ?
@@ -1373,26 +1374,20 @@ public final class CarRetrofit {
             if (stickyTrack) {
                 stable += " stickyCache:" + stickyUseCache;
             }
-            if (injectField != null) {
-                return stable + " inject field:" + injectField.getName();
-            }
             return stable;
         }
     }
 
-    private static class FlowWrapper<FROM, MIDDLE, TO> implements Flow<TO>, Consumer<FROM> {
+    private static class MediatorFlow<FROM, TO> implements Flow<TO>, Consumer<FROM> {
 
-        protected Flow<FROM> base;
-        private Function<FROM, MIDDLE> fromRaw2Mid;
-        private Function<MIDDLE, TO> fromMid2Final;
+        private Flow<FROM> base;
+        private Function<FROM, TO> mediator;
         private ArrayList<Consumer<TO>> consumers = new ArrayList<>();
 
-        private FlowWrapper(Flow<FROM> base,
-                            Function<FROM, MIDDLE> fromRaw2Mid,
-                            Function<MIDDLE, TO> fromMid2Final) {
+        private MediatorFlow(Flow<FROM> base,
+                             Function<FROM, TO> mediator) {
             this.base = base;
-            this.fromRaw2Mid = fromRaw2Mid;
-            this.fromMid2Final = fromMid2Final;
+            this.mediator = mediator;
         }
 
         @Override
@@ -1414,17 +1409,11 @@ public final class CarRetrofit {
         @SuppressWarnings("unchecked")
         public void accept(FROM value) {
             if (consumers.size() > 0) {
-                MIDDLE middle;
-                if (fromRaw2Mid != null) {
-                    middle = fromRaw2Mid.apply(value);
-                } else {
-                    middle = (MIDDLE) value;
-                }
                 TO obj;
-                if (fromMid2Final != null) {
-                    obj = fromMid2Final.apply(middle);
+                if (mediator != null) {
+                    obj = mediator.apply(value);
                 } else {
-                    obj = (TO) middle;
+                    obj = (TO) value;
                 }
                 for (int i = 0; i < consumers.size(); i++) {
                     consumers.get(i).accept(obj);
@@ -1433,14 +1422,16 @@ public final class CarRetrofit {
         }
     }
 
-    private static class StickFlow<T> extends FlowWrapper<T, T, T> implements StickyFlow<T> {
+    private static class StickyFlowImpl<T> extends MediatorFlow<T, T> implements StickyFlow<T> {
         private T lastValue;
         private boolean valueReceived;
-        private CommandTrack trackCommand;
+        private boolean stickyUseCache;
+        private CommandGet stickyGet;
 
-        private StickFlow(Flow<T> base, CommandTrack trackCommand) {
-            super(base, null, null);
-            this.trackCommand = trackCommand;
+        private StickyFlowImpl(Flow<T> base, boolean stickyUseCache, CommandGet stickyGet) {
+            super(base, null);
+            this.stickyUseCache = stickyUseCache;
+            this.stickyGet = stickyGet;
         }
 
         @Override
@@ -1452,22 +1443,23 @@ public final class CarRetrofit {
         @Override
         public void accept(T value) {
             super.accept(value);
-            if (trackCommand.stickyUseCache) {
+            if (this.stickyUseCache) {
                 valueReceived = true;
                 lastValue = value;
             }
         }
 
+        @SuppressWarnings("unchecked")
         @Override
         public T get() {
             T result;
             try {
-                result = trackCommand.stickyUseCache && valueReceived ?
-                        lastValue : trackCommand.source.get(trackCommand.key, trackCommand.area, trackCommand.type);
-            } catch (Exception e) {
+                result = stickyUseCache && valueReceived ?
+                        lastValue : (T) stickyGet.invokeWithChain(null);
+            } catch (Throwable e) {
                 throw new CarRetrofitException(e);
             }
-            if (trackCommand.stickyUseCache && !valueReceived) {
+            if (stickyUseCache && !valueReceived) {
                 valueReceived = true;
                 lastValue = result;
             }
@@ -1532,7 +1524,7 @@ public final class CarRetrofit {
         String[] stringArray;
 
         static BuildInValue build(CarValue value) {
-            if (EMPTY_VALUE.equals(value.string())) {
+            if (CarValue.EMPTY_VALUE.equals(value.string())) {
                 return null;
             }
             BuildInValue result = new BuildInValue();

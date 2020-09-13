@@ -1,6 +1,8 @@
-package com.liyangbin.carretrofit;
+package com.liyangbin.carretrofit.annotation;
 
 public @interface CarValue {
+    String EMPTY_VALUE = "car_retrofit_empty_value";
+
     int Int() default Integer.MAX_VALUE;
     int[] IntArray() default {};
 

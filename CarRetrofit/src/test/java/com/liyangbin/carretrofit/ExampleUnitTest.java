@@ -1,5 +1,12 @@
 package com.liyangbin.carretrofit;
 
+import com.liyangbin.carretrofit.annotation.Apply;
+import com.liyangbin.carretrofit.annotation.Get;
+import com.liyangbin.carretrofit.annotation.Inject;
+import com.liyangbin.carretrofit.annotation.InjectSuper;
+import com.liyangbin.carretrofit.annotation.Set;
+import com.liyangbin.carretrofit.annotation.Track;
+
 import androidx.databinding.ObservableBoolean;
 
 import org.junit.AfterClass;

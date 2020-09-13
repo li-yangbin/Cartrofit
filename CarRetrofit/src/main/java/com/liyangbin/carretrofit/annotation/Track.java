@@ -1,4 +1,7 @@
-package com.liyangbin.carretrofit;
+package com.liyangbin.carretrofit.annotation;
+
+import com.liyangbin.carretrofit.CarType;
+import com.liyangbin.carretrofit.StickyType;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
@@ -11,12 +14,14 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Documented
 @Target({METHOD, FIELD})
 @Retention(RUNTIME)
-public @interface Set {
+public @interface Track {
     int key();
 
     int area() default CarApi.DEFAULT_AREA_ID;
 
+    CarType type() default CarType.VALUE;
+
     String token() default "";
 
-    CarValue value() default @CarValue(string = CarRetrofit.EMPTY_VALUE);
+    StickyType sticky() default StickyType.NO_SET;
 }

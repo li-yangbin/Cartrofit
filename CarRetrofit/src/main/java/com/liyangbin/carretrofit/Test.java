@@ -1,5 +1,9 @@
 package com.liyangbin.carretrofit;
 
+import com.liyangbin.carretrofit.annotation.Get;
+import com.liyangbin.carretrofit.annotation.ProcessSuper;
+import com.liyangbin.carretrofit.annotation.Set;
+
 import java.util.ArrayList;
 
 @ProcessSuper(implementClass = ITest.class)

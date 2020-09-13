@@ -1,5 +1,7 @@
 package com.liyangbin.carretrofit;
 
+import com.liyangbin.carretrofit.annotation.WrappedData;
+
 import java.util.function.Consumer;
 import java.util.function.Function;
 

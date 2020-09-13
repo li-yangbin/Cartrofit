@@ -4,7 +4,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 public interface Interceptor {
-    Object process(ICommand ICommand, Object parameter) throws Throwable;
+    Object process(Command command, Object parameter) throws Throwable;
 
     default Interceptor after(Interceptor interceptor) {
         return (command, parameter) -> new InterceptorChain(
@@ -13,19 +13,36 @@ public interface Interceptor {
     }
 }
 
-class InterceptorChain implements ICommand {
+class InterceptorChain implements Command {
     private InterceptorChain parent;
     private Interceptor interceptor;
-    private ICommand command;
+    private Command command;
 
     InterceptorChain(InterceptorChain parent, Interceptor interceptor) {
         this.parent = parent;
         this.interceptor = interceptor;
     }
 
-    Object doProcess(ICommand command, Object parameter) throws Throwable {
-        this.command = command;
-        return interceptor.process(this, parameter);
+    void connect(InterceptorChain chain) {
+        InterceptorChain current = this;
+        while (current.parent != null) {
+            current = current.parent;
+        }
+        current.parent = chain;
+    }
+
+    Object doProcess(Command command, Object parameter) throws Throwable {
+        boolean commandChecked = true;
+        if (interceptor instanceof CommandPredictor) {
+            commandChecked = ((CommandPredictor) interceptor).checkCommand(command);
+        }
+        if (commandChecked) {
+            this.command = command;
+            return interceptor.process(this, parameter);
+        } else {
+            return parent != null ? parent.doProcess(this.command, parameter)
+                    : this.command.invoke(parameter);
+        }
     }
 
     @Override

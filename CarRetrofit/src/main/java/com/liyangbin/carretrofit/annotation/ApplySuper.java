@@ -1,4 +1,4 @@
-package com.liyangbin.carretrofit;
+package com.liyangbin.carretrofit.annotation;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
@@ -10,6 +10,5 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Documented
 @Target(TYPE)
 @Retention(RUNTIME)
-public @interface WrappedData {
-    Class<?> type();
+public @interface ApplySuper {
 }

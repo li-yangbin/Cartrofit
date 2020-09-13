@@ -3,7 +3,7 @@ package com.liyangbin.carretrofit;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-public interface ICommand {
+public interface Command {
 
     void setKey(int key);
 
@@ -38,6 +38,7 @@ public interface ICommand {
         GET,
         TRACK,
         APPLY,
-        INJECT
+        INJECT,
+        STICKY_GET
     }
 }

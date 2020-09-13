@@ -1,5 +1,7 @@
 package com.liyangbin.carretrofit;
 
+import com.liyangbin.carretrofit.annotation.WrappedData;
+
 import androidx.annotation.NonNull;
 import androidx.databinding.BaseObservable;
 import androidx.databinding.ObservableBoolean;

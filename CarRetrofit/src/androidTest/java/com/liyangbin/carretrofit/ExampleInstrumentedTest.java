@@ -17,6 +17,6 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
 //        Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
 //        assertEquals("com.android.carretrofit.test", appContext.getPackageName());
-        new CarRetrofit.Builder().build().create(TestApi.class).test("hello");
+        new CarRetrofit.Builder().build().from(TestApi.class).test("hello");
     }
 }

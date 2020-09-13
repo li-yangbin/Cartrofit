@@ -39,7 +39,7 @@ import static javax.lang.model.element.Modifier.PUBLIC;
 @SupportedAnnotationTypes(CarRetrofitProcessor.TARGET)
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class CarRetrofitProcessor extends AbstractProcessor {
-    static final String TARGET = "com.liyangbin.carretrofit.ProcessSuper";
+    static final String TARGET = "com.liyangbin.carretrofit.annotation.ProcessSuper";
     static final String IMPLEMENT_CLASS_NAME = "implementClass";
     static final String CLASS_NAME = "className";
     static final String SUPER_NAME = "superClass";
@@ -188,7 +188,8 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                     .returns(name)
                     .addModifiers(PRIVATE, Modifier.FINAL)
                     .beginControlFlow("if (" + fieldName + " == null)")
-                    .addStatement(fieldName + " = CarRetrofit.from(" + targetInterfaceList.get(i).getSimpleName() + ".class)")
+                    .addStatement(fieldName + " = CarRetrofit.fromDefault("
+                            + targetInterfaceList.get(i).getSimpleName() + ".class)")
                     .endControlFlow()
                     .addStatement("return " + fieldName)
                     .build());
@@ -210,7 +211,8 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                 ExecutableElement executable = executableElements.get(j);
                 MethodSpec.Builder methodBuilder = MethodSpec.overriding(executable);
                 String methodName = interfaceCount == 1 ? "getBase" : ("getBase" + i);
-                StringBuilder buffer = new StringBuilder(methodName + "()." + executable.getSimpleName().toString() + "(");
+                StringBuilder buffer = new StringBuilder(methodName + "()."
+                        + executable.getSimpleName().toString() + "(");
                 final int parameterCount = executable.getParameters().size();
                 for (int k = 0; k < parameterCount; k++) {
                     VariableElement variableElement = executable.getParameters().get(k);
