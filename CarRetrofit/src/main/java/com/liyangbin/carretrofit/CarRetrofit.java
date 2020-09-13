@@ -43,6 +43,7 @@ public final class CarRetrofit {
     private HashMap<Method, MethodHandler> mHandlerCache = new HashMap<>();
     private ConverterStore mConverterStore;
     private InterceptorChain mChainHead;
+    private StickyType mDefaultStickyType;
 
     static {
         RxJavaConverter.addSupport();
@@ -54,6 +55,7 @@ public final class CarRetrofit {
         mConverterStore = new ConverterStore("scope:" + this);
         mConverterStore.addParent(GLOBAL_CONVERTER);
         mDataMap = builder.dataMap;
+        mDefaultStickyType = builder.stickyType;
         if (mDataMap.isEmpty()) {
             throw new IllegalArgumentException("CarRetrofit must be setup with data source");
         }
@@ -96,6 +98,7 @@ public final class CarRetrofit {
         String dataScope;
         int apiArea;
         T apiObj;
+        StickyType stickyType;
 
         ArrayList<Interceptor> apiSelfInterceptorList = new ArrayList<>();
         ArrayList<Converter<?, ?>> apiSelfConverterList = new ArrayList<>();
@@ -108,6 +111,10 @@ public final class CarRetrofit {
             CarApi carApi = Objects.requireNonNull(clazz.getAnnotation(CarApi.class));
             this.dataScope = carApi.scope();
             this.apiArea = carApi.area();
+            this.stickyType = carApi.sticky();
+            if (stickyType == StickyType.NO_SET) {
+                stickyType = mDefaultStickyType;
+            }
 
             try {
                 Field[] fields = clazz.getDeclaredFields();
@@ -331,6 +338,7 @@ public final class CarRetrofit {
         private ArrayList<Converter<?, ?>> converters = new ArrayList<>();
         private HashMap<String, DataSource> dataMap = new HashMap<>();
         private ArrayList<Interceptor> interceptors = new ArrayList<>();
+        private StickyType stickyType = StickyType.NO_SET;
 
         public Builder addDataSource(String sourceKey, DataSource source) {
             this.dataMap.put(sourceKey, source);
@@ -354,6 +362,11 @@ public final class CarRetrofit {
 
         public Builder addInterceptor(Interceptor interceptor) {
             interceptors.add(interceptor);
+            return this;
+        }
+
+        public Builder setStickyType(StickyType type) {
+            stickyType = type;
             return this;
         }
 
@@ -1213,6 +1226,9 @@ public final class CarRetrofit {
             resolveArea(handler.apiClassRecord, track.area());
 
             StickyType stickyType = track.sticky();
+            if (stickyType == StickyType.NO_SET) {
+                stickyType = handler.apiClassRecord.stickyType;
+            }
             if (stickyType != StickyType.NO_SET) {
                 stickyTrack = stickyType != StickyType.OFF;
                 stickyUseCache = stickyType == StickyType.ON;

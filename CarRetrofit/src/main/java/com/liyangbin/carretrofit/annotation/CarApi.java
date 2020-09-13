@@ -1,5 +1,7 @@
 package com.liyangbin.carretrofit.annotation;
 
+import com.liyangbin.carretrofit.StickyType;
+
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
@@ -17,4 +19,6 @@ public @interface CarApi {
     String scope();
 
     int area() default DEFAULT_AREA_ID;
+
+    StickyType sticky() default StickyType.NO_SET;
 }
