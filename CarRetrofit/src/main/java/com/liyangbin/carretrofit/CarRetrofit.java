@@ -6,12 +6,14 @@ import com.liyangbin.carretrofit.annotation.Apply;
 import com.liyangbin.carretrofit.annotation.ApplySuper;
 import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.CarValue;
+import com.liyangbin.carretrofit.annotation.Combine;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
 import com.liyangbin.carretrofit.annotation.InjectSuper;
 import com.liyangbin.carretrofit.annotation.Set;
 import com.liyangbin.carretrofit.annotation.Track;
 import com.liyangbin.carretrofit.annotation.WrappedData;
+import com.liyangbin.carretrofit.funtion.Operator;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AccessibleObject;
@@ -28,6 +30,7 @@ import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -103,6 +106,7 @@ public final class CarRetrofit {
         ArrayList<Interceptor> apiSelfInterceptorList = new ArrayList<>();
         ArrayList<Converter<?, ?>> apiSelfConverterList = new ArrayList<>();
 
+        DataSource source;
         InterceptorChain interceptorChain;
         ConverterStore converterStore;
 
@@ -132,12 +136,12 @@ public final class CarRetrofit {
                 e.printStackTrace();
             }
 
+            interceptorChain = mChainHead;
             if (apiSelfInterceptorList.size() > 0) {
                 for (int i = 0; i < apiSelfInterceptorList.size(); i++) {
                     interceptorChain = new InterceptorChain(interceptorChain,
                             apiSelfInterceptorList.get(i));
                 }
-                interceptorChain.connect(mChainHead);
             }
 
             if (apiSelfConverterList.size() > 0) {
@@ -146,7 +150,12 @@ public final class CarRetrofit {
                     converterStore.addConverter(apiSelfConverterList.get(i));
                 }
                 converterStore.addParent(mConverterStore);
+            } else {
+                converterStore = mConverterStore;
             }
+
+            this.source = Objects.requireNonNull(mDataMap.get(dataScope),
+                    "Make sure use a valid scope id passed by Builder().addDataSource()");
         }
     }
 
@@ -264,7 +273,11 @@ public final class CarRetrofit {
         }
 
         private boolean checkConverter(Class<?> from, Class<?> to) {
-            return findWithoutCommand(from, to) != null;
+            final ConverterStore parent = this.parentStore;
+            this.parentStore = null;
+            Converter<?, ?> converter = findWithoutCommand(from, to);
+            this.parentStore = parent;
+            return converter != null;
         }
 
         private Converter<?, ?> findWithCommand(Command command, Class<?> from, Class<?> to) {
@@ -365,7 +378,7 @@ public final class CarRetrofit {
             return this;
         }
 
-        public Builder setStickyType(StickyType type) {
+        public Builder setDefaultStickyType(StickyType type) {
             stickyType = type;
             return this;
         }
@@ -470,38 +483,35 @@ public final class CarRetrofit {
                 | FLAG_PARSE_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY;
 
         Method method;
-        DataSource source;
         CommandImpl operationCommand;
-        ConverterStore converterStore;
-        InterceptorChain chain;
         ApiRecord<?> apiClassRecord;
 
         private MethodHandler(Method method) {
             this.method = method;
             this.apiClassRecord = fromApi(method.getDeclaringClass());
-            if (apiClassRecord.interceptorChain != null) {
-                this.chain = apiClassRecord.interceptorChain;
-            } else {
-                this.chain = mChainHead;
-            }
-            if (apiClassRecord.converterStore != null) {
-                this.converterStore = apiClassRecord.converterStore;
-            } else {
-                this.converterStore = mConverterStore;
-            }
-            this.source = Objects.requireNonNull(mDataMap.get(apiClassRecord.dataScope),
-                    "Make sure use a valid scope id passed by Builder().addDataSource()");
+//            if (apiClassRecord.interceptorChain != null) {
+//                this.chain = apiClassRecord.interceptorChain;
+//            } else {
+//                this.chain = mChainHead;
+//            }
+//            if (apiClassRecord.converterStore != null) {
+//                this.converterStore = apiClassRecord.converterStore;
+//            } else {
+//                this.converterStore = mConverterStore;
+//            }
+//            this.source = Objects.requireNonNull(mDataMap.get(apiClassRecord.dataScope),
+//                    "Make sure use a valid scope id passed by Builder().addDataSource()");
 
             Annotation[] methodAnnotation = method.getDeclaredAnnotations();
             for (Annotation annotation : methodAnnotation) {
                 operationCommand = parseAnnotation(annotation);
                 if (operationCommand != null) {
+                    operationCommand.init(apiClassRecord, annotation, method, null);
                     break;
                 }
             }
             Objects.requireNonNull(operationCommand,
                     "Can not parse command from method:" + method);
-            operationCommand.dispatchArgs(method, null);
         }
 
         private MethodHandler(Class<?> clazz, boolean injectOrApply) {
@@ -514,8 +524,8 @@ public final class CarRetrofit {
                     "Can not parse command from class:" + clazz);
 //            ConverterStore store = scope != null ? scope.store : mConverterStore;
 //            operationCommand.dispatchSetConverterStore(store);
-            operationCommand.dispatchArgs(null, null);
-            chain = mChainHead;
+//            operationCommand.dispatchArgs(null, null);
+//            chain = mChainHead;
         }
 
         private CommandImpl parseAnnotation(Annotation annotation) {
@@ -528,7 +538,6 @@ public final class CarRetrofit {
             CommandImpl command = null;
             if ((flag & FLAG_PARSE_SET) != 0 && annotation instanceof Set) {
                 command = new CommandSet();
-                command.init(this, annotation);
             } /*else if ((flag & FLAG_PARSE_SET) != 0 && annotation instanceof MultiSet) {
                 MultiSet multiSet = (MultiSet) annotation;
                 CommandGroup group = new CommandGroup();
@@ -538,10 +547,8 @@ public final class CarRetrofit {
                 command = group;
             }*/ else if ((flag & FLAG_PARSE_GET) != 0 && annotation instanceof Get) {
                 command = new CommandGet();
-                command.init(this, annotation);
             } else if ((flag & FLAG_PARSE_TRACK) != 0 && annotation instanceof Track) {
                 command = new CommandTrack();
-                command.init(this, annotation);
             } else if ((flag & FLAG_PARSE_INJECT) != 0 && annotation instanceof Inject) {
                 for (int i = 0; i < method.getParameterCount(); i++) {
                     Class<?> clazz = method.getParameterTypes()[i];
@@ -568,6 +575,13 @@ public final class CarRetrofit {
                         break;
                     }
                 }
+            } else if (annotation instanceof Combine) {
+                CommandCombine commandCombine = new CommandCombine();
+                Combine combine = (Combine) annotation;
+                String[] elementTokens = combine.elements();
+                searchAndCreateCombineChildCommand(apiClassRecord.clazz,
+                        Arrays.asList(combine.elements()), commandCombine);
+                command = commandCombine;
             }
             return command;
         }
@@ -608,9 +622,7 @@ public final class CarRetrofit {
                                     fieldAnnotation, FLAG_PARSE_GET | FLAG_PARSE_TRACK);
                         }
                         if (childCommand != null) {
-                            injectCommand.childrenCommand.add(childCommand);
-                            field.setAccessible(true);
-                            injectCommand.childrenField.add(field);
+                            injectCommand.addChildCommand(childCommand, field, fieldAnnotation);
                             break;
                         }
                     }
@@ -627,7 +639,6 @@ public final class CarRetrofit {
             if (injectCommand.childrenField.size() == 0) {
                 throw new CarRetrofitException("failed to parse Inject command from type:" + targetClass);
             }
-            injectCommand.init(this, annotation);
             return injectCommand;
         }
 
@@ -661,9 +672,7 @@ public final class CarRetrofit {
                                     fieldAnnotation, FLAG_PARSE_SET);
                         }
                         if (childCommand != null) {
-                            applyCommand.childrenCommand.add(childCommand);
-                            field.setAccessible(true);
-                            applyCommand.childrenField.add(field);
+                            applyCommand.addChildCommand(childCommand, field, fieldAnnotation);
                             break;
                         }
                     }
@@ -680,8 +689,43 @@ public final class CarRetrofit {
             if (applyCommand.childrenField.size() == 0) {
                 throw new CarRetrofitException("failed to parse Apply command from type:" + targetClass);
             }
-            applyCommand.init(this, annotation);
             return applyCommand;
+        }
+
+        private void searchAndCreateCombineChildCommand(Class<?> apiClazz, List<String> tokenList,
+                                                        CommandCombine parent) {
+            Method[] declaredMethods = apiClazz.getDeclaredMethods();
+            for (Method method : declaredMethods) {
+                Track track = method.getDeclaredAnnotation(Track.class);
+                if (track != null) {
+                    if (tokenList.contains(track.token())) {
+                        CommandTrack commandTrack = new CommandTrack();
+                        parent.addChildCommand(commandTrack, null, track);
+                        continue;
+                    }
+                }
+                Get get = method.getDeclaredAnnotation(Get.class);
+                if (get != null) {
+                    if (tokenList.contains(get.token())) {
+                        CommandGet commandGet = new CommandGet();
+                        parent.addChildCommand(commandGet, null, get);
+                        continue;
+                    }
+                }
+                Combine combine = method.getDeclaredAnnotation(Combine.class);
+                if (combine != null) {
+                    if (tokenList.contains(combine.token())) {
+                        CommandCombine commandCombine = new CommandCombine();
+                        parent.addChildCommand(commandCombine, null, combine);
+                        searchAndCreateCombineChildCommand(apiClazz,
+                                Arrays.asList(combine.elements()), commandCombine);
+                    }
+                }
+            }
+            Class<?>[] apiSuperIfClassArray = apiClazz.getInterfaces();
+            for (Class<?> apiSuperClass : apiSuperIfClassArray) {
+                searchAndCreateCombineChildCommand(apiSuperClass, tokenList, parent);
+            }
         }
 
         Object invoke(Object parameter) {
@@ -702,33 +746,32 @@ public final class CarRetrofit {
         int key;
         int area;
         String token;
+        ApiRecord<?> record;
         ConverterStore store;
         InterceptorChain chain;
         DataSource source;
         Method method;
         Field field;
 
-        void init(MethodHandler handler, Annotation annotation) {
-            this.source = handler.source;
-            this.store = handler.converterStore;
-            this.chain = handler.chain;
+        void init(ApiRecord<?> record, Annotation annotation, Method method, Field field) {
+            this.record = record;
+            this.source = record.source;
+            this.store = record.converterStore;
+            this.chain = record.interceptorChain;
+            this.method = method;
+            this.field = field;
         }
 
-        final void resolveArea(ApiRecord<?> record, int userDeclaredArea) {
+        final void resolveArea(int userDeclaredArea) {
             if (userDeclaredArea != CarApi.DEFAULT_AREA_ID) {
                 this.area = userDeclaredArea;
             } else {
-                if (record.apiArea != CarApi.DEFAULT_AREA_ID) {
+                if (this.record.apiArea != CarApi.DEFAULT_AREA_ID) {
                     this.area = record.apiArea;
                 } else {
                     this.area = CarApi.GLOBAL_AREA_ID;
                 }
             }
-        }
-
-        void dispatchArgs(Method method, Field field) {
-            this.method = method;
-            this.field = field;
         }
 
         @Override
@@ -833,8 +876,8 @@ public final class CarRetrofit {
         }
 
         @Override
-        void init(MethodHandler handler, Annotation annotation) {
-            super.init(handler, annotation);
+        void init(ApiRecord<?> record, Annotation annotation, Method method, Field field) {
+            super.init(record, annotation, method, field);
             String userSet = ((Apply) annotation).token();
             if (userSet.length() > 0) {
                 token = userSet;
@@ -914,8 +957,8 @@ public final class CarRetrofit {
         }
 
         @Override
-        void init(MethodHandler handler, Annotation annotation) {
-            super.init(handler, annotation);
+        void init(ApiRecord<?> record, Annotation annotation, Method method, Field field) {
+            super.init(record, annotation, method, field);
             String userSet = ((Inject) annotation).token();
             if (userSet.length() > 0) {
                 token = userSet;
@@ -1000,15 +1043,25 @@ public final class CarRetrofit {
     private static abstract class CommandGroup extends CommandImpl {
         ArrayList<CommandImpl> childrenCommand = new ArrayList<>();
         ArrayList<Field> childrenField = new ArrayList<>();
+        ArrayList<Annotation> childrenAnnotation = new ArrayList<>();
         Method method;
         Field field;
 
+        void addChildCommand(CommandImpl command, Field field, Annotation annotation) {
+            childrenCommand.add(command);
+            childrenAnnotation.add(annotation);
+            if (field != null) {
+                field.setAccessible(true);
+                childrenField.add(field);
+            }
+        }
+
         @Override
-        void dispatchArgs(Method method, Field field) {
-            super.dispatchArgs(method, field);
+        void init(ApiRecord<?> record, Annotation annotation, Method method, Field field) {
+            super.init(record, annotation, method, field);
             for (int i = 0; i < childrenCommand.size(); i++) {
                 CommandImpl childCommand = childrenCommand.get(i);
-                childCommand.dispatchArgs(method, childrenField.get(i));
+                childCommand.init(record, childrenAnnotation.get(i), method, childrenField.get(i));
             }
         }
 
@@ -1023,26 +1076,79 @@ public final class CarRetrofit {
         }
     }
 
+    private static class CommandCombine extends CommandGroup {
+
+        Operator operator;
+        boolean returnFlow;
+
+        @Override
+        void init(ApiRecord<?> record, Annotation annotation, Method method, Field field) {
+            super.init(record, annotation, method, field);
+            Combine combine = (Combine) annotation;
+            String userSet = combine.token();
+            if (userSet.length() > 0) {
+                token = userSet;
+            }
+
+            for (int i = 0; i < childrenCommand.size(); i++) {
+                CommandImpl childCommand = childrenCommand.get(i);
+                childCommand.init(record, childrenAnnotation.get(i), method, field);
+                if (!returnFlow) {
+                    if (childCommand instanceof CommandTrack) {
+                        returnFlow = true;
+                    } else if (childCommand instanceof CommandCombine) {
+                        returnFlow = ((CommandCombine) childCommand).returnFlow;
+                    }
+                }
+            }
+
+            final String combinatorExp = combine.combinator();
+            try {
+                Field combinatorField = record.clazz.getDeclaredField(combinatorExp);
+                Object operatorObj = combinatorField.get(null);
+                String operatorFullName = Operator.class.getName();
+                String prefix = operatorFullName.substring(0, operatorFullName.lastIndexOf("."));
+                int childElementCount = childrenCommand.size();
+                String targetFunctionFullName = prefix + ".Function" + childElementCount;
+                Class<?> functionClass = Class.forName(targetFunctionFullName);
+                if (functionClass.isInstance(operator)) {
+                    this.operator = (Operator) operatorObj;
+                } else {
+                    throw new CarRetrofitException("Operator:" + combinatorExp
+                            + " doesn't match element count:" + childElementCount);
+                }
+            } catch (ReflectiveOperationException e) {
+                throw new CarRetrofitException(e);
+            }
+        }
+
+        @Override
+        public Object invoke(Object parameter) throws Throwable {
+            return null;
+        }
+
+        @Override
+        public CommandType type() {
+            return null;
+        }
+    }
+
     private static class CommandSet extends CommandImpl {
         BuildInValue buildInValue;
         Converter<Object, ?> argConverter;
 
         @Override
-        void init(MethodHandler handler, Annotation annotation) {
-            super.init(handler, annotation);
+        void init(ApiRecord<?> record, Annotation annotation, Method method, Field field) {
+            super.init(record, annotation, method, field);
             Set set = (Set) annotation;
             key = set.key();
             buildInValue = BuildInValue.build(set.value());
-            resolveArea(handler.apiClassRecord, set.area());
+            resolveArea(set.area());
             String userSet = set.token();
             if (userSet.length() > 0) {
                 token = userSet;
             }
-        }
 
-        @Override
-        void dispatchArgs(Method method, Field field) {
-            super.dispatchArgs(method, field);
             if (buildInValue != null) {
                 return;
             }
@@ -1115,8 +1221,8 @@ public final class CarRetrofit {
         boolean stickyGet;
 
         @Override
-        void init(MethodHandler handler, Annotation annotation) {
-            super.init(handler, annotation);
+        void init(ApiRecord<?> record, Annotation annotation, Method method, Field field) {
+            super.init(record, annotation, method, field);
             if (annotation instanceof Get) {
                 Get get = (Get) annotation;
                 key = get.key();
@@ -1124,7 +1230,7 @@ public final class CarRetrofit {
                 if (type == CarType.ALL) {
                     throw new CarRetrofitException("Can not use type ALL mode in Get operation");
                 }
-                resolveArea(handler.apiClassRecord, get.area());
+                resolveArea(get.area());
                 String userSet = get.token();
                 if (userSet.length() > 0) {
                     token = userSet;
@@ -1133,18 +1239,14 @@ public final class CarRetrofit {
                 Track track = (Track) annotation;
                 key = track.key();
                 type = track.type();
-                resolveArea(handler.apiClassRecord, track.area());
+                resolveArea(track.area());
                 String userSet = track.token();
                 if (userSet.length() > 0) {
                     token = userSet;
                 }
                 stickyGet = true;
             }
-        }
 
-        @Override
-        void dispatchArgs(Method method, Field field) {
-            super.dispatchArgs(method, field);
             if (!stickyGet) {
                 if (field != null) {
                     resolveResultConverter(field.getType());
@@ -1214,8 +1316,8 @@ public final class CarRetrofit {
         CommandGet stickyGet;
 
         @Override
-        void init(MethodHandler handler, Annotation annotation) {
-            super.init(handler, annotation);
+        void init(ApiRecord<?> record, Annotation annotation, Method method, Field field) {
+            super.init(record, annotation, method, field);
             Track track = (Track) annotation;
             key = track.key();
             type = track.type();
@@ -1223,11 +1325,11 @@ public final class CarRetrofit {
                 throw new CarRetrofitException("Can not use type CONFIG mode in Track operation");
             }
 
-            resolveArea(handler.apiClassRecord, track.area());
+            resolveArea(track.area());
 
             StickyType stickyType = track.sticky();
             if (stickyType == StickyType.NO_SET) {
-                stickyType = handler.apiClassRecord.stickyType;
+                stickyType = record.stickyType;
             }
             if (stickyType != StickyType.NO_SET) {
                 stickyTrack = stickyType != StickyType.OFF;
@@ -1237,15 +1339,7 @@ public final class CarRetrofit {
             if (userSet.length() > 0) {
                 token = userSet;
             }
-            if (stickyTrack) {
-                stickyGet = new CommandGet();
-                stickyGet.init(handler, annotation);
-            }
-        }
 
-        @Override
-        void dispatchArgs(Method method, Field field) {
-            super.dispatchArgs(method, field);
             if (field != null) {
                 resolveResultConverter(field.getType());
                 resolveMapConverter(field.getGenericType(), field);
@@ -1253,8 +1347,10 @@ public final class CarRetrofit {
                 resolveResultConverter(method.getReturnType());
                 resolveMapConverter(method.getGenericReturnType(), method);
             }
-            if (stickyGet != null) {
-                stickyGet.dispatchArgs(method, field);
+
+            if (stickyTrack) {
+                stickyGet = new CommandGet();
+                stickyGet.init(record, annotation, method, field);
             }
         }
 
