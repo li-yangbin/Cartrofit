@@ -42,6 +42,17 @@ public final class CarRetrofit {
     private static CarRetrofit sDefault;
     private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
 
+    private static final int FLAG_FIRST_BIT = 1;
+
+    private static final int FLAG_PARSE_SET = FLAG_FIRST_BIT;
+    private static final int FLAG_PARSE_GET = FLAG_FIRST_BIT << 1;
+    private static final int FLAG_PARSE_TRACK = FLAG_FIRST_BIT << 2;
+    private static final int FLAG_PARSE_INJECT = FLAG_FIRST_BIT << 3;
+    private static final int FLAG_PARSE_APPLY = FLAG_FIRST_BIT << 4;
+    private static final int FLAG_PARSE_COMBINE = FLAG_FIRST_BIT << 5;
+    private static final int FLAG_PARSE_ALL = FLAG_PARSE_SET | FLAG_PARSE_GET
+            | FLAG_PARSE_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE;
+
     private HashMap<String, DataSource> mDataMap;
     private HashMap<Method, MethodHandler> mHandlerCache = new HashMap<>();
     private ConverterStore mConverterStore;
@@ -400,7 +411,7 @@ public final class CarRetrofit {
 
     @SuppressWarnings("unchecked")
     public <T> T from(Class<T> api) {
-        ApiRecord<T> record = fromApi(api);
+        ApiRecord<T> record = getApi(api);
         synchronized (mApiCache) {
             if (record.apiObj != null) {
                 return record.apiObj;
@@ -433,7 +444,7 @@ public final class CarRetrofit {
     }
 
     @SuppressWarnings("unchecked")
-    private <T> ApiRecord<T> fromApi(Class<T> api) {
+    private <T> ApiRecord<T> getApi(Class<T> api) {
         synchronized (mApiCache) {
             ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
             if (record == null) {
@@ -441,6 +452,314 @@ public final class CarRetrofit {
                 mApiCache.put(api, record);
             }
             return record;
+        }
+    }
+
+    private Command getCommand(Class<?> scopeClass, Method method) {
+        Annotation[] methodAnnotation = method.getDeclaredAnnotations();
+        for (Annotation annotation : methodAnnotation) {
+            operationCommand = parseAnnotation(annotation);
+            if (operationCommand != null) {
+                operationCommand.init(apiClassRecord, annotation, method, null);
+                break;
+            }
+        }
+    }
+
+    private Command getCommand(Class<?> scopeClass, Field field) {
+        synchronized (mApiCache) {
+            ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
+            if (record == null) {
+                record = new ApiRecord<>(api);
+                mApiCache.put(api, record);
+            }
+            return record;
+        }
+    }
+
+    private static class Key {
+        Method method;
+        Field field;
+
+        Key(Method method, Field field) {
+            this.method = method;
+            this.field = field;
+        }
+
+        <T extends Annotation> T getDeclaredAnnotation(Class<T> annotationClass) {
+            return method != null ? method.getDeclaredAnnotation(annotationClass)
+                    : field.getDeclaredAnnotation(annotationClass);
+        }
+
+        Class<?> getType() {
+            return method != null ? method.getReturnType() : field.getType();
+        }
+
+        boolean isInjectReturn() {
+            if (field != null) {
+                return true;
+            }
+            if (method != null && method.getReturnType() != void.class) {
+                return true;
+            }
+            return false;
+        }
+
+        Class<?> getInjectType() {
+            if (field != null) {
+                return field.getType();
+            } else if (method.getReturnType() != void.class) {
+                return method.getReturnType();
+            } else {
+                Class<?>[] classArray = method.getParameterTypes();
+                if (classArray.length != 1) {
+                    throw new CarRetrofitException("Invalid parameter:"
+                            + Arrays.toString(classArray));
+                }
+                return classArray[0];
+            }
+        }
+
+        Class<?> getApplyType() {
+            if (field != null) {
+                return field.getType();
+            } else {
+                Class<?>[] classArray = method.getParameterTypes();
+                if (classArray.length != 1) {
+                    throw new CarRetrofitException("Invalid parameter:"
+                            + Arrays.toString(classArray));
+                }
+                if (method.getReturnType() != void.class) {
+                    throw new CarRetrofitException("Invalid return type:"
+                            + method.getReturnType());
+                }
+                return classArray[0];
+            }
+        }
+    }
+
+
+
+    private CommandImpl parseAnnotation(ApiRecord<?> record, Key key, List<String> filter, int flag) {
+        Set set = (flag & FLAG_PARSE_SET) != 0 ? key.getDeclaredAnnotation(Set.class) : null;
+        if (set != null) {
+            if (filter != null && filter.contains(set.token())) {
+                return null;
+            }
+            CommandSet command = new CommandSet();
+            command.init(record, set, key.method, key.field);
+            return command;
+        }
+
+        Get get = (flag & FLAG_PARSE_GET) != 0 ? key.getDeclaredAnnotation(Get.class) : null;
+        if (get != null) {
+            if (filter != null && filter.contains(get.token())) {
+                return null;
+            }
+            CommandGet command = new CommandGet();
+            command.init(record, get, key.method, key.field);
+            return command;
+        }
+
+        Track track = (flag & FLAG_PARSE_TRACK) != 0 ? key.getDeclaredAnnotation(Track.class) : null;
+        if (track != null) {
+            if (filter != null && filter.contains(track.token())) {
+                return null;
+            }
+            CommandTrack command = new CommandTrack();
+            command.init(record, track, key.method, key.field);
+            return command;
+        }
+
+        Inject inject = (flag & FLAG_PARSE_INJECT) != 0 ? key.getDeclaredAnnotation(Inject.class) : null;
+        if (inject != null) {
+            if (filter != null && filter.contains(inject.token())) {
+                return null;
+            }
+            CommandImpl command = parseInjectClass(record, key.getInjectType(), key.isInjectReturn());
+            command.init(record, inject, key.method, key.field);
+            return command;
+        }
+
+        Apply apply = (flag & FLAG_PARSE_APPLY) != 0 ? key.getDeclaredAnnotation(Apply.class) : null;
+        if (apply != null) {
+            if (filter != null && filter.contains(apply.token())) {
+                return null;
+            }
+            CommandImpl command = parseApplyClass(record, key.getApplyType());
+            command.init(record, apply, key.method, key.field);
+            return command;
+        }
+
+        Combine combine = (flag & FLAG_PARSE_COMBINE) != 0 ? key.getDeclaredAnnotation(Combine.class) : null;
+        if (combine != null) {
+            if (filter != null && filter.contains(combine.token())) {
+                return null;
+            }
+            CommandCombine command = new CommandCombine();
+            searchAndCreateCombineChildCommand(record, Arrays.asList(combine.elements()), command);
+            command.init(record, combine, key.method, key.field);
+            return command;
+        }
+        return null;
+    }
+
+//    private CommandImpl parseAnnotation(Class<?> scopeClass, Field field, Annotation annotation) {
+//        return parseAnnotation(scopeClass, field.getType(), annotation, FLAG_PARSE_ALL);
+//    }
+
+    private CommandImpl parseAnnotation(Class<?> areaScope, Class<?> targetType,
+                                        Annotation annotation, int flag) {
+    }
+
+    private CommandImpl parseInjectClass(Class<?> parentAreaScope, Class<?> targetClass,
+                                         boolean doReturn) {
+        if (targetClass.isPrimitive() || targetClass.isArray() || targetClass == String.class) {
+            throw new CarRetrofitException("Can not use Inject on class type:" + targetClass);
+        }
+
+        CommandInject injectCommand = new CommandInject(targetClass, doReturn);
+        Class<?> loopClass = targetClass;
+        do {
+            Class<?> areaScopeClass;
+            if (loopClass.isAnnotationPresent(CarApi.class)) {
+                areaScopeClass = loopClass;
+            } else {
+                areaScopeClass = parentAreaScope;
+            }
+            for (Field field : loopClass.getDeclaredFields()) {
+                int modifiers = field.getModifiers();
+                if (Modifier.isStatic(modifiers)) {
+                    continue;
+                }
+                CommandImpl childCommand = null;
+                for (Annotation fieldAnnotation : field.getDeclaredAnnotations()) {
+                    if (fieldAnnotation instanceof Inject) {
+                        if (Modifier.isFinal(modifiers)) {
+                            throw new CarRetrofitException("Can not use Inject command on a final field");
+                        }
+                        childCommand = parseInjectClass(areaScopeClass, field.getType(), true);
+                    } else if (fieldAnnotation instanceof Get || fieldAnnotation instanceof Track) {
+                        if (Modifier.isFinal(modifiers)) {
+                            throw new CarRetrofitException("Can not use Set or Track command on a final field");
+                        }
+                        childCommand = parseAnnotation(areaScopeClass, field.getType(),
+                                fieldAnnotation, FLAG_PARSE_GET | FLAG_PARSE_TRACK);
+                    }
+                    if (childCommand != null) {
+                        injectCommand.addChildCommand(childCommand, field, fieldAnnotation);
+                        break;
+                    }
+                }
+            }
+            if (loopClass.isAnnotationPresent(InjectSuper.class)) {
+                loopClass = loopClass.getSuperclass();
+                if (loopClass != null && loopClass != Object.class) {
+                    continue;
+                }
+            }
+            break;
+        } while (true);
+
+        if (injectCommand.childrenField.size() == 0) {
+            throw new CarRetrofitException("failed to parse Inject command from type:" + targetClass);
+        }
+        return injectCommand;
+    }
+
+    private CommandImpl parseApplyClass(Class<?> parentAreaScope, Class<?> targetClass) {
+        if (targetClass.isPrimitive() || targetClass.isArray() || targetClass == String.class) {
+            throw new CarRetrofitException("Can not use Apply on class type:" + targetClass);
+        }
+
+        CommandApply applyCommand = new CommandApply(targetClass);
+        Class<?> loopClass = targetClass;
+        do {
+            Class<?> areaScopeClass;
+            if (targetClass.isAnnotationPresent(CarApi.class)) {
+                areaScopeClass = targetClass;
+            } else {
+                areaScopeClass = parentAreaScope;
+            }
+            for (Field field : loopClass.getDeclaredFields()) {
+                int modifiers = field.getModifiers();
+                if (Modifier.isStatic(modifiers)) {
+                    continue;
+                }
+                CommandImpl childCommand = null;
+                for (Annotation fieldAnnotation : field.getDeclaredAnnotations()) {
+                    if (fieldAnnotation instanceof Apply) {
+                        childCommand = parseApplyClass(areaScopeClass, field.getType(),
+                                fieldAnnotation);
+                    } else if (fieldAnnotation instanceof Set) {
+                        childCommand = parseAnnotation(areaScopeClass, field.getType(),
+                                fieldAnnotation, FLAG_PARSE_SET);
+                    }
+                    if (childCommand != null) {
+                        applyCommand.addChildCommand(childCommand, field, fieldAnnotation);
+                        break;
+                    }
+                }
+            }
+            if (loopClass.isAnnotationPresent(ApplySuper.class)) {
+                loopClass = loopClass.getSuperclass();
+                if (loopClass != null && loopClass != Object.class) {
+                    continue;
+                }
+            }
+            break;
+        } while (true);
+
+        if (applyCommand.childrenField.size() == 0) {
+            throw new CarRetrofitException("failed to parse Apply command from type:" + targetClass);
+        }
+        return applyCommand;
+    }
+
+    private void searchAndCreateCombineChildCommand(ApiRecord<?> record, List<String> tokenList,
+                                                    CommandCombine parent) {
+        boolean searchInterface = record.clazz.isInterface();
+        if (searchInterface) {
+            Method[] declaredMethods = record.clazz.getDeclaredMethods();
+            for (Method method : declaredMethods) {
+
+            }
+        } else {
+
+        }
+        Method[] declaredMethods = record.clazz.getDeclaredMethods();
+        for (Method method : declaredMethods) {
+            Track track = method.getDeclaredAnnotation(Track.class);
+            if (track != null && tokenList.contains(track.token())) {
+                CommandTrack commandTrack = new CommandTrack();
+                parent.addChildCommand(commandTrack, null, track);
+                continue;
+            }
+            Get get = method.getDeclaredAnnotation(Get.class);
+            if (get != null && tokenList.contains(get.token())) {
+                CommandGet commandGet = new CommandGet();
+                parent.addChildCommand(commandGet, null, get);
+                continue;
+            }
+            Combine combine = method.getDeclaredAnnotation(Combine.class);
+            if (combine != null && tokenList.contains(combine.token())) {
+                CommandCombine commandCombine = new CommandCombine();
+                parent.addChildCommand(commandCombine, null, combine);
+                searchAndCreateCombineChildCommand(apiClazz,
+                        Arrays.asList(combine.elements()), commandCombine);
+            }
+        }
+        Class<?>[] apiSuperIfClassArray = apiClazz.getInterfaces();
+        for (Class<?> apiSuperClass : apiSuperIfClassArray) {
+            searchAndCreateCombineChildCommand(record, tokenList, parent);
+        }
+    }
+
+    Object invoke(Object parameter) {
+        try {
+            return operationCommand.invokeWithChain(parameter);
+        } catch (Throwable e) {
+            throw new CarRetrofitException(e);
         }
     }
 
@@ -488,7 +807,7 @@ public final class CarRetrofit {
 
         private MethodHandler(Method method) {
             this.method = method;
-            this.apiClassRecord = fromApi(method.getDeclaringClass());
+            this.apiClassRecord = getApi(method.getDeclaringClass());
 //            if (apiClassRecord.interceptorChain != null) {
 //                this.chain = apiClassRecord.interceptorChain;
 //            } else {
