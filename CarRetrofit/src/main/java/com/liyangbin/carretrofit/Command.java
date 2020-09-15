@@ -39,6 +39,7 @@ public interface Command {
         TRACK,
         APPLY,
         INJECT,
-        STICKY_GET
+        STICKY_GET,
+        COMBINE
     }
 }
