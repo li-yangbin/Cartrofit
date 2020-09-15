@@ -15,7 +15,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Target({METHOD, FIELD})
 @Retention(RUNTIME)
 public @interface Track {
-    int key();
+    int id();
 
     int area() default CarApi.DEFAULT_AREA_ID;
 

@@ -600,23 +600,23 @@ public class ExampleUnitTest {
 //    @ApplySuper
     public static class BaseData {
 //        @Set(key = 6)
-        @Get(key = 6)
+        @Get(id = 6)
         int baseAbc = 4321;
     }
 
     @InjectSuper
 //    @ApplySuper
     public static class InnerData extends BaseData {
-        @Get(key = 1)
-        @Set(key = 1)
+        @Get(id = 1)
+        @Set(id = 1)
         private int[] aaa = {10086};
 
-        @Get(key = 3)
-        @Set(key = 3)
+        @Get(id = 3)
+        @Set(id = 3)
         private String[] bbb = {"inner", "set"};
 
-        @Get(key = 5)
-        @Set(key = 5)
+        @Get(id = 5)
+        @Set(id = 5)
         FormatCalendar calendar;
 
         {
@@ -636,20 +636,20 @@ public class ExampleUnitTest {
     }
 
     public static class CarData {
-        @Set(key = 6)
-        @Get(key = 6)
+        @Set(id = 6)
+        @Get(id = 6)
         private int abc = 151;
 
-        @Set(key = 7)
-        @Get(key = 7)
+        @Set(id = 7)
+        @Get(id = 7)
         int[] abcd = {1, 2, 3, 4, 100000000};
 
-        @Set(key = 8)
-        @Get(key = 8)
+        @Set(id = 8)
+        @Get(id = 8)
         String cvb = "hello bird";
 
-        @Set(key = 9)
-        @Get(key = 9)
+        @Set(id = 9)
+        @Get(id = 9)
         String[] vbns = {"hello", "another", "flying", "bird"};
 
         @Override
@@ -664,7 +664,7 @@ public class ExampleUnitTest {
                     '}';
         }
 
-        @Track(key = 0)
+        @Track(id = 0)
         Observable<Integer> firstOb;
 
         @Inject

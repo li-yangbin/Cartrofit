@@ -87,13 +87,13 @@ class InterceptorChain implements Command {
     }
 
     @Override
-    public void setKey(int key) {
-        command.setKey(key);
+    public void setPropertyId(int propertyId) {
+        command.setPropertyId(propertyId);
     }
 
     @Override
-    public int getKey() {
-        return command.getKey();
+    public int getPropertyId() {
+        return command.getPropertyId();
     }
 
     @Override

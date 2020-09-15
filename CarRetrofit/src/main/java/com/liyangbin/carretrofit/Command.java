@@ -5,9 +5,9 @@ import java.lang.reflect.Method;
 
 public interface Command {
 
-    void setKey(int key);
+    void setPropertyId(int propertyId);
 
-    int getKey();
+    int getPropertyId();
 
     void setArea(int area);
 

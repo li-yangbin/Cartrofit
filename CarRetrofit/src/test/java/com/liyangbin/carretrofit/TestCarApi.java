@@ -19,61 +19,61 @@ public interface TestCarApi {
         return command.invoke(parameter);
     };
 
-    @Get(key = 0)
+    @Get(id = 0)
     int getIntSignal();
 
-    @Set(key = 0)
+    @Set(id = 0)
     void setIntSignal(int value);
 
-    @Get(key = 1)
+    @Get(id = 1)
     int[] getIntArraySignal();
 
-    @Set(key = 1)
+    @Set(id = 1)
     void setIntArraySignal(int[] value);
 
-    @Get(key = 2)
+    @Get(id = 2)
     String getStringSignal();
 
-    @Set(key = 2)
+    @Set(id = 2)
     void setStringSignal(String value);
 
-    @Get(key = 3)
+    @Get(id = 3)
     String[] getStringArraySignal();
 
-    @Set(key = 3)
+    @Set(id = 3)
     void setStringArraySignal(String[] value);
 
-    @Get(key = 4)
+    @Get(id = 4)
     byte getByteSignal();
 
-    @Set(key = 4)
+    @Set(id = 4)
     void setByteSignal(byte value);
 
-    @Get(key = 5)
+    @Get(id = 5)
     ExampleUnitTest.FormatCalendar getByteArraySignal();
 
-    @Get(key = 5)
+    @Get(id = 5)
     byte[] getRawByteArray();
 
-    @Set(key = 5)
+    @Set(id = 5)
     void setByteArraySignal(ExampleUnitTest.FormatCalendar value);
 
-    @Track(key = 0)
+    @Track(id = 0)
     Flow<Integer> trackIntSignal();
 
-    @Track(key = 0)
+    @Track(id = 0)
     Observable<Integer> trackIntReactive();
 
-    @Track(key = 0/*, scope = "test"*/)
+    @Track(id = 0/*, scope = "test"*/)
     Observable<Boolean> trackBooleanReactive();
 
-    @Track(key = 0)
+    @Track(id = 0)
     ObservableBoolean trackIntMappedReactive();
 
-    @Track(key = 0)
+    @Track(id = 0)
     Single<Integer> trackIntReactiveSingle();
 
-    @Track(key = 0)
+    @Track(id = 0)
     MyFlow trackCustomFlow();
 
 //    @MultiSet(set = {@Set(key = 6, token = "six"),
@@ -94,22 +94,22 @@ public interface TestCarApi {
     @Apply
     void applyComboValues(ExampleUnitTest.CarData cardata);
 
-    @Get(key = 6)
+    @Get(id = 6)
     int get6IntValue();
 
-    @Get(key = 7)
+    @Get(id = 7)
     int[] get7IntValue();
 
-    @Get(key = 8)
+    @Get(id = 8)
     String get8StringValue();
 
-    @Get(key = 9)
+    @Get(id = 9)
     String[] get9StringArrayValue();
 
-    @Set(key = 6, value = @CarValue(Int = 10086))
+    @Set(id = 6, value = @CarValue(Int = 10086))
     void set6IntValue();
 
-    @Set(key = 9, value = @CarValue(stringArray = {"build", "in", "set"}))
+    @Set(id = 9, value = @CarValue(stringArray = {"build", "in", "set"}))
     void set9StringArrayValue();
 
     @Inject

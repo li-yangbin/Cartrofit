@@ -14,7 +14,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Target({METHOD, FIELD})
 @Retention(RUNTIME)
 public @interface Get {
-    int key();
+    int id();
 
     CarType type() default CarType.VALUE;
 
