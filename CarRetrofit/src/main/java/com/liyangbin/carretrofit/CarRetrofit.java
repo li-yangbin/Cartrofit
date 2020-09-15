@@ -266,6 +266,40 @@ public final class CarRetrofit {
         }
     }
 
+    private static Class<?> lookUp(Class<?> clazz, Class<?> lookForTarget) {
+        if (clazz == lookForTarget) {
+            throw new CarRetrofitException("Invalid parameter:" + clazz);
+        }
+        if (!lookForTarget.isAssignableFrom(clazz)) {
+            return null;
+        }
+        Class<?>[] ifClazzArray = clazz.getInterfaces();
+        for (Class<?> ifClazz : ifClazzArray){
+            if (ifClazz == lookForTarget) {
+                return clazz;
+            } else if (Converter.class.isAssignableFrom(ifClazz)) {
+                Class<?>[] ifParents = ifClazz.getInterfaces();
+                for (Class<?> subIfClazz : ifParents){
+                    if (subIfClazz == lookForTarget) {
+                        return ifClazz;
+                    }
+                }
+                for (Class<?> subIfClazz : ifParents){
+                    Class<?> extendsBy = lookUp(subIfClazz, lookForTarget);
+                    if (extendsBy != null) {
+                        return extendsBy;
+                    }
+                }
+            }
+        }
+        Class<?> superClazz = clazz.getSuperclass();
+        if (superClazz != null && superClazz != Object.class) {
+            return lookUp(superClazz, lookForTarget);
+        } else {
+            return null;
+        }
+    }
+
     public static class ConverterStore {
         final ArrayList<ConverterWrapper<?, ?>> converterWrapperList = new ArrayList<>();
         final ArrayList<ConverterWrapper<?, ?>> commandPredictorList = new ArrayList<>();
@@ -287,40 +321,6 @@ public final class CarRetrofit {
                 loopParent = loopParent.parentStore;
             }
             parentStore = parent;
-        }
-
-        private static Class<?> lookUp(Class<?> clazz, Class<?> lookForTarget) {
-            if (clazz == lookForTarget) {
-                throw new CarRetrofitException("Invalid parameter:" + clazz);
-            }
-            if (!lookForTarget.isAssignableFrom(clazz)) {
-                return null;
-            }
-            Class<?>[] ifClazzArray = clazz.getInterfaces();
-            for (Class<?> ifClazz : ifClazzArray){
-                if (ifClazz == lookForTarget) {
-                    return clazz;
-                } else if (Converter.class.isAssignableFrom(ifClazz)) {
-                    Class<?>[] ifParents = ifClazz.getInterfaces();
-                    for (Class<?> subIfClazz : ifParents){
-                        if (subIfClazz == lookForTarget) {
-                            return ifClazz;
-                        }
-                    }
-                    for (Class<?> subIfClazz : ifParents){
-                        Class<?> extendsBy = lookUp(subIfClazz, lookForTarget);
-                        if (extendsBy != null) {
-                            return extendsBy;
-                        }
-                    }
-                }
-            }
-            Class<?> superClazz = clazz.getSuperclass();
-            if (superClazz != null && superClazz != Object.class) {
-                return lookUp(superClazz, lookForTarget);
-            } else {
-                return null;
-            }
         }
 
         void addConverter(Converter<?, ?> converter) {
@@ -889,6 +889,23 @@ public final class CarRetrofit {
         InterceptorChain chain;
         DataSource source;
         Key key;
+        Converter<Object, ?> resultConverter;
+        Converter<Object, ?> mapConverter;
+        boolean mapFlowSuppressed;
+
+        void suppressFlowMap(boolean suppress) {
+            mapFlowSuppressed = suppress;
+        }
+
+        @SuppressWarnings("unchecked")
+        Converter<Object, ?> findMapConverter(Class<?> carType, Converter<?, ?> wrapperConverter) {
+            Class<?> userConcernClass = key.getUserConcernClass(wrapperConverter);
+            if (userConcernClass != null) {
+                return (Converter<Object, ?>) ConverterStore.find(this, carType,
+                        userConcernClass, store);
+            }
+            return null;
+        }
 
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
             this.record = record;
@@ -908,15 +925,6 @@ public final class CarRetrofit {
                     this.area = CarApi.GLOBAL_AREA_ID;
                 }
             }
-        }
-
-        @SuppressWarnings("unchecked")
-        Converter<Object, ?> findMapConverter(Class<?> carType, Converter<?, ?> wrapperConverter) {
-            Class<?> userConcernClass = key.getUserConcernClass(wrapperConverter);
-            if (userConcernClass != null) {
-                return (Converter<Object, ?>) ConverterStore.find(this, carType, userConcernClass, store);
-            }
-            return null;
         }
 
         @Override
@@ -1174,11 +1182,9 @@ public final class CarRetrofit {
     private static class CommandCombine extends CommandGroup {
 
         Operator operator;
+        Class<?> functionClass;
         boolean returnFlow;
         StickyType stickyType;
-
-        Converter<Object, ?> resultConverter;
-        Converter<Object, ?> mapConverter;
 
         @Override
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
@@ -1213,9 +1219,10 @@ public final class CarRetrofit {
                 String prefix = operatorFullName.substring(0, operatorFullName.lastIndexOf("."));
                 int childElementCount = childrenCommand.size();
                 String targetFunctionFullName = prefix + ".Function" + childElementCount;
-                Class<?> functionClass = Class.forName(targetFunctionFullName);
+                functionClass = Class.forName(targetFunctionFullName);
                 if (functionClass.isInstance(operator)) {
-                    this.operator = (Operator) operatorObj;
+                    this.operator = (Operator) Objects.requireNonNull(operatorObj,
+                            "Failed to resolve operator:" + combinatorExp);
                 } else {
                     throw new CarRetrofitException("Operator:" + combinatorExp
                             + " doesn't match element count:" + childElementCount);
@@ -1228,17 +1235,40 @@ public final class CarRetrofit {
         }
 
         private void resolveConverter() {
-            Converter<?, ?> converter = ConverterStore.find(this, Flow.class,
-                    key.getTrackClass(), store);
-            resultConverter = (Converter<Object, ?>) converter;
+            Class<?> originalType = null;
+            Class<?> implementByClass = lookUp(operator.getClass(), functionClass);
+            if (implementByClass != null) {
+                Type[] ifTypeArray = implementByClass.getGenericInterfaces();
+                for (Type ifType : ifTypeArray) {
+                    if (ifType instanceof ParameterizedType) {
+                        ParameterizedType parameterizedType = (ParameterizedType) ifType;
+                        if (parameterizedType.getRawType() == functionClass) {
+                            Type[] functionType = parameterizedType.getActualTypeArguments();
+                            originalType = getClassFromType(functionType[functionType.length - 1]);
+                            break;
+                        }
+                    }
+                }
+            }
+            if (originalType == null) {
+                throw new CarRetrofitException("Failed to resolve result type from:" + operator
+                        + " functionClass:" + functionClass.getSimpleName());
+            }
 
             if (returnFlow) {
+                Converter<?, ?> converter = ConverterStore.find(this, Flow.class,
+                        key.getTrackClass(), store);
+                resultConverter = (Converter<Object, ?>) converter;
+
                 try {
-                    Class<?> carType = source.extractValueType(propertyId);
-                    mapConverter = findMapConverter(carType, resultConverter);
+                    mapConverter = findMapConverter(originalType, resultConverter);
                 } catch (Exception e) {
                     throw new CarRetrofitException(e);
                 }
+            } else {
+                Converter<?, ?> converter = ConverterStore.find(this, originalType,
+                        key.getTrackClass(), store);
+                resultConverter = (Converter<Object, ?>) converter;
             }
         }
 
@@ -1268,7 +1298,10 @@ public final class CarRetrofit {
         public Object invoke(Object parameter) throws Throwable {
             Object[] elementResult = new Object[childrenCommand.size()];
             for (int i = 0; i < childrenCommand.size(); i++) {
-                elementResult[i] = childrenCommand.get(i).invokeWithChain(parameter);
+                CommandImpl childCommand = childrenCommand.get(i);
+                childCommand.suppressFlowMap(true);
+                elementResult[i] = childCommand.invokeWithChain(parameter);
+                childCommand.suppressFlowMap(false);
             }
             Object result;
             if (returnFlow) {
@@ -1277,6 +1310,9 @@ public final class CarRetrofit {
                             objects -> mapConverter.convert(processResult(objects)));
                 } else {
                     result = new MediatorFlow<>(new CombineFlow(elementResult), this::processResult);
+                }
+                if (mapFlowSuppressed) {
+                    return result;
                 }
             } else {
                 result = processResult(elementResult);
@@ -1540,10 +1576,9 @@ public final class CarRetrofit {
         boolean stickyTrack;
         boolean stickyUseCache;
         CarType type;
-        Converter<Flow<?>, ?> resultConverter;
-        Converter<Object, ?> mapConverter;
+//        Converter<Flow<?>, ?> resultConverter;
+//        Converter<Object, ?> mapConverter;
         CommandGet stickyGet;
-        boolean mapFlowSuppressed;
 
         @Override
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
@@ -1578,10 +1613,6 @@ public final class CarRetrofit {
             }
         }
 
-        void suppressFlowMap(boolean suppress) {
-            mapFlowSuppressed = suppress;
-        }
-
         @Override
         public boolean fromInject() {
             return key.field != null;
@@ -1590,7 +1621,7 @@ public final class CarRetrofit {
         private void resolveConverter() {
             Converter<?, ?> converter = ConverterStore.find(this, Flow.class,
                     key.getTrackClass(), store);
-            resultConverter = (Converter<Flow<?>, ?>) converter;
+            resultConverter = (Converter<Object, ?>) converter;
 
             Class<?> carType;
             if (type == CarType.AVAILABILITY) {
