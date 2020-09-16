@@ -573,7 +573,7 @@ public final class CarRetrofit {
         synchronized (mCommandCache) {
             command = mCommandCache.get(key);
         }
-        if (command != null && (checker == null || checker.test(key, command.token))) {
+        if (command != null && (checker == null || checker.test(key, command.getToken()))) {
             return command;
         }
         if (command == null) {
@@ -836,14 +836,19 @@ public final class CarRetrofit {
                 return null;
             }
             CommandCombine command = new CommandCombine();
+            List<String> tokenList = Arrays.asList(combine.elements());
             searchAndCreateChildCommand(record, command,
                     (childKey, token) -> {
                         if (childKey.equals(key)) {
                             return false;
                         }
-                        return Arrays.asList(combine.elements()).contains(token);
+                        return tokenList.contains(token);
                     },
                     FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
+            if (command.childrenCommand.size() <= 1) {
+                throw new CarRetrofitException("Declare more than one element on Combine:" + key
+                        + " element:" + command.childrenCommand);
+            }
             command.init(record, combine, key);
             return command;
         }
@@ -854,8 +859,8 @@ public final class CarRetrofit {
                                              BiPredicate<Key, String> checker, int flag) {
         ArrayList<Key> childKeys = record.getChildKey();
         for (int i = 0; i < childKeys.size(); i++) {
-            CommandImpl command = getOrCreateCommandIfChecked(record, childKeys.get(i),
-                    checker, flag);
+            Key childKey = childKeys.get(i);
+            CommandImpl command = getOrCreateCommandIfChecked(record, childKey, checker, flag);
             if (command != null) {
                 commandGroup.addChildCommand(command);
             }
@@ -1002,12 +1007,12 @@ public final class CarRetrofit {
 
         @Override
         public final String toString() {
-            return "[" + toCommandString() + "]";
+            return "Command[" + type() + toCommandString() + "]";
         }
 
         String toCommandString() {
-            return this.getClass().getSimpleName() + " id:0x"
-                    + Integer.toHexString(propertyId) + " area:0x" + Integer.toHexString(area)
+            return " id:0x" + Integer.toHexString(propertyId)
+                    + (area != CarApi.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "")
                     + " from:" + key;
         }
 
@@ -1194,11 +1199,25 @@ public final class CarRetrofit {
         void addChildCommand(CommandImpl command) {
             childrenCommand.add(command);
         }
+
+        @Override
+        String toCommandString() {
+            StringBuilder childrenToken = new StringBuilder("{");
+            for (int i = 0; i < childrenCommand.size(); i++) {
+                if (i > 0) {
+                    childrenToken.append(", ");
+                }
+                childrenToken.append(childrenCommand.get(i));
+            }
+            childrenToken.append('}');
+            return super.toCommandString() + childrenToken.toString();
+        }
     }
 
     private static class CommandCombine extends CommandGroup {
 
         Operator operator;
+        String operatorExp;
         Class<?> functionClass;
         boolean returnFlow;
         StickyType stickyType;
@@ -1210,10 +1229,8 @@ public final class CarRetrofit {
             super.init(record, annotation, key);
             Combine combine = (Combine) annotation;
             List<String> elementList = Arrays.asList(combine.elements());
-            System.out.println(childrenCommand);
             Collections.sort(childrenCommand, (o1, o2) ->
                     elementList.indexOf(o1.getToken()) - elementList.indexOf(o2.getToken()));
-            System.out.println(childrenCommand);
             String userSet = combine.token();
             if (userSet.length() > 0) {
                 token = userSet;
@@ -1227,25 +1244,47 @@ public final class CarRetrofit {
                 stickyUseCache = stickyType == StickyType.ON;
             }
 
+            ArrayList<CommandCombine> combineChildren = null;
+            ArrayList<CommandImpl> otherChildren = null;
             for (int i = 0; i < childrenCommand.size(); i++) {
                 CommandImpl childCommand = childrenCommand.get(i);
-                if (childCommand instanceof CommandTrack) {
-                    if (!((CommandTrack) childCommand).stickyTrack) {
+                if (childCommand instanceof CommandCombine) {
+                    if (!((CommandCombine) childCommand).stickyTrack) {
                         throw new CarRetrofitException("Child command:" + childCommand
                                 + " must declare to be sticky");
                     }
-                    returnFlow = true;
-                } else if (childCommand instanceof CommandCombine) {
-                    returnFlow = ((CommandCombine) childCommand).returnFlow;
+                    returnFlow |= ((CommandCombine) childCommand).returnFlow;
+                    if (combineChildren == null) {
+                        combineChildren = new ArrayList<>();
+                    }
+                    combineChildren.add((CommandCombine) childCommand);
+                } else {
+                    if (childCommand instanceof CommandTrack) {
+                        if (!((CommandTrack) childCommand).stickyTrack) {
+                            throw new CarRetrofitException("Child command:" + childCommand
+                                    + " must declare to be sticky");
+                        }
+                        returnFlow = true;
+                    }
+                    if (otherChildren == null) {
+                        otherChildren = new ArrayList<>();
+                    }
+                    otherChildren.add(childCommand);
                 }
-                if (returnFlow) {
-                    break;
+            }
+            if (combineChildren != null && otherChildren != null) {
+                for (int i = 0; i < combineChildren.size(); i++) {
+                    for (int j = 0; j < otherChildren.size(); j++) {
+                        if (combineChildren.get(i).checkElement(otherChildren.get(j))) {
+                            throw new CarRetrofitException("Duplicate combine element:" + this);
+                        }
+                    }
                 }
             }
 
-            final String combinatorExp = combine.combinator();
+            operatorExp = combine.combinator();
             try {
-                Field combinatorField = record.clazz.getDeclaredField(combinatorExp);
+                Field combinatorField = record.clazz.getDeclaredField(operatorExp);
                 Object operatorObj = combinatorField.get(null);
                 String operatorFullName = Operator.class.getName();
                 String prefix = operatorFullName.substring(0, operatorFullName.lastIndexOf("."));
@@ -1254,9 +1293,9 @@ public final class CarRetrofit {
                 functionClass = Class.forName(targetFunctionFullName);
                 if (functionClass.isInstance(operatorObj)) {
                     this.operator = (Operator) Objects.requireNonNull(operatorObj,
-                            "Failed to resolve operator:" + combinatorExp);
+                            "Failed to resolve operator:" + operatorExp);
                 } else {
-                    throw new CarRetrofitException("Operator:" + combinatorExp
+                    throw new CarRetrofitException("Operator:" + operatorExp
                             + " doesn't match element count:" + childElementCount);
                 }
             } catch (ReflectiveOperationException e) {
@@ -1304,25 +1343,44 @@ public final class CarRetrofit {
             }
         }
 
+        boolean checkElement(CommandImpl command) {
+            for (int i = 0; i < childrenCommand.size(); i++) {
+                CommandImpl childCommand = childrenCommand.get(i);
+                if (childCommand instanceof CommandCombine) {
+                    if (((CommandCombine) childCommand).checkElement(command)) {
+                        return true;
+                    }
+                } else if (command == childCommand) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         @SuppressWarnings("unchecked")
         private Object processResult(Object[] elements) {
-            switch (elements.length) {
-                case 2:
-                    return ((Function2<Object, Object, Object>)operator).apply(elements[0], elements[1]);
-                case 3:
-                    return ((Function3<Object, Object, Object, Object>)operator)
-                            .apply(elements[0], elements[1], elements[2]);
-                case 4:
-                    return ((Function4<Object, Object, Object, Object, Object>)operator)
-                            .apply(elements[0], elements[1], elements[2], elements[3]);
-                case 5:
-                    return ((Function5<Object, Object, Object, Object, Object, Object>)operator)
-                            .apply(elements[0], elements[1], elements[2], elements[3], elements[4]);
-                case 6:
-                    return ((Function6<Object, Object, Object, Object, Object, Object, Object>)operator)
-                            .apply(elements[0], elements[1], elements[2], elements[3], elements[4], elements[5]);
-                default:
-                    throw new IllegalStateException("impossible length:" + elements.length);
+            try {
+                switch (elements.length) {
+                    case 2:
+                        return ((Function2<Object, Object, Object>)operator).apply(elements[0], elements[1]);
+                    case 3:
+                        return ((Function3<Object, Object, Object, Object>)operator)
+                                .apply(elements[0], elements[1], elements[2]);
+                    case 4:
+                        return ((Function4<Object, Object, Object, Object, Object>)operator)
+                                .apply(elements[0], elements[1], elements[2], elements[3]);
+                    case 5:
+                        return ((Function5<Object, Object, Object, Object, Object, Object>)operator)
+                                .apply(elements[0], elements[1], elements[2], elements[3], elements[4]);
+                    case 6:
+                        return ((Function6<Object, Object, Object, Object, Object, Object, Object>)operator)
+                                .apply(elements[0], elements[1], elements[2], elements[3], elements[4], elements[5]);
+                    default:
+                        throw new IllegalStateException("impossible length:" + elements.length);
+                }
+            } catch (ClassCastException castError) {
+                throw new CarRetrofitException("Value:" + Arrays.toString(elements)
+                        + " can not apply tp operator:" + operatorExp, castError);
             }
         }
 
@@ -1365,6 +1423,11 @@ public final class CarRetrofit {
             return CommandType.COMBINE;
         }
 
+        @Override
+        String toCommandString() {
+            return super.toCommandString() + " operator:" + operatorExp;
+        }
+
         private static class CombineFlow implements StickyFlow<Object[]> {
             Object[] trackingObj;
             StickyFlow<?>[] flowArray;
@@ -1385,7 +1448,7 @@ public final class CarRetrofit {
                             flowObservers[i] = new InternalObserver(i);
                             continue;
                         }
-                        throw new IllegalStateException("impossible");
+                        throw new IllegalStateException("impossible obj:" + obj);
                     } else {
                         trackingObj[i] = obj;
                     }
@@ -1681,7 +1744,6 @@ public final class CarRetrofit {
         public Object invoke(Object parameter) throws Throwable {
             Flow<CarPropertyValue<?>> flow = source.track(propertyId, area);
             Flow<?> result = flow;
-//            boolean valueMapped = false;
             switch (type) {
                 case VALUE:
                     if (mapConverter != null) {
@@ -1708,12 +1770,11 @@ public final class CarRetrofit {
                                 rawValue.getStatus(),
                                 rawValue.getTimestamp(),
                                 mapConverter.apply(rawValue.getValue())));
-//                        valueMapped = true;
                     }
                     break;
             }
             if (stickyTrack) {
-                result = new StickyFlowImpl(result, stickyUseCache, (Supplier<Object>) () -> {
+                result = new StickyFlowImpl<>(result, stickyUseCache, () -> {
                     try {
                         return stickyGet.invokeWithChain(null);
                     } catch (Throwable throwable) {
@@ -1724,7 +1785,7 @@ public final class CarRetrofit {
             if (mapFlowSuppressed) {
                 return result;
             }
-            return/*Object obj =*/ resultConverter != null ? resultConverter.convert(result) : result;
+            return resultConverter != null ? resultConverter.convert(result) : result;
 //            return !valueMapped && mapConverter != null && resultConverter != null ?
 //                    ((ConverterMapper<Object, Object>)resultConverter).map(obj, mapConverter) : obj;
         }
@@ -1784,8 +1845,9 @@ public final class CarRetrofit {
                 } else {
                     obj = (TO) value;
                 }
-                for (int i = 0; i < consumers.size(); i++) {
-                    consumers.get(i).accept(obj);
+                ArrayList<Consumer<TO>> shallowCopy = (ArrayList<Consumer<TO>>) consumers.clone();
+                for (int i = 0; i < shallowCopy.size(); i++) {
+                    shallowCopy.get(i).accept(obj);
                 }
             }
         }
@@ -1795,9 +1857,9 @@ public final class CarRetrofit {
         private T lastValue;
         private boolean valueReceived;
         private boolean stickyUseCache;
-        private Supplier<T> stickyGet;
+        private Supplier<Object> stickyGet;
 
-        private StickyFlowImpl(Flow<T> base, boolean stickyUseCache, Supplier<T> stickyGet) {
+        private StickyFlowImpl(Flow<T> base, boolean stickyUseCache, Supplier<Object> stickyGet) {
             super(base, null);
             this.stickyUseCache = stickyUseCache;
             this.stickyGet = stickyGet;
@@ -1819,8 +1881,9 @@ public final class CarRetrofit {
         }
 
         @Override
+        @SuppressWarnings("unchecked")
         public T get() {
-            T result = stickyUseCache && valueReceived ? lastValue : stickyGet.get();
+            T result = stickyUseCache && valueReceived ? lastValue : (T) stickyGet.get();
             if (stickyUseCache && !valueReceived) {
                 valueReceived = true;
                 lastValue = result;

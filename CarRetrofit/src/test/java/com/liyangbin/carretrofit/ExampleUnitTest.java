@@ -311,7 +311,7 @@ public class ExampleUnitTest {
 
         @Override
         public Boolean convert(Integer value) {
-            return value > 20;
+            return value < 0;
         }
     }
 
@@ -473,12 +473,12 @@ public class ExampleUnitTest {
                 print("boolean accept:" + aBoolean);
             }
         });
-        api.trackIntSignal().addObserver(new java.util.function.Consumer<Integer>() {
-            @Override
-            public void accept(Integer value) {
-                print("flow accept:" + value);
-            }
-        });
+//        api.trackIntSignal().addObserver(new java.util.function.Consumer<Integer>() {
+//            @Override
+//            public void accept(Integer value) {
+//                print("flow accept:" + value);
+//            }
+//        });
 //        carRetrofit.obtainConverterScope("test_scope").addConverter(new w)
 //        CarData data = new CarData();
 //        carRetrofit.inject(data);
@@ -532,7 +532,7 @@ public class ExampleUnitTest {
     @Test
     public void combineTest() {
 
-        api.trackIntAndBoolean().subscribe(new Consumer<String>() {
+        api.trackStringAndCombine().subscribe(new Consumer<String>() {
             @Override
             public void accept(String string) throws Exception {
                 print("combine receive:" + string);

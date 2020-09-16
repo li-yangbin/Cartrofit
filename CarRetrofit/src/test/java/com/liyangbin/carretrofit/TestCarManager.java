@@ -43,6 +43,7 @@ public class TestCarManager extends CarManager2 {
             @Override
             public void run() {
                 Random random = new Random();
+                boolean token = false;
                 while (true) {
                     long sleep = (long) (random.nextFloat() * 1000 + 1000);
                     try {
@@ -50,7 +51,7 @@ public class TestCarManager extends CarManager2 {
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-                    int key = 0/*random.nextInt(10)*/;
+                    int key = token ? 2 : 0/*random.nextInt(10)*/;
                     synchronized (typeMockMap) {
                         Object obj = generateRandomValue(random, typeMockMap.get(key).clazz);
 //                        if (obj.getClass().isArray()) {
@@ -60,6 +61,7 @@ public class TestCarManager extends CarManager2 {
 //                        }
                         notifyChange(new CarPropertyValue<>(key, 0, obj));
                     }
+                    token = !token;
                 }
             }
         }, "test_thread");

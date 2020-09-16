@@ -42,6 +42,9 @@ public interface TestCarApi {
     @Set(id = 2)
     void setStringSignal(String value);
 
+    @Track(id = 2, sticky = StickyType.ON)
+    Observable<String> trackStringSignal();
+
     @Get(id = 3)
     String[] getStringArraySignal();
 
@@ -72,16 +75,27 @@ public interface TestCarApi {
     @Track(id = 0, sticky = StickyType.ON)
     Observable<Boolean> trackBooleanReactive();
 
-    Function2<Integer, Boolean, String> combinator_aa = new Function2<Integer, Boolean, String>() {
+    Function2<String, Boolean, String> combinator_aa = new Function2<String, Boolean, String>() {
 
         @Override
-        public String apply(Integer value1, Boolean value2) {
+        public String apply(String value1, Boolean value2) {
             return value1 + " assemble " + value2;
         }
     };
 
-    @Combine(elements = {"trackIntReactive", "trackBooleanReactive"}, combinator = "combinator_aa")
+    @Combine(elements = {"trackStringSignal", "trackBooleanReactive"}, combinator = "combinator_aa")
     Observable<String> trackIntAndBoolean();
+
+    Function2<String, String, String> combinator_bb = new Function2<String, String, String>() {
+
+        @Override
+        public String apply(String value1, String value2) {
+            return value1 + " assemble 22 " + value2;
+        }
+    };
+
+    @Combine(elements = {"trackStringSignal", "trackIntAndBoolean"}, combinator = "combinator_bb")
+    Observable<String> trackStringAndCombine();
 
     @Track(id = 0)
     ObservableBoolean trackIntMappedReactive();
