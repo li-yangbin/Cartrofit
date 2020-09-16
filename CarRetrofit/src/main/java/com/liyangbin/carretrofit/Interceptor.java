@@ -115,4 +115,14 @@ class InterceptorChain implements Command {
     public DataSource getSource() {
         return command.getSource();
     }
+
+    @Override
+    public String toString() {
+        return command.toString();
+    }
+
+    @Override
+    public int hashCode() {
+        return command.hashCode();
+    }
 }

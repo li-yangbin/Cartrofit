@@ -32,7 +32,9 @@ import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
@@ -55,6 +57,7 @@ public final class CarRetrofit {
     private static final int FLAG_PARSE_COMBINE = FLAG_FIRST_BIT << 5;
     private static final int FLAG_PARSE_ALL = FLAG_PARSE_SET | FLAG_PARSE_GET
             | FLAG_PARSE_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE;
+    private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
 
     private HashMap<String, DataSource> mDataMap;
     private ConverterStore mConverterStore;
@@ -277,7 +280,7 @@ public final class CarRetrofit {
         for (Class<?> ifClazz : ifClazzArray){
             if (ifClazz == lookForTarget) {
                 return clazz;
-            } else if (Converter.class.isAssignableFrom(ifClazz)) {
+            } else if (lookForTarget.isAssignableFrom(ifClazz)) {
                 Class<?>[] ifParents = ifClazz.getInterfaces();
                 for (Class<?> subIfClazz : ifParents){
                     if (subIfClazz == lookForTarget) {
@@ -371,6 +374,11 @@ public final class CarRetrofit {
                     }
                     converterWrapperList.add(new ConverterWrapper<>(convertFrom, convertTo,
                             converter));
+                }
+                WrappedData wrappedData = converter.getClass()
+                        .getDeclaredAnnotation(WrappedData.class);
+                if (wrappedData != null) {
+                    WRAPPER_CLASS_MAP.put(convertTo, wrappedData.type());
                 }
                 allConverters.add(converter);
             } else {
@@ -679,7 +687,7 @@ public final class CarRetrofit {
             }
         }
 
-        Class<?> getUserConcernClass(Converter<?, ?> wrapperConverter) {
+        Class<?> getUserConcernClass() {
             Type originalType = getTrackType();
             if (hasUnresolvableType(originalType)) {
                 throw new CarRetrofitException("Can not parse type:" + originalType + " from:" + this);
@@ -688,16 +696,12 @@ public final class CarRetrofit {
             if (wrapperClass == null) {
                 throw new IllegalStateException("impossible");
             }
-            Class<?> userTargetType = null;
+            Class<?> userTargetType;
             WrappedData dataAnnotation = wrapperClass.getAnnotation(WrappedData.class);
             if (dataAnnotation != null) {
                 userTargetType = dataAnnotation.type();
             } else {
-                Class<?> converterClass = wrapperConverter != null ? wrapperConverter.getClass() : null;
-                dataAnnotation = converterClass != null ? converterClass.getAnnotation(WrappedData.class) : null;
-                if (dataAnnotation != null) {
-                    userTargetType = dataAnnotation.type();
-                }
+                userTargetType = WRAPPER_CLASS_MAP.get(wrapperClass);
             }
             if (userTargetType == null && originalType instanceof ParameterizedType) {
                 Type[] typeArray = ((ParameterizedType) originalType).getActualTypeArguments();
@@ -742,7 +746,11 @@ public final class CarRetrofit {
 
         @Override
         public String toString() {
-            return "Key{" + (method != null ? ("method=" + method) : ("field=" + field)) + '}';
+            return "Key{" + (method != null ? ("method="
+                    + method.getDeclaringClass().getSimpleName()
+                    + "::" + method.getName())
+                    : ("field=" + field.getDeclaringClass().getSimpleName()
+                    + "::" + field.getName())) + '}';
         }
     }
 
@@ -750,7 +758,7 @@ public final class CarRetrofit {
                                         BiPredicate<Key, String> checker, int flag) {
         Set set = (flag & FLAG_PARSE_SET) != 0 ? key.getAnnotation(Set.class) : null;
         if (set != null) {
-            if (checker != null && checker.test(key, key.getName(set.token()))) {
+            if (checker != null && !checker.test(key, key.getName(set.token()))) {
                 return null;
             }
             CommandSet command = new CommandSet();
@@ -760,7 +768,7 @@ public final class CarRetrofit {
 
         Get get = (flag & FLAG_PARSE_GET) != 0 ? key.getAnnotation(Get.class) : null;
         if (get != null) {
-            if (checker != null && checker.test(key, key.getName(get.token()))) {
+            if (checker != null && !checker.test(key, key.getName(get.token()))) {
                 return null;
             }
             CommandGet command = new CommandGet();
@@ -770,7 +778,7 @@ public final class CarRetrofit {
 
         Track track = (flag & FLAG_PARSE_TRACK) != 0 ? key.getAnnotation(Track.class) : null;
         if (track != null) {
-            if (checker != null && checker.test(key, key.getName(track.token()))) {
+            if (checker != null && !checker.test(key, key.getName(track.token()))) {
                 return null;
             }
             CommandTrack command = new CommandTrack();
@@ -780,7 +788,7 @@ public final class CarRetrofit {
 
         Inject inject = (flag & FLAG_PARSE_INJECT) != 0 ? key.getAnnotation(Inject.class) : null;
         if (inject != null) {
-            if (checker != null && checker.test(key, key.getName(inject.token()))) {
+            if (checker != null && !checker.test(key, key.getName(inject.token()))) {
                 return null;
             }
             Class<?> targetClass = key.getGetClass();
@@ -788,7 +796,7 @@ public final class CarRetrofit {
                 throw new CarRetrofitException("Can not use Inject on class type:" + targetClass);
             }
             CommandInject command = new CommandInject(targetClass, key.isInjectReturn());
-            searchAndCreateChildCommand(record, command,
+            searchAndCreateChildCommand(getApi(targetClass), command,
                     (childKey, ignore) -> {
                         if (childKey.isInjectInvalid()) {
                             throw new CarRetrofitException("Invalid key:" + childKey + " in command Inject");
@@ -805,7 +813,7 @@ public final class CarRetrofit {
 
         Apply apply = (flag & FLAG_PARSE_APPLY) != 0 ? key.getAnnotation(Apply.class) : null;
         if (apply != null) {
-            if (checker != null && checker.test(key, key.getName(apply.token()))) {
+            if (checker != null && !checker.test(key, key.getName(apply.token()))) {
                 return null;
             }
             Class<?> targetClass = key.getSetClass();
@@ -813,7 +821,7 @@ public final class CarRetrofit {
                 throw new CarRetrofitException("Can not use Apply on class type:" + targetClass);
             }
             CommandApply command = new CommandApply(targetClass);
-            searchAndCreateChildCommand(record, command, null,
+            searchAndCreateChildCommand(getApi(targetClass), command, null,
                     FLAG_PARSE_APPLY | FLAG_PARSE_SET);
             if (command.childrenCommand.size() == 0) {
                 throw new CarRetrofitException("Failed to parse Apply command from type:" + targetClass);
@@ -824,12 +832,17 @@ public final class CarRetrofit {
 
         Combine combine = (flag & FLAG_PARSE_COMBINE) != 0 ? key.getAnnotation(Combine.class) : null;
         if (combine != null) {
-            if (checker != null && checker.test(key, key.getName(combine.token()))) {
+            if (checker != null && !checker.test(key, key.getName(combine.token()))) {
                 return null;
             }
             CommandCombine command = new CommandCombine();
             searchAndCreateChildCommand(record, command,
-                    (ignore, token) -> Arrays.asList(combine.elements()).contains(token),
+                    (childKey, token) -> {
+                        if (childKey.equals(key)) {
+                            return false;
+                        }
+                        return Arrays.asList(combine.elements()).contains(token);
+                    },
                     FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
             command.init(record, combine, key);
             return command;
@@ -898,8 +911,8 @@ public final class CarRetrofit {
         }
 
         @SuppressWarnings("unchecked")
-        Converter<Object, ?> findMapConverter(Class<?> carType, Converter<?, ?> wrapperConverter) {
-            Class<?> userConcernClass = key.getUserConcernClass(wrapperConverter);
+        Converter<Object, ?> findMapConverter(Class<?> carType) {
+            Class<?> userConcernClass = key.getUserConcernClass();
             if (userConcernClass != null) {
                 return (Converter<Object, ?>) ConverterStore.find(this, carType,
                         userConcernClass, store);
@@ -988,8 +1001,12 @@ public final class CarRetrofit {
         }
 
         @Override
-        public String toString() {
-            return this.getClass().getSimpleName() + " key:0x"
+        public final String toString() {
+            return "[" + toCommandString() + "]";
+        }
+
+        String toCommandString() {
+            return this.getClass().getSimpleName() + " id:0x"
                     + Integer.toHexString(propertyId) + " area:0x" + Integer.toHexString(area)
                     + " from:" + key;
         }
@@ -1074,7 +1091,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public String toString() {
+        String toCommandString() {
             boolean fromField = getField() != null;
             return "CommandApply target:" + targetClass.getSimpleName()
                     + " from" + (!fromField ? ("method:" + getMethod().getName())
@@ -1163,7 +1180,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public String toString() {
+        String toCommandString() {
             boolean fromField = getField() != null;
             return "CommandInject target:" + targetClass.getSimpleName()
                     + " from" + (!fromField ? ("method:" + getMethod().getName())
@@ -1185,22 +1202,37 @@ public final class CarRetrofit {
         Class<?> functionClass;
         boolean returnFlow;
         StickyType stickyType;
+        boolean stickyTrack;
+        boolean stickyUseCache;
 
         @Override
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
             super.init(record, annotation, key);
             Combine combine = (Combine) annotation;
+            List<String> elementList = Arrays.asList(combine.elements());
+            System.out.println(childrenCommand);
+            Collections.sort(childrenCommand, (o1, o2) ->
+                    elementList.indexOf(o1.getToken()) - elementList.indexOf(o2.getToken()));
+            System.out.println(childrenCommand);
             String userSet = combine.token();
             if (userSet.length() > 0) {
                 token = userSet;
             }
             this.stickyType = combine.sticky();
+            if (stickyType == StickyType.NO_SET) {
+                stickyType = record.stickyType;
+            }
+            if (stickyType != StickyType.NO_SET) {
+                stickyTrack = stickyType != StickyType.OFF;
+                stickyUseCache = stickyType == StickyType.ON;
+            }
 
             for (int i = 0; i < childrenCommand.size(); i++) {
                 CommandImpl childCommand = childrenCommand.get(i);
                 if (childCommand instanceof CommandTrack) {
-                    if (!((CommandTrack) childCommand).stickyUseCache) {
-                        throw new CarRetrofitException("Child track command must declare to be StickyType.ON");
+                    if (!((CommandTrack) childCommand).stickyTrack) {
+                        throw new CarRetrofitException("Child command:" + childCommand
+                                + " must declare to be sticky");
                     }
                     returnFlow = true;
                 } else if (childCommand instanceof CommandCombine) {
@@ -1220,7 +1252,7 @@ public final class CarRetrofit {
                 int childElementCount = childrenCommand.size();
                 String targetFunctionFullName = prefix + ".Function" + childElementCount;
                 functionClass = Class.forName(targetFunctionFullName);
-                if (functionClass.isInstance(operator)) {
+                if (functionClass.isInstance(operatorObj)) {
                     this.operator = (Operator) Objects.requireNonNull(operatorObj,
                             "Failed to resolve operator:" + combinatorExp);
                 } else {
@@ -1261,7 +1293,7 @@ public final class CarRetrofit {
                 resultConverter = (Converter<Object, ?>) converter;
 
                 try {
-                    mapConverter = findMapConverter(originalType, resultConverter);
+                    mapConverter = findMapConverter(originalType);
                 } catch (Exception e) {
                     throw new CarRetrofitException(e);
                 }
@@ -1296,8 +1328,9 @@ public final class CarRetrofit {
 
         @Override
         public Object invoke(Object parameter) throws Throwable {
-            Object[] elementResult = new Object[childrenCommand.size()];
-            for (int i = 0; i < childrenCommand.size(); i++) {
+            final int size = childrenCommand.size();
+            Object[] elementResult = new Object[size];
+            for (int i = 0; i < size; i++) {
                 CommandImpl childCommand = childrenCommand.get(i);
                 childCommand.suppressFlowMap(true);
                 elementResult[i] = childCommand.invokeWithChain(parameter);
@@ -1305,15 +1338,22 @@ public final class CarRetrofit {
             }
             Object result;
             if (returnFlow) {
+                Flow<Object> flow;
+                CombineFlow combineFlow = new CombineFlow(elementResult);
                 if (mapConverter != null) {
-                    result = new MediatorFlow<>(new CombineFlow(elementResult),
+                    flow = new MediatorFlow<>(combineFlow,
                             objects -> mapConverter.convert(processResult(objects)));
                 } else {
-                    result = new MediatorFlow<>(new CombineFlow(elementResult), this::processResult);
+                    flow = new MediatorFlow<>(combineFlow, this::processResult);
+                }
+                if (stickyTrack) {
+                    flow = new StickyFlowImpl<>(flow, stickyUseCache,
+                            () -> processResult(combineFlow.get()));
                 }
                 if (mapFlowSuppressed) {
-                    return result;
+                    return flow;
                 }
+                result = flow;
             } else {
                 result = processResult(elementResult);
             }
@@ -1333,10 +1373,11 @@ public final class CarRetrofit {
             boolean notifyValueSuppressed;
 
             CombineFlow(Object[] elementsArray) {
-                trackingObj = new Object[elementsArray.length];
-                flowArray = new StickyFlow<?>[elementsArray.length];
-                flowObservers = new InternalObserver[elementsArray.length];
-                for (int i = 0; i < elementsArray.length; i++) {
+                final int size = elementsArray.length;
+                trackingObj = new Object[size];
+                flowArray = new StickyFlow<?>[size];
+                flowObservers = new InternalObserver[size];
+                for (int i = 0; i < size; i++) {
                     Object obj = elementsArray[i];
                     if (obj instanceof Flow) {
                         if (obj instanceof StickyFlow) {
@@ -1354,7 +1395,7 @@ public final class CarRetrofit {
             @Override
             public void addObserver(Consumer<Object[]> consumer) {
                 consumers.add(consumer);
-                if (consumers.size() > 0) {
+                if (consumers.size() == 1) {
                     notifyValueSuppressed = true;
                     for (int i = 0; i < flowArray.length; i++) {
                         StickyFlow<Object> stickyFlow = (StickyFlow<Object>) flowArray[i];
@@ -1378,7 +1419,7 @@ public final class CarRetrofit {
                 }
             }
 
-            private void notifyChange() {
+            private void notifyChangeLocked() {
                 if (consumers.size() > 0 && !notifyValueSuppressed) {
                     ArrayList<Consumer<Object[]>> consumersClone
                             = (ArrayList<Consumer<Object[]>>) consumers.clone();
@@ -1390,7 +1431,9 @@ public final class CarRetrofit {
 
             @Override
             public Object[] get() {
-                return trackingObj;
+                synchronized (this) {
+                    return Arrays.copyOf(trackingObj, trackingObj.length);
+                }
             }
 
             private class InternalObserver implements Consumer<Object> {
@@ -1403,8 +1446,10 @@ public final class CarRetrofit {
 
                 @Override
                 public void accept(Object o) {
-                    trackingObj[index] = o;
-                    notifyChange();
+                    synchronized (CombineFlow.this) {
+                        trackingObj[index] = o;
+                        notifyChangeLocked();
+                    }
                 }
             }
         }
@@ -1516,9 +1561,7 @@ public final class CarRetrofit {
                 stickyGet = true;
             }
 
-            if (!stickyGet) {
-                resolveResultConverter(key.getGetClass());
-            }
+            resolveResultConverter(stickyGet ? key.getUserConcernClass() : key.getGetClass());
         }
 
         private void resolveResultConverter(Class<?> userReturnClass) {
@@ -1559,8 +1602,8 @@ public final class CarRetrofit {
         }
 
         @Override
-        public String toString() {
-            String stable = super.toString();
+        String toCommandString() {
+            String stable = super.toCommandString();
             if (stickyGet) {
                 stable += " stickyGet";
             }
@@ -1576,8 +1619,6 @@ public final class CarRetrofit {
         boolean stickyTrack;
         boolean stickyUseCache;
         CarType type;
-//        Converter<Flow<?>, ?> resultConverter;
-//        Converter<Object, ?> mapConverter;
         CommandGet stickyGet;
 
         @Override
@@ -1633,7 +1674,7 @@ public final class CarRetrofit {
                     throw new CarRetrofitException(e);
                 }
             }
-            mapConverter = findMapConverter(carType, resultConverter);
+            mapConverter = findMapConverter(carType);
         }
 
         @Override
@@ -1672,12 +1713,18 @@ public final class CarRetrofit {
                     break;
             }
             if (stickyTrack) {
-                result = new StickyFlowImpl<>(result, stickyUseCache, stickyGet);
+                result = new StickyFlowImpl(result, stickyUseCache, (Supplier<Object>) () -> {
+                    try {
+                        return stickyGet.invokeWithChain(null);
+                    } catch (Throwable throwable) {
+                        throw new CarRetrofitException(throwable);
+                    }
+                });
             }
-//            if (mapFlowSuppressed) {
-//                return result;
-//            }
-            return/*Object obj =*/ !mapFlowSuppressed && resultConverter != null ? resultConverter.convert(result) : result;
+            if (mapFlowSuppressed) {
+                return result;
+            }
+            return/*Object obj =*/ resultConverter != null ? resultConverter.convert(result) : result;
 //            return !valueMapped && mapConverter != null && resultConverter != null ?
 //                    ((ConverterMapper<Object, Object>)resultConverter).map(obj, mapConverter) : obj;
         }
@@ -1688,8 +1735,8 @@ public final class CarRetrofit {
         }
 
         @Override
-        public String toString() {
-            String stable = super.toString();
+        String toCommandString() {
+            String stable = super.toCommandString();
             if (type != CarType.VALUE) {
                 stable += " valueType:" + type;
             }
@@ -1748,9 +1795,9 @@ public final class CarRetrofit {
         private T lastValue;
         private boolean valueReceived;
         private boolean stickyUseCache;
-        private CommandGet stickyGet;
+        private Supplier<T> stickyGet;
 
-        private StickyFlowImpl(Flow<T> base, boolean stickyUseCache, CommandGet stickyGet) {
+        private StickyFlowImpl(Flow<T> base, boolean stickyUseCache, Supplier<T> stickyGet) {
             super(base, null);
             this.stickyUseCache = stickyUseCache;
             this.stickyGet = stickyGet;
@@ -1764,23 +1811,16 @@ public final class CarRetrofit {
 
         @Override
         public void accept(T value) {
-            super.accept(value);
             if (this.stickyUseCache) {
                 valueReceived = true;
                 lastValue = value;
             }
+            super.accept(value);
         }
 
-        @SuppressWarnings("unchecked")
         @Override
         public T get() {
-            T result;
-            try {
-                result = stickyUseCache && valueReceived ?
-                        lastValue : (T) stickyGet.invokeWithChain(null);
-            } catch (Throwable e) {
-                throw new CarRetrofitException(e);
-            }
+            T result = stickyUseCache && valueReceived ? lastValue : stickyGet.get();
             if (stickyUseCache && !valueReceived) {
                 valueReceived = true;
                 lastValue = result;

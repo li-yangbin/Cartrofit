@@ -1,23 +1,28 @@
 package com.liyangbin.carretrofit;
 
 import com.liyangbin.carretrofit.annotation.Apply;
+import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.CarValue;
+import com.liyangbin.carretrofit.annotation.Combine;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
 import com.liyangbin.carretrofit.annotation.Set;
 import com.liyangbin.carretrofit.annotation.Track;
+import com.liyangbin.carretrofit.funtion.Function2;
 
 import androidx.databinding.ObservableBoolean;
 import io.reactivex.Observable;
 import io.reactivex.Single;
 
+@CarApi(scope = "test")
 public interface TestCarApi {
 
-    Interceptor INTERCEPTOR = (command, parameter) -> {
-        System.out.println("process command:" + command + " parameter:" + parameter);
-        Thread.dumpStack();
-        return command.invoke(parameter);
-    };
+//    Interceptor INTERCEPTOR = (command, parameter) -> {
+//        System.out.println("before process command:" + command + " parameter:" + parameter);
+//        Object obj = command.invoke(parameter);
+//        System.out.println("after process command:" + command + " parameter:" + parameter);
+//        return obj;
+//    };
 
     @Get(id = 0)
     int getIntSignal();
@@ -61,11 +66,22 @@ public interface TestCarApi {
     @Track(id = 0)
     Flow<Integer> trackIntSignal();
 
-    @Track(id = 0)
+    @Track(id = 0, sticky = StickyType.ON)
     Observable<Integer> trackIntReactive();
 
-    @Track(id = 0/*, scope = "test"*/)
+    @Track(id = 0, sticky = StickyType.ON)
     Observable<Boolean> trackBooleanReactive();
+
+    Function2<Integer, Boolean, String> combinator_aa = new Function2<Integer, Boolean, String>() {
+
+        @Override
+        public String apply(Integer value1, Boolean value2) {
+            return value1 + " assemble " + value2;
+        }
+    };
+
+    @Combine(elements = {"trackIntReactive", "trackBooleanReactive"}, combinator = "combinator_aa")
+    Observable<String> trackIntAndBoolean();
 
     @Track(id = 0)
     ObservableBoolean trackIntMappedReactive();

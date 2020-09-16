@@ -299,8 +299,6 @@ public class ExampleUnitTest {
 //        }
     }
 
-    static CarRetrofit carRetrofit;
-
     static TestCarApi api;
 
     private static void print(String msg) {
@@ -383,16 +381,6 @@ public class ExampleUnitTest {
     @Test
     public void testJava() {
 //        print("out: 0x" + Integer.toHexString(b & a));
-    }
-
-    private InterceptorChain interceptorChain;
-
-    void addInterceptor(Interceptor interceptor) {
-        if (this.interceptorChain == null) {
-            this.interceptorChain = new InterceptorChain(null, interceptor);
-        } else {
-            this.interceptorChain = new InterceptorChain(this.interceptorChain, interceptor);
-        }
     }
 
     @Test
@@ -539,6 +527,17 @@ public class ExampleUnitTest {
 //        public Integer fromApp2Data(MappedData mappedData) {
 //            return mappedData.rawData;
 //        }
+    }
+
+    @Test
+    public void combineTest() {
+
+        api.trackIntAndBoolean().subscribe(new Consumer<String>() {
+            @Override
+            public void accept(String string) throws Exception {
+                print("combine receive:" + string);
+            }
+        });
     }
 
     @Test

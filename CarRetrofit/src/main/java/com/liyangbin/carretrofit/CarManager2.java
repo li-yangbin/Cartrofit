@@ -4,6 +4,7 @@ import android.car.hardware.CarPropertyConfig;
 import android.car.hardware.CarPropertyValue;
 import android.car.hardware.CarVendorExtensionManager;
 import android.car.hardware.property.CarPropertyManager;
+import android.util.SparseArray;
 
 import androidx.annotation.Nullable;
 
@@ -72,16 +73,12 @@ public class CarManager2 implements DataSource {
     }
 
     public void notifyChange(CarPropertyValue<?> value) {
-//        SimpleFlow<?> flow = null;
-//        synchronized (publishedFlowList) {
-//            WeakReference<Flow<?>> flowRef = publishedFlowList.get(key);
-//            if (flowRef != null) {
-//                flow = (SimpleFlow<?>) flowRef.get();
-//            }
-//        }
-//        if (flow != null) {
-//            flow.publishChange(value);
-//        }
+        synchronized (publishedFlowList) {
+            AreaPool areaPool = publishedFlowList.get(value.getPropertyId());
+            if (areaPool != null) {
+                areaPool.notifyAreaChange(value);
+            }
+        }
     }
 
     private class AreaPool {
@@ -102,6 +99,15 @@ public class CarManager2 implements DataSource {
             SimpleFlow flow = new SimpleFlow(key, area);
             childFlow.add(flow);
             return flow;
+        }
+
+        void notifyAreaChange(CarPropertyValue<?> carValue) {
+            for (int i = 0; i < childFlow.size(); i++) {
+                SimpleFlow flow = childFlow.get(i);
+                if (flow.areaId == 0 || carValue.getAreaId() == 0 || (flow.areaId & carValue.getAreaId()) != 0) {
+                    flow.publishChange(carValue);
+                }
+            }
         }
     }
 
