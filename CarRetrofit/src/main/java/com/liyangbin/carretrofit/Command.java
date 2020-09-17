@@ -37,6 +37,7 @@ public interface Command {
         SET,
         GET,
         TRACK,
+        UN_TRACK,
         APPLY,
         INJECT,
         STICKY_GET,

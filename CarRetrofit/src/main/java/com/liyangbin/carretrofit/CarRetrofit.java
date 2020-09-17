@@ -11,6 +11,7 @@ import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
 import com.liyangbin.carretrofit.annotation.Set;
 import com.liyangbin.carretrofit.annotation.Track;
+import com.liyangbin.carretrofit.annotation.UnTrack;
 import com.liyangbin.carretrofit.annotation.WrappedData;
 import com.liyangbin.carretrofit.funtion.Function2;
 import com.liyangbin.carretrofit.funtion.Function3;
@@ -52,11 +53,12 @@ public final class CarRetrofit {
     private static final int FLAG_PARSE_SET = FLAG_FIRST_BIT;
     private static final int FLAG_PARSE_GET = FLAG_FIRST_BIT << 1;
     private static final int FLAG_PARSE_TRACK = FLAG_FIRST_BIT << 2;
-    private static final int FLAG_PARSE_INJECT = FLAG_FIRST_BIT << 3;
-    private static final int FLAG_PARSE_APPLY = FLAG_FIRST_BIT << 4;
-    private static final int FLAG_PARSE_COMBINE = FLAG_FIRST_BIT << 5;
-    private static final int FLAG_PARSE_ALL = FLAG_PARSE_SET | FLAG_PARSE_GET
-            | FLAG_PARSE_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE;
+    private static final int FLAG_PARSE_UN_TRACK = FLAG_FIRST_BIT << 3;
+    private static final int FLAG_PARSE_INJECT = FLAG_FIRST_BIT << 4;
+    private static final int FLAG_PARSE_APPLY = FLAG_FIRST_BIT << 5;
+    private static final int FLAG_PARSE_COMBINE = FLAG_FIRST_BIT << 6;
+    private static final int FLAG_PARSE_ALL = FLAG_PARSE_SET | FLAG_PARSE_GET | FLAG_PARSE_TRACK
+            | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE;
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
 
     private HashMap<String, DataSource> mDataMap;
@@ -683,12 +685,19 @@ public final class CarRetrofit {
         Type getTrackType() {
             if (field != null) {
                 return field.getGenericType();
-            } else {
+            } else if (method.getReturnType() != void.class) {
                 Type returnType = method.getGenericReturnType();
                 if (returnType == void.class) {
                     throw new CarRetrofitException("Invalid return void type");
                 }
                 return returnType;
+            } else {
+                Type[] parameterArray = method.getGenericParameterTypes();
+                if (parameterArray.length != 1) {
+                    throw new CarRetrofitException("Invalid parameter:"
+                            + Arrays.toString(parameterArray));
+                }
+                return parameterArray[0];
             }
         }
 
@@ -699,7 +708,7 @@ public final class CarRetrofit {
             }
             Class<?> wrapperClass = getClassFromType(originalType);
             if (wrapperClass == null) {
-                throw new IllegalStateException("impossible");
+                throw new IllegalStateException("invalid type:" + originalType);
             }
             Class<?> userTargetType;
             WrappedData dataAnnotation = wrapperClass.getAnnotation(WrappedData.class);
@@ -790,6 +799,23 @@ public final class CarRetrofit {
             return command;
         }
 
+        UnTrack unTrack = (flag & FLAG_PARSE_UN_TRACK) != 0 ? key.getAnnotation(UnTrack.class) : null;
+        if (unTrack != null) {
+            if (checker != null && !checker.test(key)) {
+                return null;
+            }
+            CommandUnTrack command = new CommandUnTrack();
+            final String targetTrack = unTrack.track();
+            searchAndCreateChildCommand(record,
+                    childKey -> targetTrack.equals(childKey.getName()),
+                    child -> {
+                        command.setTrackCommand((CommandFlow) child);
+                        return false;
+                    }, FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
+            command.init(record, unTrack, key);
+            return command;
+        }
+
         Inject inject = (flag & FLAG_PARSE_INJECT) != 0 ? key.getAnnotation(Inject.class) : null;
         if (inject != null) {
             if (checker != null && !checker.test(key)) {
@@ -800,15 +826,16 @@ public final class CarRetrofit {
                 throw new CarRetrofitException("Can not use Inject on class type:" + targetClass);
             }
             CommandInject command = new CommandInject(targetClass, key.isInjectReturn());
-            searchAndCreateChildCommand(getApi(targetClass), command,
-                    childKey -> {
+            searchAndCreateChildCommand(getApi(targetClass), childKey -> {
                         if (childKey.isInjectInvalid()) {
                             throw new CarRetrofitException("Invalid key:" + childKey
                                     + " in command Inject");
                         }
                         return true;
-                    },
-                    FLAG_PARSE_INJECT | FLAG_PARSE_GET | FLAG_PARSE_TRACK);
+                    }, child -> {
+                        command.addChildCommand(child);
+                        return true;
+                    }, FLAG_PARSE_INJECT | FLAG_PARSE_GET | FLAG_PARSE_TRACK);
             if (command.childrenCommand.size() == 0
                     && !InjectReceiver.class.isAssignableFrom(targetClass)) {
                 throw new CarRetrofitException("Failed to parse Inject command from type:"
@@ -828,8 +855,11 @@ public final class CarRetrofit {
                 throw new CarRetrofitException("Can not use Apply on class type:" + targetClass);
             }
             CommandApply command = new CommandApply(targetClass);
-            searchAndCreateChildCommand(getApi(targetClass), command, null,
-                    FLAG_PARSE_APPLY | FLAG_PARSE_SET);
+            searchAndCreateChildCommand(getApi(targetClass), null,
+                    child -> {
+                        command.addChildCommand(child);
+                        return true;
+                    }, FLAG_PARSE_APPLY | FLAG_PARSE_SET);
             if (command.childrenCommand.size() == 0
                     && !ApplyReceiver.class.isAssignableFrom(targetClass)) {
                 throw new CarRetrofitException("Failed to parse Apply command from type:"
@@ -846,17 +876,25 @@ public final class CarRetrofit {
             }
             CommandCombine command = new CommandCombine();
             List<String> elementList = Arrays.asList(combine.elements());
-            searchAndCreateChildCommand(record, command,
+            searchAndCreateChildCommand(record,
                     childKey -> {
                         if (childKey.equals(key)) {
                             return false;
                         }
                         return elementList.contains(childKey.getName());
                     },
-                    FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
+                    child -> {
+                        command.addChildCommand(child);
+                        elementList.remove(child.getName());
+                        return elementList.size() > 0;
+                    }, FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
+            if (elementList.size() > 0) {
+                throw new CarRetrofitException("Can not find target child element on Combine:"
+                        + key + " missing element:" + elementList);
+            }
             if (command.childrenCommand.size() <= 1) {
-                throw new CarRetrofitException("Declare more than one element on Combine:" + key
-                        + " element:" + command.childrenCommand);
+                throw new CarRetrofitException("Must declare more than one element on Combine:"
+                        + key + " element:" + command.childrenCommand);
             }
             command.init(record, combine, key);
             return command;
@@ -864,20 +902,27 @@ public final class CarRetrofit {
         return null;
     }
 
-    private void searchAndCreateChildCommand(ApiRecord<?> record, CommandGroup commandGroup,
-                                             Predicate<Key> checker, int flag) {
+    private boolean searchAndCreateChildCommand(ApiRecord<?> record, Predicate<Key> checker,
+                                                Predicate<CommandImpl> commandReceiver, int flag) {
         ArrayList<Key> childKeys = record.getChildKey();
         for (int i = 0; i < childKeys.size(); i++) {
             Key childKey = childKeys.get(i);
             CommandImpl command = getOrCreateCommandIfChecked(record, childKey, checker, flag);
             if (command != null) {
-                commandGroup.addChildCommand(command);
+                if (!commandReceiver.test(command)) {
+                    return false;
+                }
             }
         }
         ArrayList<ApiRecord<?>> parentRecordList = record.getParentApi();
         for (int i = 0; i < parentRecordList.size(); i++) {
-            searchAndCreateChildCommand(parentRecordList.get(i), commandGroup, checker, flag);
+            boolean more = searchAndCreateChildCommand(parentRecordList.get(i), checker,
+                    commandReceiver, flag);
+            if (!more) {
+                return false;
+            }
         }
+        return true;
     }
 
     private static boolean hasUnresolvableType(Type type) {
@@ -916,23 +961,6 @@ public final class CarRetrofit {
         InterceptorChain chain;
         DataSource source;
         Key key;
-        Converter<Object, ?> resultConverter;
-        Converter<Object, ?> mapConverter;
-        boolean mapFlowSuppressed;
-
-        void suppressFlowMap(boolean suppress) {
-            mapFlowSuppressed = suppress;
-        }
-
-        @SuppressWarnings("unchecked")
-        Converter<Object, ?> findMapConverter(Class<?> carType) {
-            Class<?> userConcernClass = key.getUserConcernClass();
-            if (userConcernClass != null) {
-                return (Converter<Object, ?>) ConverterStore.find(this, carType,
-                        userConcernClass, store);
-            }
-            return null;
-        }
 
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
             this.record = record;
@@ -1223,15 +1251,18 @@ public final class CarRetrofit {
         }
     }
 
-    private static class CommandCombine extends CommandGroup {
+    private static class CommandCombine extends CommandFlow {
 
         Operator operator;
         String operatorExp;
         Class<?> functionClass;
         boolean returnFlow;
-        StickyType stickyType;
-        boolean stickyTrack;
-        boolean stickyUseCache;
+
+        ArrayList<CommandImpl> childrenCommand = new ArrayList<>();
+
+        void addChildCommand(CommandImpl command) {
+            childrenCommand.add(command);
+        }
 
         @Override
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
@@ -1244,7 +1275,7 @@ public final class CarRetrofit {
             if (userSet.length() > 0) {
                 token = userSet;
             }
-            this.stickyType = combine.sticky();
+            StickyType stickyType = combine.sticky();
             if (stickyType == StickyType.NO_SET) {
                 stickyType = record.stickyType;
             }
@@ -1394,14 +1425,19 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
+        Object invokeFlow() throws Throwable {
             final int size = childrenCommand.size();
             Object[] elementResult = new Object[size];
             for (int i = 0; i < size; i++) {
                 CommandImpl childCommand = childrenCommand.get(i);
-                childCommand.suppressFlowMap(true);
-                elementResult[i] = childCommand.invokeWithChain(parameter);
-                childCommand.suppressFlowMap(false);
+                boolean isFlowCommand = childCommand instanceof CommandFlow;
+                if (isFlowCommand) {
+                    ((CommandFlow) childCommand).suppressFlowMap(true);
+                }
+                elementResult[i] = childCommand.invokeWithChain(null);
+                if (isFlowCommand) {
+                    ((CommandFlow) childCommand).suppressFlowMap(false);
+                }
             }
             Object result;
             if (returnFlow) {
@@ -1686,10 +1722,70 @@ public final class CarRetrofit {
         }
     }
 
-    private static class CommandTrack extends CommandImpl {
+    private static abstract class CommandFlow extends CommandImpl {
+        Converter<Object, ?> resultConverter;
+        Converter<Object, ?> mapConverter;
+        boolean mapFlowSuppressed;
 
         boolean stickyTrack;
         boolean stickyUseCache;
+
+        boolean registerTrack;
+        Flow<Object> trackingFlow;
+
+        void suppressFlowMap(boolean suppress) {
+            if (!registerTrack) {
+                mapFlowSuppressed = suppress;
+            }
+        }
+
+        @Override
+        void init(ApiRecord<?> record, Annotation annotation, Key key) {
+            super.init(record, annotation, key);
+            if (key.method != null && key.method.getReturnType() == void.class) {
+                Class<?>[] classArray = key.method.getParameterTypes();
+                if (classArray.length == 1) {
+                    Class<?> parameterClass = classArray[0];
+                    if (Consumer.class.isAssignableFrom(parameterClass)) {
+                        registerTrack = true;
+                        mapFlowSuppressed = true;
+                    } else {
+                        throw new CarRetrofitException("invalid track parameter:" + this);
+                    }
+                }
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        Converter<Object, ?> findMapConverter(Class<?> carType) {
+            Class<?> userConcernClass = key.getUserConcernClass();
+            if (userConcernClass != null) {
+                return (Converter<Object, ?>) ConverterStore.find(this, carType,
+                        userConcernClass, store);
+            }
+            return null;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public final Object invoke(Object parameter) throws Throwable {
+            if (registerTrack) {
+                if (trackingFlow == null) {
+                    trackingFlow = (Flow<Object>) invokeFlow();
+                }
+                Consumer<Object> consumer = (Consumer<Object>) parameter;
+                trackingFlow.addObserver(consumer);
+                return SKIP;
+            } else {
+                return invokeFlow();
+            }
+        }
+
+        abstract Object invokeFlow() throws Throwable;
+    }
+
+    private static class CommandTrack extends CommandFlow {
+
         CarType type;
         CommandGet stickyGet;
 
@@ -1750,7 +1846,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
+        Object invokeFlow() throws Throwable {
             Flow<CarPropertyValue<?>> flow = source.track(propertyId, area);
             Flow<?> result = flow;
             switch (type) {
@@ -1814,6 +1910,48 @@ public final class CarRetrofit {
                 stable += " stickyCache:" + stickyUseCache;
             }
             return stable;
+        }
+    }
+
+    private static class CommandUnTrack extends CommandImpl {
+        CommandFlow trackCommand;
+
+        @Override
+        void init(ApiRecord<?> record, Annotation annotation, Key key) {
+            super.init(record, annotation, key);
+            if (key.method != null && key.method.getReturnType() == void.class) {
+                Class<?>[] classArray = key.method.getParameterTypes();
+                if (classArray.length == 1) {
+                    Class<?> parameterClass = classArray[0];
+                    if (Consumer.class.isAssignableFrom(parameterClass)) {
+                        return;
+                    }
+                }
+            }
+            throw new CarRetrofitException("invalid unTrack:" + this);
+        }
+
+        void setTrackCommand(CommandFlow trackCommand) {
+            this.trackCommand = trackCommand;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public Object invoke(Object parameter) throws Throwable {
+            if (trackCommand.trackingFlow != null) {
+                trackCommand.trackingFlow.removeObserver((Consumer<Object>) parameter);
+            }
+            return null;
+        }
+
+        @Override
+        public CommandType type() {
+            return CommandType.UN_TRACK;
+        }
+
+        @Override
+        String toCommandString() {
+            return "track:" + trackCommand;
         }
     }
 
