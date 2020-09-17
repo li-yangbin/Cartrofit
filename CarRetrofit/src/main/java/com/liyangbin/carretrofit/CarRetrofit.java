@@ -7,6 +7,7 @@ import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.CarValue;
 import com.liyangbin.carretrofit.annotation.Combine;
 import com.liyangbin.carretrofit.annotation.ConsiderSuper;
+import com.liyangbin.carretrofit.annotation.Delegate;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
 import com.liyangbin.carretrofit.annotation.Set;
@@ -57,8 +58,10 @@ public final class CarRetrofit {
     private static final int FLAG_PARSE_INJECT = FLAG_FIRST_BIT << 4;
     private static final int FLAG_PARSE_APPLY = FLAG_FIRST_BIT << 5;
     private static final int FLAG_PARSE_COMBINE = FLAG_FIRST_BIT << 6;
+    private static final int FLAG_PARSE_DELEGATE = FLAG_FIRST_BIT << 7;
     private static final int FLAG_PARSE_ALL = FLAG_PARSE_SET | FLAG_PARSE_GET | FLAG_PARSE_TRACK
-            | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE;
+            | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE
+            |FLAG_PARSE_DELEGATE;
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
 
     private HashMap<String, DataSource> mDataMap;
@@ -151,6 +154,9 @@ public final class CarRetrofit {
         InterceptorChain interceptorChain;
         ConverterStore converterStore;
 
+        ArrayList<Key> childrenKey;
+        ArrayList<ApiRecord<?>> parentApi;
+
         ApiRecord(Class<T> clazz) {
             this.clazz = clazz;
             CarApi carApi = Objects.requireNonNull(clazz.getAnnotation(CarApi.class));
@@ -200,6 +206,9 @@ public final class CarRetrofit {
         }
 
         ArrayList<Key> getChildKey() {
+            if (childrenKey != null) {
+                return childrenKey;
+            }
             ArrayList<Key> result = new ArrayList<>();
             if (clazz.isInterface()) {
                 Method[] methods = clazz.getDeclaredMethods();
@@ -217,10 +226,11 @@ public final class CarRetrofit {
                         result.add(childKey);
                     }
                 }
-                if (clazz.isAnnotationPresent(ConsiderSuper.class)) {
-                    Class<?> superClass = clazz.getSuperclass();
+                Class<?> loopClass = clazz;
+                while (loopClass.isAnnotationPresent(ConsiderSuper.class)) {
+                    Class<?> superClass = loopClass.getSuperclass();
                     if (superClass != null && superClass != Object.class) {
-                        ApiRecord<?> record = getApi(clazz);
+                        ApiRecord<?> record = getApi(loopClass);
                         if (record == null) {
                             fields = superClass.getDeclaredFields();
                             for (Field field : fields) {
@@ -229,14 +239,21 @@ public final class CarRetrofit {
                                     result.add(childKey);
                                 }
                             }
+                            loopClass = superClass;
+                            continue;
                         }
                     }
+                    break;
                 }
             }
+            childrenKey = result;
             return result;
         }
 
         ArrayList<ApiRecord<?>> getParentApi() {
+            if (parentApi != null) {
+                return parentApi;
+            }
             ArrayList<ApiRecord<?>> result = new ArrayList<>();
             if (clazz.isInterface()) {
                 Class<?>[] classSuperArray = clazz.getInterfaces();
@@ -257,6 +274,7 @@ public final class CarRetrofit {
                     }
                 }
             }
+            parentApi = result;
             return result;
         }
 
@@ -811,7 +829,7 @@ public final class CarRetrofit {
                     child -> {
                         command.setTrackCommand((CommandFlow) child);
                         return false;
-                    }, FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
+                    }, FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE | FLAG_PARSE_DELEGATE);
             command.init(record, unTrack, key);
             return command;
         }
@@ -887,7 +905,8 @@ public final class CarRetrofit {
                         command.addChildCommand(child);
                         elementList.remove(child.getName());
                         return elementList.size() > 0;
-                    }, FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
+                    }, FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE
+                            | FLAG_PARSE_DELEGATE);
             if (elementList.size() > 0) {
                 throw new CarRetrofitException("Can not find target child element on Combine:"
                         + key + " missing element:" + elementList);
@@ -897,6 +916,26 @@ public final class CarRetrofit {
                         + key + " element:" + command.childrenCommand);
             }
             command.init(record, combine, key);
+            return command;
+        }
+
+        Delegate delegate = (flag & FLAG_PARSE_DELEGATE) != 0 ? key.getAnnotation(Delegate.class) : null;
+        if (delegate != null) {
+            if (checker != null && !checker.test(key)) {
+                return null;
+            }
+            String target = delegate.target();
+            CommandDelegate command = new CommandDelegate();
+            searchAndCreateChildCommand(record,
+                    childKey -> childKey.getName().equals(target),
+                    targetCommand -> {
+                        command.setTargetCommand(targetCommand);
+                        return false;
+                    }, FLAG_PARSE_ALL &~ FLAG_PARSE_DELEGATE);
+            if (command.targetCommand == null) {
+                throw new CarRetrofitException("Can not resolve delegate target:" + target);
+            }
+            command.init(record, delegate, key);
             return command;
         }
         return null;
@@ -1828,9 +1867,11 @@ public final class CarRetrofit {
         }
 
         private void resolveConverter() {
-            Converter<?, ?> converter = ConverterStore.find(this, Flow.class,
-                    key.getTrackClass(), store);
-            resultConverter = (Converter<Object, ?>) converter;
+            if (!mapFlowSuppressed) {
+                Converter<?, ?> converter = ConverterStore.find(this, Flow.class,
+                        key.getTrackClass(), store);
+                resultConverter = (Converter<Object, ?>) converter;
+            }
 
             Class<?> carType;
             if (type == CarType.AVAILABILITY) {
@@ -1951,7 +1992,25 @@ public final class CarRetrofit {
 
         @Override
         String toCommandString() {
-            return "track:" + trackCommand;
+            return "paired:" + trackCommand;
+        }
+    }
+
+    private static class CommandDelegate extends CommandImpl {
+        CommandImpl targetCommand;
+
+        @Override
+        public Object invoke(Object parameter) throws Throwable {
+            return null;
+        }
+
+        void setTargetCommand(CommandImpl targetCommand) {
+            this.targetCommand = targetCommand;
+        }
+
+        @Override
+        public CommandType type() {
+            return null;
         }
     }
 
