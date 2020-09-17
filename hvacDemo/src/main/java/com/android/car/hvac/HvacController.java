@@ -31,7 +31,7 @@ import android.os.AsyncTask;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
-import android.os.SystemProperties;
+//import android.os.SystemProperties;
 import android.util.Log;
 
 import androidx.annotation.GuardedBy;
@@ -121,11 +121,11 @@ public class HvacController extends Service {
     public void onCreate() {
         super.onCreate();
         if (getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
-            if (SystemProperties.getBoolean(DEMO_MODE_PROPERTY, false)) {
-                IBinder binder = (new LocalHvacPropertyService()).getCarPropertyService();
-                initHvacManager(new CarHvacManager(binder, this, new Handler()));
-                return;
-            }
+//            if (SystemProperties.getBoolean(DEMO_MODE_PROPERTY, false)) {
+//                IBinder binder = (new LocalHvacPropertyService()).getCarPropertyService();
+//                initHvacManager(new CarHvacManager(binder, this, new Handler()));
+//                return;
+//            }
 
             mCarApiClient = Car.createCar(this, mCarConnectionCallback);
             mCarApiClient.connect();

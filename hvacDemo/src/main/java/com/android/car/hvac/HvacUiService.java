@@ -115,7 +115,7 @@ public class HvacUiService extends Service {
         WindowManager.LayoutParams testparams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_DISPLAY_OVERLAY,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
@@ -155,7 +155,7 @@ public class HvacUiService extends Service {
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_DISPLAY_OVERLAY,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                         & ~WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
@@ -172,7 +172,7 @@ public class HvacUiService extends Service {
         params.setTitle("HVAC Container");
         disableAnimations(params);
         // required of the sysui visiblity listener is not triggered.
-        params.hasSystemUiListeners = true;
+//        params.hasSystemUiListeners = true;
 
         mContainer = inflater.inflate(R.layout.hvac_panel, null);
         mContainer.setLayoutParams(params);
@@ -316,7 +316,7 @@ public class HvacUiService extends Service {
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_DISPLAY_OVERLAY,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
