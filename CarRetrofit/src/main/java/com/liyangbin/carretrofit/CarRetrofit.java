@@ -36,9 +36,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public final class CarRetrofit {
@@ -378,7 +378,9 @@ public final class CarRetrofit {
                 WrappedData wrappedData = converter.getClass()
                         .getDeclaredAnnotation(WrappedData.class);
                 if (wrappedData != null) {
-                    WRAPPER_CLASS_MAP.put(convertTo, wrappedData.type());
+                    synchronized (WRAPPER_CLASS_MAP) {
+                        WRAPPER_CLASS_MAP.put(convertTo, wrappedData.type());
+                    }
                 }
                 allConverters.add(converter);
             } else {
@@ -515,14 +517,11 @@ public final class CarRetrofit {
 
     @SuppressWarnings("unchecked")
     public <T> T from(Class<T> api) {
-        ApiRecord<T> record = getApi(api);
-        if (record == null) {
-            throw new CarRetrofitException("Do declare CarApi annotation in class:" + api);
+        ApiRecord<T> record = getApi(api, true);
+        if (record.apiObj != null) {
+            return record.apiObj;
         }
         synchronized (mApiCache) {
-            if (record.apiObj != null) {
-                return record.apiObj;
-            }
             record.apiObj = (T) Proxy.newProxyInstance(api.getClassLoader(), new Class<?>[]{api},
                     (proxy, method, args) -> {
                         if (method.getDeclaringClass() == Object.class) {
@@ -543,14 +542,20 @@ public final class CarRetrofit {
         return record.apiObj;
     }
 
-    @SuppressWarnings("unchecked")
     private <T> ApiRecord<T> getApi(Class<T> api) {
+        return getApi(api, false);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> ApiRecord<T> getApi(Class<T> api, boolean throwIfNotDeclareCarApi) {
         synchronized (mApiCache) {
             ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
             if (record == null) {
                 if (api.isAnnotationPresent(CarApi.class)) {
                     record = new ApiRecord<>(api);
                     mApiCache.put(api, record);
+                } else if (throwIfNotDeclareCarApi) {
+                    throw new CarRetrofitException("Do declare CarApi annotation in class:" + api);
                 }
             }
             return record;
@@ -562,7 +567,7 @@ public final class CarRetrofit {
     }
 
     private CommandImpl getOrCreateCommandIfChecked(ApiRecord<?> record, Key key,
-                                                    BiPredicate<Key, String> checker, int flag) {
+                                                    Predicate<Key> checker, int flag) {
         if (record == null) {
             return null;
         }
@@ -573,7 +578,7 @@ public final class CarRetrofit {
         synchronized (mCommandCache) {
             command = mCommandCache.get(key);
         }
-        if (command != null && (checker == null || checker.test(key, command.getToken()))) {
+        if (command != null && (checker == null || checker.test(key))) {
             return command;
         }
         if (command == null) {
@@ -701,7 +706,9 @@ public final class CarRetrofit {
             if (dataAnnotation != null) {
                 userTargetType = dataAnnotation.type();
             } else {
-                userTargetType = WRAPPER_CLASS_MAP.get(wrapperClass);
+                synchronized (WRAPPER_CLASS_MAP) {
+                    userTargetType = WRAPPER_CLASS_MAP.get(wrapperClass);
+                }
             }
             if (userTargetType == null && originalType instanceof ParameterizedType) {
                 Type[] typeArray = ((ParameterizedType) originalType).getActualTypeArguments();
@@ -723,10 +730,7 @@ public final class CarRetrofit {
             return userTargetType;
         }
 
-        String getName(String token) {
-            if (token != null && token.length() > 0) {
-                return token;
-            }
+        String getName() {
             return method != null ? method.getName() : field.getName();
         }
 
@@ -755,10 +759,10 @@ public final class CarRetrofit {
     }
 
     private CommandImpl parseAnnotation(ApiRecord<?> record, Key key,
-                                        BiPredicate<Key, String> checker, int flag) {
+                                        Predicate<Key> checker, int flag) {
         Set set = (flag & FLAG_PARSE_SET) != 0 ? key.getAnnotation(Set.class) : null;
         if (set != null) {
-            if (checker != null && !checker.test(key, key.getName(set.token()))) {
+            if (checker != null && !checker.test(key)) {
                 return null;
             }
             CommandSet command = new CommandSet();
@@ -768,7 +772,7 @@ public final class CarRetrofit {
 
         Get get = (flag & FLAG_PARSE_GET) != 0 ? key.getAnnotation(Get.class) : null;
         if (get != null) {
-            if (checker != null && !checker.test(key, key.getName(get.token()))) {
+            if (checker != null && !checker.test(key)) {
                 return null;
             }
             CommandGet command = new CommandGet();
@@ -778,7 +782,7 @@ public final class CarRetrofit {
 
         Track track = (flag & FLAG_PARSE_TRACK) != 0 ? key.getAnnotation(Track.class) : null;
         if (track != null) {
-            if (checker != null && !checker.test(key, key.getName(track.token()))) {
+            if (checker != null && !checker.test(key)) {
                 return null;
             }
             CommandTrack command = new CommandTrack();
@@ -788,7 +792,7 @@ public final class CarRetrofit {
 
         Inject inject = (flag & FLAG_PARSE_INJECT) != 0 ? key.getAnnotation(Inject.class) : null;
         if (inject != null) {
-            if (checker != null && !checker.test(key, key.getName(inject.token()))) {
+            if (checker != null && !checker.test(key)) {
                 return null;
             }
             Class<?> targetClass = key.getGetClass();
@@ -797,15 +801,18 @@ public final class CarRetrofit {
             }
             CommandInject command = new CommandInject(targetClass, key.isInjectReturn());
             searchAndCreateChildCommand(getApi(targetClass), command,
-                    (childKey, ignore) -> {
+                    childKey -> {
                         if (childKey.isInjectInvalid()) {
-                            throw new CarRetrofitException("Invalid key:" + childKey + " in command Inject");
+                            throw new CarRetrofitException("Invalid key:" + childKey
+                                    + " in command Inject");
                         }
                         return true;
                     },
                     FLAG_PARSE_INJECT | FLAG_PARSE_GET | FLAG_PARSE_TRACK);
-            if (command.childrenCommand.size() == 0) {
-                throw new CarRetrofitException("Failed to parse Inject command from type:" + targetClass);
+            if (command.childrenCommand.size() == 0
+                    && !InjectReceiver.class.isAssignableFrom(targetClass)) {
+                throw new CarRetrofitException("Failed to parse Inject command from type:"
+                        + targetClass);
             }
             command.init(record, inject, key);
             return command;
@@ -813,7 +820,7 @@ public final class CarRetrofit {
 
         Apply apply = (flag & FLAG_PARSE_APPLY) != 0 ? key.getAnnotation(Apply.class) : null;
         if (apply != null) {
-            if (checker != null && !checker.test(key, key.getName(apply.token()))) {
+            if (checker != null && !checker.test(key)) {
                 return null;
             }
             Class<?> targetClass = key.getSetClass();
@@ -823,8 +830,10 @@ public final class CarRetrofit {
             CommandApply command = new CommandApply(targetClass);
             searchAndCreateChildCommand(getApi(targetClass), command, null,
                     FLAG_PARSE_APPLY | FLAG_PARSE_SET);
-            if (command.childrenCommand.size() == 0) {
-                throw new CarRetrofitException("Failed to parse Apply command from type:" + targetClass);
+            if (command.childrenCommand.size() == 0
+                    && !ApplyReceiver.class.isAssignableFrom(targetClass)) {
+                throw new CarRetrofitException("Failed to parse Apply command from type:"
+                        + targetClass);
             }
             command.init(record, apply, key);
             return command;
@@ -832,17 +841,17 @@ public final class CarRetrofit {
 
         Combine combine = (flag & FLAG_PARSE_COMBINE) != 0 ? key.getAnnotation(Combine.class) : null;
         if (combine != null) {
-            if (checker != null && !checker.test(key, key.getName(combine.token()))) {
+            if (checker != null && !checker.test(key)) {
                 return null;
             }
             CommandCombine command = new CommandCombine();
-            List<String> tokenList = Arrays.asList(combine.elements());
+            List<String> elementList = Arrays.asList(combine.elements());
             searchAndCreateChildCommand(record, command,
-                    (childKey, token) -> {
+                    childKey -> {
                         if (childKey.equals(key)) {
                             return false;
                         }
-                        return tokenList.contains(token);
+                        return elementList.contains(childKey.getName());
                     },
                     FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
             if (command.childrenCommand.size() <= 1) {
@@ -856,7 +865,7 @@ public final class CarRetrofit {
     }
 
     private void searchAndCreateChildCommand(ApiRecord<?> record, CommandGroup commandGroup,
-                                             BiPredicate<Key, String> checker, int flag) {
+                                             Predicate<Key> checker, int flag) {
         ArrayList<Key> childKeys = record.getChildKey();
         for (int i = 0; i < childKeys.size(); i++) {
             Key childKey = childKeys.get(i);
@@ -957,7 +966,7 @@ public final class CarRetrofit {
 
         @Override
         public String getName() {
-            return key.getName(null);
+            return key.getName();
         }
 
         @Override
@@ -997,7 +1006,7 @@ public final class CarRetrofit {
 
         @Override
         public String getToken() {
-            return token != null && token.length() > 0 ? token : getName();
+            return token;
         }
 
         @Override
@@ -1230,7 +1239,7 @@ public final class CarRetrofit {
             Combine combine = (Combine) annotation;
             List<String> elementList = Arrays.asList(combine.elements());
             Collections.sort(childrenCommand, (o1, o2) ->
-                    elementList.indexOf(o1.getToken()) - elementList.indexOf(o2.getToken()));
+                    elementList.indexOf(o1.getName()) - elementList.indexOf(o2.getName()));
             String userSet = combine.token();
             if (userSet.length() > 0) {
                 token = userSet;
