@@ -591,9 +591,6 @@ public final class CarRetrofit {
         if (record == null) {
             return null;
         }
-        if (key.isInvalid()) {
-            throw new CarRetrofitException("Invalid key:" + key);
-        }
         CommandImpl command;
         synchronized (mCommandCache) {
             command = mCommandCache.get(key);
@@ -602,6 +599,9 @@ public final class CarRetrofit {
             return command;
         }
         if (command == null) {
+            if (key.isInvalid()) {
+                throw new CarRetrofitException("Invalid key:" + key);
+            }
             command = parseAnnotation(record, key, checker, flag);
             if (command != null) {
                 synchronized (mCommandCache) {
@@ -999,6 +999,7 @@ public final class CarRetrofit {
         ConverterStore store;
         InterceptorChain chain;
         DataSource source;
+        Class<?> outDataClass;
         Key key;
 
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
@@ -1023,17 +1024,17 @@ public final class CarRetrofit {
 
         @Override
         public Method getMethod() {
-            return key.method;
+            return delegateTarget().key.method;
         }
 
         @Override
         public Field getField() {
-            return key.field;
+            return delegateTarget().key.field;
         }
 
         @Override
         public String getName() {
-            return key.getName();
+            return delegateTarget().key.getName();
         }
 
         @Override
@@ -1048,48 +1049,61 @@ public final class CarRetrofit {
 
         @Override
         public void setPropertyId(int propertyId) {
-            this.propertyId = propertyId;
+            delegateTarget().propertyId = propertyId;
         }
 
         @Override
         public int getPropertyId() {
-            return propertyId;
+            return delegateTarget().propertyId;
         }
 
         @Override
         public void setArea(int area) {
-            this.area = area;
+            delegateTarget().area = area;
         }
 
         @Override
         public int getArea() {
-            return area;
+            return delegateTarget().area;
         }
 
         @Override
         public void setSource(DataSource source) {
-            this.source = source;
+            delegateTarget().source = source;
         }
 
         @Override
         public String getToken() {
-            return token;
+            return delegateTarget().token;
+        }
+
+        private CommandFlow castAsCommandFlow() {
+            CommandImpl delegateTarget = delegateTarget();
+            if (delegateTarget instanceof CommandFlow) {
+                return (CommandFlow) delegateTarget;
+            }
+            return null;
         }
 
         @Override
         public DataSource getSource() {
-            return source;
+            return delegateTarget().source;
         }
 
         @Override
         public final String toString() {
-            return "Command[" + type() + toCommandString() + "]";
+            return "Command[" + type() + delegateTarget().toCommandString() + "]";
+        }
+
+        CommandImpl delegateTarget() {
+            return this;
         }
 
         String toCommandString() {
-            return " id:0x" + Integer.toHexString(propertyId)
+            int area = getArea();
+            return " id:0x" + Integer.toHexString(getPropertyId())
                     + (area != CarApi.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "")
-                    + " from:" + key;
+                    + " from:" + delegateTarget().key;
         }
 
         final Object invokeWithChain(Object parameter) throws Throwable {
@@ -1098,6 +1112,18 @@ public final class CarRetrofit {
             } else {
                 return invoke(parameter);
             }
+        }
+
+        final Object invokeWithFlowMapSuppress(Object parameter) throws Throwable {
+            CommandFlow flowCommand = castAsCommandFlow();
+            if (flowCommand != null) {
+                flowCommand.suppressFlowMap(true);
+            }
+            final Object obj = invokeWithChain(parameter);
+            if (flowCommand != null) {
+                flowCommand.suppressFlowMap(false);
+            }
+            return obj;
         }
     }
 
@@ -1233,7 +1259,7 @@ public final class CarRetrofit {
                 CommandImpl command = childrenCommand.get(i);
                 Field field = command.getField();
                 try {
-                    if (command instanceof CommandInject) {
+                    if (command.type() == CommandType.INJECT) {
                         Object injectTarget = field.get(target);
                         if (injectTarget != null) {
                             command.invokeWithChain(injectTarget);
@@ -1295,7 +1321,6 @@ public final class CarRetrofit {
         Operator operator;
         String operatorExp;
         Class<?> functionClass;
-        boolean returnFlow;
 
         ArrayList<CommandImpl> childrenCommand = new ArrayList<>();
 
@@ -1326,7 +1351,7 @@ public final class CarRetrofit {
             ArrayList<CommandCombine> combineChildren = null;
             ArrayList<CommandImpl> otherChildren = null;
             for (int i = 0; i < childrenCommand.size(); i++) {
-                CommandImpl childCommand = childrenCommand.get(i);
+                CommandImpl childCommand = childrenCommand.get(i).delegateTarget();
                 if (childCommand instanceof CommandCombine) {
                     if (!((CommandCombine) childCommand).stickyTrack) {
                         throw new CarRetrofitException("Child command:" + childCommand
@@ -1464,19 +1489,17 @@ public final class CarRetrofit {
         }
 
         @Override
-        Object invokeFlow() throws Throwable {
+        public Object invoke(Object parameter) throws Throwable {
+            return returnFlow && registerTrack ? super.invoke(parameter) : doInvoke(parameter);
+        }
+
+        @Override
+        Object doInvoke(Object ignore) throws Throwable {
             final int size = childrenCommand.size();
             Object[] elementResult = new Object[size];
             for (int i = 0; i < size; i++) {
                 CommandImpl childCommand = childrenCommand.get(i);
-                boolean isFlowCommand = childCommand instanceof CommandFlow;
-                if (isFlowCommand) {
-                    ((CommandFlow) childCommand).suppressFlowMap(true);
-                }
-                elementResult[i] = childCommand.invokeWithChain(null);
-                if (isFlowCommand) {
-                    ((CommandFlow) childCommand).suppressFlowMap(false);
-                }
+                elementResult[i] = childCommand.invokeWithFlowMapSuppress(null);
             }
             Object result;
             if (returnFlow) {
@@ -1768,6 +1791,7 @@ public final class CarRetrofit {
 
         boolean stickyTrack;
         boolean stickyUseCache;
+        boolean returnFlow;
 
         boolean registerTrack;
         Flow<Object> trackingFlow;
@@ -1807,20 +1831,20 @@ public final class CarRetrofit {
 
         @Override
         @SuppressWarnings("unchecked")
-        public final Object invoke(Object parameter) throws Throwable {
+        public Object invoke(Object parameter) throws Throwable {
             if (registerTrack) {
                 if (trackingFlow == null) {
-                    trackingFlow = (Flow<Object>) invokeFlow();
+                    trackingFlow = (Flow<Object>) doInvoke(parameter);
                 }
                 Consumer<Object> consumer = (Consumer<Object>) parameter;
                 trackingFlow.addObserver(consumer);
                 return SKIP;
             } else {
-                return invokeFlow();
+                return doInvoke(parameter);
             }
         }
 
-        abstract Object invokeFlow() throws Throwable;
+        abstract Object doInvoke(Object parameter) throws Throwable;
     }
 
     private static class CommandTrack extends CommandFlow {
@@ -1887,7 +1911,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        Object invokeFlow() throws Throwable {
+        Object doInvoke(Object ignore) throws Throwable {
             Flow<CarPropertyValue<?>> flow = source.track(propertyId, area);
             Flow<?> result = flow;
             switch (type) {
@@ -1996,12 +2020,12 @@ public final class CarRetrofit {
         }
     }
 
-    private static class CommandDelegate extends CommandImpl {
+    private static class CommandDelegate extends CommandFlow {
         CommandImpl targetCommand;
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
-            return null;
+        void init(ApiRecord<?> record, Annotation annotation, Key key) {
+            super.init(record, annotation, key);
         }
 
         void setTargetCommand(CommandImpl targetCommand) {
@@ -2009,8 +2033,47 @@ public final class CarRetrofit {
         }
 
         @Override
+        Object doInvoke(Object parameter) throws Throwable {
+            Object obj = targetCommand.invokeWithFlowMapSuppress(parameter);
+            Object result;
+            if (obj instanceof MediatorFlow) {
+                MediatorFlow<?, Object> flow = (MediatorFlow<?, Object>) obj;
+                if (mapConverter != null) {
+                    flow.mediates(mapConverter);
+                }
+                result = flow;
+            } else if (obj instanceof Flow && mapConverter != null) {
+                result = new MediatorFlow<>((Flow<Object>)obj, mapConverter);
+            } else {
+                result = obj;
+            }
+            if (result == null || result == SKIP) {
+                return result;
+            }
+            if (mapFlowSuppressed) {
+                return result;
+            }
+            return resultConverter != null ? resultConverter.convert(result) : result;
+        }
+
+        @Override
+        public boolean fromApply() {
+            return targetCommand.fromApply();
+        }
+
+        @Override
+        public boolean fromInject() {
+            return targetCommand.fromInject();
+        }
+
+        @Override
         public CommandType type() {
-            return null;
+            return targetCommand.type();
+        }
+
+        @Override
+        CommandImpl delegateTarget() {
+            return targetCommand.delegateTarget();
         }
     }
 
@@ -2039,6 +2102,12 @@ public final class CarRetrofit {
             if (consumers.remove(consumer) && consumers.size() == 0) {
                 base.removeObserver(this);
             }
+        }
+
+        @SuppressWarnings("unchecked")
+        <TO2> void mediates(Function<TO, TO2> exceedMediator) {
+            this.mediator = mediator != null ? (Function<FROM, TO>)mediator.andThen(exceedMediator)
+                    : (Function<FROM, TO>) exceedMediator;
         }
 
         @Override
