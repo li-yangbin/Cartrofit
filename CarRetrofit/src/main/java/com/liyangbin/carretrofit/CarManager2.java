@@ -4,15 +4,14 @@ import android.car.hardware.CarPropertyConfig;
 import android.car.hardware.CarPropertyValue;
 import android.car.hardware.CarVendorExtensionManager;
 import android.car.hardware.property.CarPropertyManager;
-import android.util.SparseArray;
-
-import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+
+import androidx.annotation.Nullable;
 
 public class CarManager2 implements DataSource {
 

@@ -43,6 +43,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+@SuppressWarnings("unchecked")
 public final class CarRetrofit {
 
     private static final ConverterStore GLOBAL_CONVERTER = new ConverterStore(null);
@@ -535,7 +536,6 @@ public final class CarRetrofit {
         }
     }
 
-    @SuppressWarnings("unchecked")
     public <T> T from(Class<T> api) {
         ApiRecord<T> record = getApi(api, true);
         if (record.apiObj != null) {
@@ -566,7 +566,6 @@ public final class CarRetrofit {
         return getApi(api, false);
     }
 
-    @SuppressWarnings("unchecked")
     private <T> ApiRecord<T> getApi(Class<T> api, boolean throwIfNotDeclareCarApi) {
         synchronized (mApiCache) {
             ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
@@ -893,7 +892,7 @@ public final class CarRetrofit {
                 return null;
             }
             CommandCombine command = new CommandCombine();
-            List<String> elementList = Arrays.asList(combine.elements());
+            List<String> elementList = new ArrayList<>(Arrays.asList(combine.elements()));
             searchAndCreateChildCommand(record,
                     childKey -> {
                         if (childKey.equals(key)) {
@@ -1083,14 +1082,6 @@ public final class CarRetrofit {
         @Override
         public String getToken() {
             return delegateTarget().token;
-        }
-
-        private CommandFlow castAsCommandFlow() {
-            CommandImpl delegateTarget = delegateTarget();
-            if (delegateTarget instanceof CommandFlow) {
-                return (CommandFlow) delegateTarget;
-            }
-            return null;
         }
 
         @Override
@@ -1319,6 +1310,12 @@ public final class CarRetrofit {
         Class<?> functionClass;
 
         @Override
+        void addChildCommand(CommandImpl command) {
+            CommandImpl childCopy = command.shallowCopy();
+            childrenCommand.add(childCopy);
+        }
+
+        @Override
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
             super.init(record, annotation, key);
             Combine combine = (Combine) annotation;
@@ -1331,22 +1328,25 @@ public final class CarRetrofit {
             }
             resolveStickyType(combine.sticky());
 
-            ArrayList<CommandCombine> flowChildren = null;
+            ArrayList<CommandFlow> flowChildren = null;
             ArrayList<CommandImpl> otherChildren = null;
             for (int i = 0; i < childrenCommand.size(); i++) {
                 CommandImpl childCommand = childrenCommand.get(i);
                 if (childCommand instanceof CommandFlow) {
                     CommandFlow flowChild = (CommandFlow) childCommand;
                     returnFlow |= flowChild.returnFlow;
-                    if (flowChild.stickyType != StickyType.ON
-                            && flowChild.stickyType != StickyType.ON_NO_CACHE) {
-                        throw new CarRetrofitException("Child command:" + childCommand
-                                + " must declare to be sticky");
+                    flowChild.registerTrack = false;
+                    flowChild.mapFlowSuppressed = true;
+                    if (this.stickyType == StickyType.NO_SET
+                            || this.stickyType == StickyType.OFF) {
+                        flowChild.stickyType = StickyType.ON;
+                    } else {
+                        flowChild.stickyType = this.stickyType;
                     }
                     if (flowChildren == null) {
                         flowChildren = new ArrayList<>();
                     }
-                    flowChildren.add((CommandCombine) childCommand);
+                    flowChildren.add((CommandFlow) childCommand);
                 } else {
                     if (otherChildren == null) {
                         otherChildren = new ArrayList<>();
@@ -1425,7 +1425,6 @@ public final class CarRetrofit {
             }
         }
 
-        @SuppressWarnings("unchecked")
         private Object processResult(int effectIndex, Object[] elements) {
             try {
                 switch (elements.length) {
@@ -1578,10 +1577,10 @@ public final class CarRetrofit {
 
             private void notifyChangeLocked() {
                 if (consumers.size() > 0 && !notifyValueSuppressed) {
-                    ArrayList<Consumer<Object[]>> consumersClone
-                            = (ArrayList<Consumer<Object[]>>) consumers.clone();
+                    ArrayList<Consumer<CombineData>> consumersClone
+                            = (ArrayList<Consumer<CombineData>>) consumers.clone();
                     for (int i = 0; i < consumersClone.size(); i++) {
-                        consumersClone.get(i).accept(trackingData.trackingObj);
+                        consumersClone.get(i).accept(trackingData);
                     }
                 }
             }
@@ -1849,7 +1848,6 @@ public final class CarRetrofit {
             return false;
         }
 
-        @SuppressWarnings("unchecked")
         Converter<Object, ?> findMapConverter(Class<?> carType) {
             Class<?> userConcernClass = key.getUserConcernClass();
             if (userConcernClass != null) {
@@ -1861,7 +1859,6 @@ public final class CarRetrofit {
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public Object invoke(Object parameter) throws Throwable {
             if (returnFlow && registerTrack) {
                 if (trackingFlow == null) {
@@ -1903,6 +1900,7 @@ public final class CarRetrofit {
             Track track = (Track) annotation;
             propertyId = track.id();
             type = track.type();
+            this.annotation = annotation;
             if (type == CarType.CONFIG) {
                 throw new CarRetrofitException("Can not use type CONFIG mode in Track operation");
             }
@@ -2045,7 +2043,6 @@ public final class CarRetrofit {
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public Object invoke(Object parameter) throws Throwable {
             if (trackCommand.trackingFlow != null) {
                 trackCommand.trackingFlow.removeObserver((Consumer<Object>) parameter);
@@ -2061,6 +2058,32 @@ public final class CarRetrofit {
         @Override
         String toCommandString() {
             return "paired:" + trackCommand;
+        }
+    }
+
+    private static class CommandReceive extends CommandImpl {
+        CommandTrack tracker;
+        Consumer<Object> receiver;
+
+        CommandReceive(CommandTrack tracker, Consumer<Object> receiver) {
+            this.tracker = tracker;
+            this.receiver = receiver;
+        }
+
+        @Override
+        public Object invoke(Object parameter) throws Throwable {
+            receiver.accept(parameter);
+            return null;
+        }
+
+        @Override
+        CommandImpl delegateTarget() {
+            return tracker;
+        }
+
+        @Override
+        public CommandType type() {
+            return CommandType.RECEIVE;
         }
     }
 
@@ -2083,9 +2106,15 @@ public final class CarRetrofit {
                 targetFlowCommand.mapFlowSuppressed = true;
             }
             setCommand = targetCommand.type() == CommandType.SET;
+            resolveConverter();
+        }
+
+        private void resolveConverter() {
             if (setCommand) {
-                argConverter = (Converter<Object, ?>) ConverterStore.find(this,
-                        targetCommand.userDataClass, key.getSetClass(), store);
+                if (targetCommand.userDataClass != null) {
+                    argConverter = (Converter<Object, ?>) ConverterStore.find(this,
+                            targetCommand.userDataClass, userDataClass = key.getSetClass(), store);
+                }
             } else if (returnFlow) {
                 resultConverter = (Converter<Object, ?>) ConverterStore.find(this,
                         Flow.class, key.getTrackClass(), store);
@@ -2095,7 +2124,7 @@ public final class CarRetrofit {
             }
         }
 
-        void setTargetCommand(CommandImpl targetCommand) {
+       void setTargetCommand(CommandImpl targetCommand) {
             this.targetCommand = targetCommand.shallowCopy();
         }
 
@@ -2191,14 +2220,12 @@ public final class CarRetrofit {
             }
         }
 
-        @SuppressWarnings("unchecked")
         <TO2> void mediates(Function<TO, TO2> exceedMediator) {
             this.mediator = mediator != null ? (Function<FROM, TO>)mediator.andThen(exceedMediator)
                     : (Function<FROM, TO>) exceedMediator;
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public void accept(FROM value) {
             TO obj;
             if (mediator != null) {
@@ -2247,7 +2274,6 @@ public final class CarRetrofit {
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public synchronized T get() {
             T result;
             if (stickyUseCache && valueReceived) {
@@ -2271,7 +2297,6 @@ public final class CarRetrofit {
         TwoWayConverter<CarData, AppData> twoWayConverter;
         Converter<Object, ?> oneWayConverter;
 
-        @SuppressWarnings("unchecked")
         ConverterWrapper(Class<?> from, Class<?> to, Converter<?, ?> converter) {
             fromClass = from;
             toClass = to;

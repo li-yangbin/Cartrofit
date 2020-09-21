@@ -4,6 +4,7 @@ import com.liyangbin.carretrofit.annotation.Apply;
 import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.CarValue;
 import com.liyangbin.carretrofit.annotation.Combine;
+import com.liyangbin.carretrofit.annotation.Delegate;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
 import com.liyangbin.carretrofit.annotation.Set;
@@ -71,6 +72,9 @@ public interface TestCarApi {
 
     @Track(id = 0, sticky = StickyType.ON)
     Observable<Integer> trackIntReactive();
+
+    @Delegate(target = "trackStringAndCombine")
+    Observable<String> trackIntDelegate();
 
     @Track(id = 0, sticky = StickyType.ON)
     Observable<Boolean> trackBooleanReactive();

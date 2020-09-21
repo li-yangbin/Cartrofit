@@ -368,7 +368,7 @@ public class ExampleUnitTest {
     @AfterClass
     public static void end() {
         try {
-            Thread.sleep(10 * 1000);
+            Thread.sleep(20 * 1000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -536,6 +536,23 @@ public class ExampleUnitTest {
             @Override
             public void accept(String string) throws Exception {
                 print("combine receive:" + string);
+            }
+        });
+    }
+
+    @Test
+    public void combineDelegate() {
+
+//        api.trackStringAndCombine().subscribe(new Consumer<String>() {
+//            @Override
+//            public void accept(String string) throws Exception {
+//                print("combine receive:" + string);
+//            }
+//        });
+            api.trackIntDelegate().subscribe(new Consumer<String>() {
+            @Override
+            public void accept(String value) throws Exception {
+                print("delegate accept:" + value);
             }
         });
     }
