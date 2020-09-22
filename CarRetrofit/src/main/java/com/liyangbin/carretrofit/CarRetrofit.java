@@ -1482,6 +1482,7 @@ public final class CarRetrofit {
                                     return processResult(-1, data.trackingObj);
                                 });
                 }
+                flow = new FlowWrapper<>(flow, createCommandReceive());
                 if (mapFlowSuppressed) {
                     return flow;
                 }
@@ -1788,6 +1789,12 @@ public final class CarRetrofit {
             childrenCommand.add(command);
         }
 
+        CommandReceive createCommandReceive() {
+            CommandReceive receive = new CommandReceive(this);
+            receive.init(record, null, key);
+            return receive;
+        }
+
         @Override
         CommandFlow shallowCopy() {
             CommandFlow commandFlow = (CommandFlow) super.shallowCopy();
@@ -1997,6 +2004,7 @@ public final class CarRetrofit {
                     }
                 });
             }
+            result = new FlowWrapper<>(result, createCommandReceive());
             if (mapFlowSuppressed) {
                 return result;
             }
@@ -2062,23 +2070,22 @@ public final class CarRetrofit {
     }
 
     private static class CommandReceive extends CommandImpl {
-        CommandTrack tracker;
-        Consumer<Object> receiver;
+        CommandFlow commandFlow;
+        FlowWrapper<Object> flowWrapper;
 
-        CommandReceive(CommandTrack tracker, Consumer<Object> receiver) {
-            this.tracker = tracker;
-            this.receiver = receiver;
+        CommandReceive(CommandFlow commandFlow) {
+            this.commandFlow = commandFlow;
         }
 
         @Override
         public Object invoke(Object parameter) throws Throwable {
-            receiver.accept(parameter);
+            flowWrapper.superHandleResult(parameter);
             return null;
         }
 
         @Override
         CommandImpl delegateTarget() {
-            return tracker;
+            return commandFlow;
         }
 
         @Override
@@ -2152,14 +2159,8 @@ public final class CarRetrofit {
         Object doInvoke() throws Throwable {
             Object obj = targetCommand.invokeWithChain(null);
             Object result;
-            if (obj instanceof MediatorFlow) {
-                MediatorFlow<?, Object> flow = (MediatorFlow<?, Object>) obj;
-                if (mapConverter != null) {
-                    flow.mediates(mapConverter);
-                }
-                result = flow;
-            } else if (obj instanceof Flow) {
-                throw new IllegalStateException("impossible obj:" + obj + " this:" + this);
+            if (obj instanceof Flow) {
+                result = new FlowWrapper<>((Flow<Object>) obj, mapConverter, createCommandReceive());
             } else {
                 result = obj;
             }
@@ -2198,6 +2199,7 @@ public final class CarRetrofit {
         private Flow<FROM> base;
         Function<FROM, TO> mediator;
         private ArrayList<Consumer<TO>> consumers = new ArrayList<>();
+        private InterceptorChain receiveChain;
 
         private MediatorFlow(Flow<FROM> base,
                              Function<FROM, TO> mediator) {
@@ -2236,17 +2238,44 @@ public final class CarRetrofit {
             handleResult(obj);
         }
 
-        synchronized void handleResult(TO to) {
-            if (consumers.size() > 0) {
-                ArrayList<Consumer<TO>> shallowCopy = (ArrayList<Consumer<TO>>) consumers.clone();
-                for (int i = 0; i < shallowCopy.size(); i++) {
-                    shallowCopy.get(i).accept(to);
+        void handleResult(TO to) {
+            synchronized (this) {
+                for (int i = 0; i < consumers.size(); i++) {
+                    consumers.get(i).accept(to);
                 }
             }
         }
     }
 
-    private static class StickyFlowImpl<T> extends MediatorFlow<T, T> implements StickyFlow<T> {
+    private static class FlowWrapper<T> extends MediatorFlow<T, T> {
+
+        CommandReceive commandReceive;
+
+        private FlowWrapper(Flow<T> base, CommandReceive command) {
+            this(base, null, command);
+        }
+
+        private FlowWrapper(Flow<T> base, Function<?, ?> function, CommandReceive command) {
+            super(base, (Function<T, T>) function);
+            this.commandReceive = command;
+            command.flowWrapper = (FlowWrapper<Object>) this;
+        }
+
+        @Override
+        void handleResult(T t) {
+            try {
+                commandReceive.invokeWithChain(t);
+            } catch (Throwable throwable) {
+                throw new RuntimeException(throwable);
+            }
+        }
+
+        void superHandleResult(T t) {
+            super.handleResult(t);
+        }
+    }
+
+    private static class StickyFlowImpl<T> extends FlowWrapper<T> implements StickyFlow<T> {
         private T lastValue;
         private boolean valueReceived;
         private boolean stickyUseCache;
