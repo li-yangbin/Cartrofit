@@ -78,6 +78,11 @@ public final class CarRetrofit {
         RxJavaConverter.addSupport();
         ObservableConverter.addSupport();
         LiveDataConverter.addSupport();
+
+        try {
+            Class.forName("com.liyangbin.carretrofit.Id");
+        } catch (ClassNotFoundException ignore) {
+        }
     }
 
     private CarRetrofit(Builder builder) {

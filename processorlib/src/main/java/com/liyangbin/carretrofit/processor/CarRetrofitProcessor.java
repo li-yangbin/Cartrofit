@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.io.Writer;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -38,22 +37,25 @@ import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 
-import static javax.lang.model.element.Modifier.STATIC;
 import static javax.lang.model.element.Modifier.ABSTRACT;
 import static javax.lang.model.element.Modifier.FINAL;
 import static javax.lang.model.element.Modifier.PRIVATE;
 import static javax.lang.model.element.Modifier.PUBLIC;
+import static javax.lang.model.element.Modifier.STATIC;
 
 @SupportedAnnotationTypes({CarRetrofitProcessor.TARGET, CarRetrofitProcessor.TARGET_CAR_API})
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class CarRetrofitProcessor extends AbstractProcessor {
-    static final String TARGET = "com.liyangbin.carretrofit.annotation.ProcessSuper";
+    static final String PACKAGE_NAME = "com.liyangbin.carretrofit";
+    static final String TARGET = PACKAGE_NAME + ".annotation.ProcessSuper";
     static final String IMPLEMENT_CLASS_NAME = "implementClass";
     static final String CLASS_NAME = "className";
     static final String SUPER_NAME = "superClass";
     static final String SUPER_CONSTRUCTOR = "superConstructor";
 
-    static final String TARGET_CAR_API = "com.liyangbin.carretrofit.annotation.CarApi";
+    static final String TARGET_CAR_API = PACKAGE_NAME + ".annotation.CarApi";
+
+    private TypeSpec.Builder mIdMapperBuilder;
 
     @Override
     public boolean process(Set<? extends TypeElement> set, RoundEnvironment roundEnvironment) {
@@ -79,27 +81,32 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                 }
             }
         }
+        generateIdMapper();
         return true;
     }
 
     private void processCarApiClass(TypeElement element) {
-        PackageElement packageElement = (PackageElement) element.getEnclosingElement();
-        String packageName = packageElement.getQualifiedName().toString();
+        if (mIdMapperBuilder == null) {
+            ClassName indexClassName = ClassName.get(PACKAGE_NAME, "Id");
+            mIdMapperBuilder = TypeSpec.classBuilder(indexClassName)
+                    .addModifiers(PUBLIC, FINAL);
+        }
         String apiClassSimpleName = element.getSimpleName().toString();
-        ClassName indexClassName = ClassName.get(packageName, apiClassSimpleName + "Id");
+        ClassName indexClassName = ClassName.get(PACKAGE_NAME, apiClassSimpleName);
         TypeSpec.Builder indexClassBuilder = TypeSpec.classBuilder(indexClassName)
-                .addModifiers(PUBLIC, FINAL);
+                .addModifiers(PUBLIC, FINAL, STATIC);
+
         final int baseScopeId = getScopeBaseId(element.getQualifiedName().toString());
 
         ArrayList<ExecutableElement> apiInterface = new ArrayList<>();
         resolveExecutableElement(element, apiInterface, ElementKind.METHOD);
 
-        HashMap<String, Integer> indexMap = new HashMap<>();
+        HashMap<String, String> indexMap = new HashMap<>();
         for (int i = 0; i < apiInterface.size(); i++) {
             ExecutableElement childElement = apiInterface.get(i);
             String name = childElement.getSimpleName().toString();
             int index = baseScopeId | i;
-            indexMap.put(name, index);
+            indexMap.put(name, apiClassSimpleName + "." + name);
             indexClassBuilder.addField(FieldSpec
                     .builder(TypeName.INT, name, STATIC, FINAL, PUBLIC)
                     .initializer("" + index)
@@ -107,20 +114,18 @@ public class CarRetrofitProcessor extends AbstractProcessor {
         }
 
         CodeBlock.Builder staticBlockBuilder = CodeBlock.builder();
-        staticBlockBuilder.addStatement("final $T[] methods = " + apiClassSimpleName
-                + ".class.getDeclaredMethods()", ClassName.get(Method.class))
+        staticBlockBuilder.addStatement("final $T[] methods = $T.class.getDeclaredMethods()",
+                ClassName.get(Method.class), indexClassName)
                 .beginControlFlow("for (Method method : methods)")
                 .addStatement("String methodName = method.getName()");
         boolean firstTime = true;
-        for (Map.Entry<String, Integer> entry : indexMap.entrySet()) {
+        for (Map.Entry<String, String> entry : indexMap.entrySet()) {
             String judgement = "if (methodName.equals($S))";
             String name = entry.getKey();
             if (firstTime) {
-                staticBlockBuilder
-                        .beginControlFlow(judgement, name);
+                staticBlockBuilder.beginControlFlow(judgement, name);
             } else {
-                staticBlockBuilder
-                        .nextControlFlow(judgement, name);
+                staticBlockBuilder.nextControlFlow("else " + judgement, name);
             }
             firstTime = false;
             staticBlockBuilder.addStatement("CarRetrofit.putIndexedMethod($L, method)",
@@ -130,15 +135,22 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             staticBlockBuilder.endControlFlow();
         }
         staticBlockBuilder.endControlFlow();
-        indexClassBuilder.addStaticBlock(staticBlockBuilder.build());
 
-        try (Writer writer = processingEnv.getFiler()
-                .createSourceFile(indexClassName.reflectionName())
-                .openWriter()) {
-            JavaFile.builder(packageName, indexClassBuilder.build()).build()
-                    .writeTo(writer);
-        } catch (IOException e) {
-            e.printStackTrace();
+        mIdMapperBuilder.addType(indexClassBuilder.build());
+        mIdMapperBuilder.addStaticBlock(staticBlockBuilder.build());
+    }
+
+    private void generateIdMapper() {
+        if (mIdMapperBuilder != null) {
+            try (Writer writer = processingEnv.getFiler()
+                    .createSourceFile(PACKAGE_NAME + ".Id")
+                    .openWriter()) {
+                JavaFile.builder(PACKAGE_NAME, mIdMapperBuilder.build()).build()
+                        .writeTo(writer);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            mIdMapperBuilder = null;
         }
     }
 
@@ -271,11 +283,12 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             implClassBuilder.addMethod(MethodSpec.methodBuilder(methodName)
                     .returns(name)
                     .addModifiers(PRIVATE, Modifier.FINAL)
-                    .beginControlFlow("if (" + fieldName + " == null)")
-                    .addStatement(fieldName + " = CarRetrofit.fromDefault("
-                            + targetInterfaceList.get(i).getSimpleName() + ".class)")
+                    .beginControlFlow("if ($L == null)", fieldName)
+                    .addStatement(fieldName + " = $T.fromDefault("
+                            + targetInterfaceList.get(i).getSimpleName() + ".class)",
+                            ClassName.get(PACKAGE_NAME, "CarRetrofit"))
                     .endControlFlow()
-                    .addStatement("return " + fieldName)
+                    .addStatement("return $L", fieldName)
                     .build());
         }
 

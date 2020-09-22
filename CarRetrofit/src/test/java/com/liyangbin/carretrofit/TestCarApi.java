@@ -25,7 +25,7 @@ public interface TestCarApi {
 //        return obj;
 //    };
 
-    @Get(id = TestId.getIntSignal)
+    @Get(id = 0)
     int getIntSignal();
 
     @Set(id = 0)
