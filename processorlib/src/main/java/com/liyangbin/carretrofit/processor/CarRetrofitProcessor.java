@@ -1,6 +1,8 @@
 package com.liyangbin.carretrofit.processor;
 
 import com.squareup.javapoet.ClassName;
+import com.squareup.javapoet.CodeBlock;
+import com.squareup.javapoet.FieldSpec;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.TypeName;
@@ -8,7 +10,11 @@ import com.squareup.javapoet.TypeSpec;
 
 import java.io.IOException;
 import java.io.Writer;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,11 +38,13 @@ import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 
+import static javax.lang.model.element.Modifier.STATIC;
 import static javax.lang.model.element.Modifier.ABSTRACT;
+import static javax.lang.model.element.Modifier.FINAL;
 import static javax.lang.model.element.Modifier.PRIVATE;
 import static javax.lang.model.element.Modifier.PUBLIC;
 
-@SupportedAnnotationTypes(CarRetrofitProcessor.TARGET)
+@SupportedAnnotationTypes({CarRetrofitProcessor.TARGET, CarRetrofitProcessor.TARGET_CAR_API})
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class CarRetrofitProcessor extends AbstractProcessor {
     static final String TARGET = "com.liyangbin.carretrofit.annotation.ProcessSuper";
@@ -45,6 +53,8 @@ public class CarRetrofitProcessor extends AbstractProcessor {
     static final String SUPER_NAME = "superClass";
     static final String SUPER_CONSTRUCTOR = "superConstructor";
 
+    static final String TARGET_CAR_API = "com.liyangbin.carretrofit.annotation.CarApi";
+
     @Override
     public boolean process(Set<? extends TypeElement> set, RoundEnvironment roundEnvironment) {
         Set<? extends Element> elements = roundEnvironment.getRootElements();
@@ -52,20 +62,93 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             return false;
         }
         for (Element element : elements) {
-            if (element.getKind() != ElementKind.CLASS) {
-                continue;
-            }
-            List<? extends AnnotationMirror> list = element.getAnnotationMirrors();
-            for (int i = 0; i < list.size(); i++) {
-                DeclaredType annotationElement = list.get(i).getAnnotationType();
-                if (TARGET.equals(annotationElement.toString())) {
-                    logI("process element:" + element);
-                    processClass((TypeElement) element);
-                    break;
+            if (element.getKind() == ElementKind.CLASS || element.getKind() == ElementKind.INTERFACE) {
+                List<? extends AnnotationMirror> list = element.getAnnotationMirrors();
+                for (int i = 0; i < list.size(); i++) {
+                    DeclaredType annotationElement = list.get(i).getAnnotationType();
+                    String annotationName = annotationElement.toString();
+                    if (TARGET.equals(annotationName)) {
+                        logI("process super element:" + element);
+                        processClass((TypeElement) element);
+                        break;
+                    } else if (TARGET_CAR_API.equals(annotationName)) {
+                        logI("process Car Api element:" + element);
+                        processCarApiClass((TypeElement) element);
+                        break;
+                    }
                 }
             }
         }
         return true;
+    }
+
+    private void processCarApiClass(TypeElement element) {
+        PackageElement packageElement = (PackageElement) element.getEnclosingElement();
+        String packageName = packageElement.getQualifiedName().toString();
+        String apiClassSimpleName = element.getSimpleName().toString();
+        ClassName indexClassName = ClassName.get(packageName, apiClassSimpleName + "Id");
+        TypeSpec.Builder indexClassBuilder = TypeSpec.classBuilder(indexClassName)
+                .addModifiers(PUBLIC, FINAL);
+        final int baseScopeId = getScopeBaseId(element.getQualifiedName().toString());
+
+        ArrayList<ExecutableElement> apiInterface = new ArrayList<>();
+        resolveExecutableElement(element, apiInterface, ElementKind.METHOD);
+
+        HashMap<String, Integer> indexMap = new HashMap<>();
+        for (int i = 0; i < apiInterface.size(); i++) {
+            ExecutableElement childElement = apiInterface.get(i);
+            String name = childElement.getSimpleName().toString();
+            int index = baseScopeId | i;
+            indexMap.put(name, index);
+            indexClassBuilder.addField(FieldSpec
+                    .builder(TypeName.INT, name, STATIC, FINAL, PUBLIC)
+                    .initializer("" + index)
+                    .build());
+        }
+
+        CodeBlock.Builder staticBlockBuilder = CodeBlock.builder();
+        staticBlockBuilder.addStatement("final $T[] methods = " + apiClassSimpleName
+                + ".class.getDeclaredMethods()", ClassName.get(Method.class))
+                .beginControlFlow("for (Method method : methods)")
+                .addStatement("String methodName = method.getName()");
+        boolean firstTime = true;
+        for (Map.Entry<String, Integer> entry : indexMap.entrySet()) {
+            String judgement = "if (methodName.equals($S))";
+            String name = entry.getKey();
+            if (firstTime) {
+                staticBlockBuilder
+                        .beginControlFlow(judgement, name);
+            } else {
+                staticBlockBuilder
+                        .nextControlFlow(judgement, name);
+            }
+            firstTime = false;
+            staticBlockBuilder.addStatement("CarRetrofit.putIndexedMethod($L, method)",
+                    entry.getValue());
+        }
+        if (!firstTime) {
+            staticBlockBuilder.endControlFlow();
+        }
+        staticBlockBuilder.endControlFlow();
+        indexClassBuilder.addStaticBlock(staticBlockBuilder.build());
+
+        try (Writer writer = processingEnv.getFiler()
+                .createSourceFile(indexClassName.reflectionName())
+                .openWriter()) {
+            JavaFile.builder(packageName, indexClassBuilder.build()).build()
+                    .writeTo(writer);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private int getScopeBaseId(String input) {
+        byte[] encode = Base64.getEncoder().encode(input.getBytes());
+        int result = 0;
+        for (byte b : encode) {
+            result += b;
+        }
+        return result << 4;
     }
 
     private void logI(String msg) {
@@ -80,12 +163,13 @@ public class CarRetrofitProcessor extends AbstractProcessor {
         processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, msg);
     }
 
-    private void resolveExecutableElement(TypeElement element, ArrayList<ExecutableElement> elements) {
+    private void resolveExecutableElement(TypeElement element, ArrayList<ExecutableElement> elements,
+                                          ElementKind targetKind) {
         List<? extends Element> enclosedElements = element.getEnclosedElements();
         for (int i = 0; i < enclosedElements.size(); i++) {
             Element elementMember = enclosedElements.get(i);
             ElementKind kind = elementMember.getKind();
-            if (kind == ElementKind.METHOD) {
+            if (kind == targetKind) {
                 elements.add((ExecutableElement) elementMember);
             }
         }
@@ -199,11 +283,11 @@ public class CarRetrofitProcessor extends AbstractProcessor {
         for (int i = 0; i < targetInterfaceList.size(); i++) {
             TypeElement targetInterface = targetInterfaceList.get(i);
             ArrayList<ExecutableElement> executableElements = new ArrayList<>();
-            resolveExecutableElement(targetInterface, executableElements);
+            resolveExecutableElement(targetInterface, executableElements, ElementKind.METHOD);
             List<? extends TypeMirror> interfaceList = targetInterface.getInterfaces();
             for (int j = 0; j < interfaceList.size(); j++) {
                 DeclaredType mirror = (DeclaredType) interfaceList.get(j);
-                resolveExecutableElement((TypeElement) mirror.asElement(), executableElements);
+                resolveExecutableElement((TypeElement) mirror.asElement(), executableElements, ElementKind.METHOD);
             }
 
             // declare these methods

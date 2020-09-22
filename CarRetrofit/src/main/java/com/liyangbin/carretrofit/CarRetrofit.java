@@ -64,6 +64,7 @@ public final class CarRetrofit {
             | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE
             |FLAG_PARSE_DELEGATE;
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
+    private static final HashMap<Integer, Method> INDEXED_METHOD_MAP = new HashMap<>();
 
     private HashMap<String, DataSource> mDataMap;
     private ConverterStore mConverterStore;
@@ -534,6 +535,10 @@ public final class CarRetrofit {
         for (Converter<?, ?> converter : converters) {
             GLOBAL_CONVERTER.addConverter(converter);
         }
+    }
+
+    public static void putIndexedMethod(int index, Method method) {
+        INDEXED_METHOD_MAP.put(index, method);
     }
 
     public <T> T from(Class<T> api) {
