@@ -10,6 +10,7 @@ import com.liyangbin.carretrofit.annotation.ConsiderSuper;
 import com.liyangbin.carretrofit.annotation.Delegate;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
+import com.liyangbin.carretrofit.annotation.Intercept;
 import com.liyangbin.carretrofit.annotation.Set;
 import com.liyangbin.carretrofit.annotation.Track;
 import com.liyangbin.carretrofit.annotation.UnTrack;
@@ -64,7 +65,6 @@ public final class CarRetrofit {
             | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE
             |FLAG_PARSE_DELEGATE;
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
-    private static final HashMap<Integer, Method> INDEXED_METHOD_MAP = new HashMap<>();
 
     private HashMap<String, DataSource> mDataMap;
     private ConverterStore mConverterStore;
@@ -78,11 +78,6 @@ public final class CarRetrofit {
         RxJavaConverter.addSupport();
         ObservableConverter.addSupport();
         LiveDataConverter.addSupport();
-
-        try {
-            Class.forName("com.liyangbin.carretrofit.Id");
-        } catch (ClassNotFoundException ignore) {
-        }
     }
 
     private CarRetrofit(Builder builder) {
@@ -126,7 +121,7 @@ public final class CarRetrofit {
     }
 
     public static CarRetrofit getDefault() {
-        return Objects.requireNonNull(sDefault);
+        return sDefault;
     }
 
     public static <T> T fromDefault(Class<T> api) {
@@ -164,6 +159,10 @@ public final class CarRetrofit {
         ArrayList<Key> childrenKey;
         ArrayList<ApiRecord<?>> parentApi;
 
+        HashMap<Integer, Method> selfDependency = new HashMap<>();
+        HashMap<Integer, Method> dependency;
+        HashMap<Method, InterceptorChain> methodBuildInInterceptor;
+
         ApiRecord(Class<T> clazz) {
             this.clazz = clazz;
             CarApi carApi = Objects.requireNonNull(clazz.getAnnotation(CarApi.class));
@@ -175,8 +174,38 @@ public final class CarRetrofit {
             }
 
             try {
+                Class<?> selfScopeClass = Class.forName(clazz.getName() + ".Id");
+                importDependency(selfScopeClass, selfDependency);
+            } catch (ClassNotFoundException ignore) {
+            }
+
+            Class<?>[] dependencyClasses = carApi.dependency();
+            if (dependencyClasses.length > 0) {
+                dependency = new HashMap<>();
+                for (Class<?> dependencyClass : dependencyClasses) {
+                    importDependency(dependencyClass, dependency);
+                }
+            }
+
+            try {
                 Field[] fields = clazz.getDeclaredFields();
                 for (Field selfField : fields) {
+                    Intercept intercept = selfField.getAnnotation(Intercept.class);
+                    if (intercept != null) {
+                        Interceptor interceptor = (Interceptor) selfField.get(null);
+                        if (intercept.value().length > 0) {
+                            for (int id : intercept.value()) {
+                                Method method = selfDependency.get(id);
+                                if (method != null) {
+                                    saveInterceptor(method, interceptor);
+                                }
+                            }
+                        } else if (intercept.category().length > 0) {
+
+                        } else {
+                            apiSelfInterceptorList.add((Interceptor) selfField.get(null));
+                        }
+                    }
                     if (Modifier.isStatic(selfField.getModifiers())) {
                         String name = selfField.getName();
                         if (name.startsWith(INTERCEPTOR_PREFIX)) {
@@ -208,8 +237,28 @@ public final class CarRetrofit {
                 converterStore = mConverterStore;
             }
 
-            this.source = Objects.requireNonNull(mDataMap.get(dataScope), "Invalid scope:"
-                    + dataScope + " make sure use a valid scope registered in Builder().addDataSource()");
+            this.source = Objects.requireNonNull(mDataMap.get(dataScope),
+                    "Invalid scope:" + dataScope +
+                    " make sure use a valid scope registered in Builder().addDataSource()");
+        }
+
+        void importDependency(Class<?> target, HashMap<Integer, Method> map) {
+            try {
+                Method method = target.getDeclaredMethod("init", HashMap.class);
+                method.invoke(null, map);
+            } catch (ReflectiveOperationException e) {
+                e.printStackTrace();
+            }
+        }
+
+        void saveInterceptor(Method method, Interceptor interceptor) {
+            InterceptorChain chain = methodBuildInInterceptor.get(method);
+            if (chain != null) {
+                chain = new InterceptorChain(chain, interceptor);
+            } else {
+                chain = new InterceptorChain(mChainHead, interceptor);
+            }
+            methodBuildInInterceptor.put(method, chain);
         }
 
         ArrayList<Key> getChildKey() {
@@ -540,10 +589,6 @@ public final class CarRetrofit {
         for (Converter<?, ?> converter : converters) {
             GLOBAL_CONVERTER.addConverter(converter);
         }
-    }
-
-    public static void putIndexedMethod(int index, Method method) {
-        INDEXED_METHOD_MAP.put(index, method);
     }
 
     public <T> T from(Class<T> api) {

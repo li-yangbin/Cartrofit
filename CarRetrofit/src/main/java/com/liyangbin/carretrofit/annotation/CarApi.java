@@ -21,5 +21,7 @@ public @interface CarApi {
 
     int area() default DEFAULT_AREA_ID;
 
+    Class<?>[] dependency() default {};
+
     StickyType defaultSticky() default StickyType.NO_SET;
 }

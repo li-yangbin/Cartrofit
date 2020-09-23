@@ -29,17 +29,14 @@ android {
 }
 
 dependencies {
-    implementation fileTree(dir: "libs", include: ["*.jar"])
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation files('libs/android.car.jar')
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'androidx.test.ext:junit:1.1.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
-
     testImplementation 'io.reactivex.rxjava2:rxjava:2.2.9'
     compileOnly 'io.reactivex.rxjava2:rxjava:2.2.9'
-
     testImplementation 'androidx.lifecycle:lifecycle-livedata:2.0.0'
     compileOnly 'androidx.lifecycle:lifecycle-livedata:2.0.0'
-
     annotationProcessor project(':processorlib')
 }
