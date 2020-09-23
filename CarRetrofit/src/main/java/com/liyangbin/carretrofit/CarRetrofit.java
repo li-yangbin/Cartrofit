@@ -1491,8 +1491,10 @@ public final class CarRetrofit {
                                     CombineData data = combineFlow.get();
                                     return processResult(-1, data.trackingObj);
                                 });
+                    ((StickyFlowImpl<?>)flow).addCommandReceiver(createCommandReceive());
+                } else {
+                    flow = new FlowWrapper<>(flow, createCommandReceive());
                 }
-                flow = new FlowWrapper<>(flow, createCommandReceive());
                 if (mapFlowSuppressed) {
                     return flow;
                 }
@@ -2013,8 +2015,10 @@ public final class CarRetrofit {
                         throw new CarRetrofitException(throwable);
                     }
                 });
+                ((StickyFlowImpl<?>)result).addCommandReceiver(createCommandReceive());
+            } else {
+                result = new FlowWrapper<>(result, createCommandReceive());
             }
-            result = new FlowWrapper<>(result, createCommandReceive());
             if (mapFlowSuppressed) {
                 return result;
             }
@@ -2089,7 +2093,7 @@ public final class CarRetrofit {
 
         @Override
         public Object invoke(Object parameter) throws Throwable {
-            flowWrapper.superHandleResult(parameter);
+            flowWrapper.superHandleResult(this, parameter);
             return null;
         }
 
@@ -2169,8 +2173,13 @@ public final class CarRetrofit {
         Object doInvoke() throws Throwable {
             Object obj = targetCommand.invokeWithChain(null);
             Object result;
-            if (obj instanceof Flow) {
-                result = new FlowWrapper<>((Flow<Object>) obj, mapConverter, createCommandReceive());
+            if (obj instanceof FlowWrapper) {
+                FlowWrapper<Object> flowWrapper = (FlowWrapper<Object>) obj;
+                if (mapConverter != null) {
+                    flowWrapper.addMediator((Function<Object, Object>) mapConverter);
+                }
+                flowWrapper.addCommandReceiver(createCommandReceive());
+                result = flowWrapper;
             } else {
                 result = obj;
             }
@@ -2209,7 +2218,6 @@ public final class CarRetrofit {
         private Flow<FROM> base;
         Function<FROM, TO> mediator;
         private ArrayList<Consumer<TO>> consumers = new ArrayList<>();
-        private InterceptorChain receiveChain;
 
         private MediatorFlow(Flow<FROM> base,
                              Function<FROM, TO> mediator) {
@@ -2232,9 +2240,9 @@ public final class CarRetrofit {
             }
         }
 
-        <TO2> void mediates(Function<TO, TO2> exceedMediator) {
-            this.mediator = mediator != null ? (Function<FROM, TO>)mediator.andThen(exceedMediator)
-                    : (Function<FROM, TO>) exceedMediator;
+        void addMediator(Function<TO, TO> mediator) {
+            this.mediator = this.mediator != null ? this.mediator.andThen(mediator)
+                    : (Function<FROM, TO>) mediator;
         }
 
         @Override
@@ -2259,7 +2267,7 @@ public final class CarRetrofit {
 
     private static class FlowWrapper<T> extends MediatorFlow<T, T> {
 
-        CommandReceive commandReceive;
+        ArrayList<CommandReceive> receiverList = new ArrayList<>();
 
         private FlowWrapper(Flow<T> base, CommandReceive command) {
             this(base, null, command);
@@ -2267,20 +2275,45 @@ public final class CarRetrofit {
 
         private FlowWrapper(Flow<T> base, Function<?, ?> function, CommandReceive command) {
             super(base, (Function<T, T>) function);
-            this.commandReceive = command;
+            receiverList.add(command);
             command.flowWrapper = (FlowWrapper<Object>) this;
+        }
+
+        void addCommandReceiver(CommandReceive receiver) {
+            receiverList.add(receiver);
         }
 
         @Override
         void handleResult(T t) {
-            try {
-                commandReceive.invokeWithChain(t);
-            } catch (Throwable throwable) {
-                throw new RuntimeException(throwable);
+            if (receiverList.size() == 0) {
+                super.handleResult(t);
+            } else {
+                try {
+                    receiverList.get(0).invokeWithChain(t);
+                } catch (Throwable throwable) {
+                    throw new RuntimeException(throwable);
+                }
             }
         }
 
-        void superHandleResult(T t) {
+        void superHandleResult(CommandReceive receiver, T t) {
+            CommandReceive nextReceiver = null;
+            synchronized (this) {
+                for (int i = 0; i < receiverList.size() - 1; i++) {
+                    if (receiverList.get(i) == receiver) {
+                        nextReceiver = receiverList.get(i + 1);
+                        break;
+                    }
+                }
+            }
+            if (nextReceiver != null) {
+                try {
+                    nextReceiver.invokeWithChain(t);
+                } catch (Throwable throwable) {
+                    throw new RuntimeException(throwable);
+                }
+                return;
+            }
             super.handleResult(t);
         }
     }
@@ -2304,26 +2337,36 @@ public final class CarRetrofit {
         }
 
         @Override
-        synchronized void handleResult(T value) {
-            if (this.stickyUseCache) {
-                valueReceived = true;
-                lastValue = value;
+        void handleResult(T value) {
+            synchronized (this) {
+                if (this.stickyUseCache) {
+                    valueReceived = true;
+                    lastValue = value;
+                }
             }
             super.handleResult(value);
         }
 
         @Override
-        public synchronized T get() {
-            T result;
-            if (stickyUseCache && valueReceived) {
-                result = lastValue;
-            } else {
+        public T get() {
+            T result = null;
+            boolean fetchFirstData = false;
+            synchronized (this) {
+                if (stickyUseCache && valueReceived) {
+                    result = lastValue;
+                } else {
+                    fetchFirstData = true;
+                }
+            }
+            if (fetchFirstData) {
                 T t = (T) stickyGet.get();
                 result = mediator != null ? mediator.apply(t) : t;
             }
-            if (stickyUseCache && !valueReceived) {
-                valueReceived = true;
-                lastValue = result;
+            synchronized (this) {
+                if (stickyUseCache && !valueReceived) {
+                    valueReceived = true;
+                    lastValue = result;
+                }
             }
             return result;
         }
