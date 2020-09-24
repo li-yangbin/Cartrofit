@@ -38,6 +38,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -81,7 +82,7 @@ public final class CarRetrofit {
     }
 
     private CarRetrofit(Builder builder) {
-        mConverterStore = new ConverterStore("scope:" + this);
+        mConverterStore = new ConverterStore();
         mConverterStore.addParent(GLOBAL_CONVERTER);
         mDataMap = builder.dataMap;
         mDefaultStickyType = builder.stickyType;
@@ -147,26 +148,18 @@ public final class CarRetrofit {
         int apiArea;
         T apiObj;
         StickyType stickyType;
-
-//        ArrayList<Interceptor> apiSelfInterceptorList = new ArrayList<>();
-//        ArrayList<Converter<?, ?>> apiSelfConverterList = new ArrayList<>();
-
         DataSource source;
-        InterceptorChain interceptorChain;
-        ConverterStore converterStore;
 
         ArrayList<Key> childrenKey;
         ArrayList<ApiRecord<?>> parentApi;
 
         HashMap<Integer, Method> selfDependency = new HashMap<>();
-        HashMap<Integer, Field> selfInterceptorDependency = new HashMap<>();
-        HashMap<Integer, Field> selfConverterDependency = new HashMap<>();
+        HashMap<Integer, InterceptorRecord> selfInterceptorDependency = new HashMap<>();
+        HashMap<String, InterceptorChain> selfInterceptorDependencyByCategory = new HashMap<>();
+        HashMap<Integer, ConverterRecord> selfConverterDependency = new HashMap<>();
+        HashMap<String, ConverterRecord> selfConverterDependencyByCategory = new HashMap<>();
 
         HashMap<Integer, Method> dependency = new HashMap<>();
-        HashMap<Method, InterceptorChain> methodBuildInInterceptor;
-
-//        HashMap<Key, InterceptorChain> interceptorCache = new HashMap<>();
-//        HashMap<Key, ConverterStore> converterCache = new HashMap<>();
 
         ApiRecord(Class<T> clazz) {
             this.clazz = clazz;
@@ -196,103 +189,124 @@ public final class CarRetrofit {
                 }
             }
 
-//            try {
-//                Field[] fields = clazz.getDeclaredFields();
-//                for (Field selfField : fields) {
-//                    Intercept intercept = selfField.getAnnotation(Intercept.class);
-//                    if (intercept != null) {
-//                        Interceptor interceptor = (Interceptor) selfField.get(null);
-//                        if (intercept.value().length > 0) {
-//                            for (int id : intercept.value()) {
-//                                Method method = selfDependency.get(id);
-//                                if (method != null) {
-//                                    saveInterceptor(method, interceptor);
-//                                }
-//                            }
-//                        } else if (intercept.category().length > 0) {
-//
-//                        } else {
-//                            apiSelfInterceptorList.add((Interceptor) selfField.get(null));
-//                        }
-//                    }
-//                    if (Modifier.isStatic(selfField.getModifiers())) {
-//                        String name = selfField.getName();
-//                        if (name.startsWith(INTERCEPTOR_PREFIX)) {
-//                            apiSelfInterceptorList.add((Interceptor) selfField.get(null));
-//                        } else if (name.startsWith(CONVERTER_PREFIX)) {
-//                            apiSelfConverterList.add((Converter<?, ?>) selfField.get(null));
-//                        }
-//                    }
-//                }
-//            } catch (ReflectiveOperationException e) {
-//                e.printStackTrace();
-//            }
-
-//            interceptorChain = mChainHead;
-//            if (apiSelfInterceptorList.size() > 0) {
-//                for (int i = 0; i < apiSelfInterceptorList.size(); i++) {
-//                    interceptorChain = new InterceptorChain(interceptorChain,
-//                            apiSelfInterceptorList.get(i));
-//                }
-//            }
-//
-//            if (apiSelfConverterList.size() > 0) {
-//                converterStore = new ConverterStore("api:" + clazz);
-//                for (int i = 0; i < apiSelfConverterList.size(); i++) {
-//                    converterStore.addConverter(apiSelfConverterList.get(i));
-//                }
-//                converterStore.addParent(mConverterStore);
-//            } else {
-//                converterStore = mConverterStore;
-//            }
+            reorderAndProcessCategory();
 
             this.source = Objects.requireNonNull(mDataMap.get(dataScope),
                     "Invalid scope:" + dataScope +
                     " make sure use a valid scope registered in Builder().addDataSource()");
         }
 
-        InterceptorChain getInterceptorByKey(Key key, boolean includingParent) {
-            Intercept intercept = key.method != null ?
-                    key.method.getDeclaredAnnotation(Intercept.class) :
-                    key.field.getDeclaredAnnotation(Intercept.class);
-            InterceptorChain head = includingParent ? mChainHead : null;
-            if (intercept != null) {
-                for (int interceptorId : intercept.value()) {
-                    Field interceptorField = selfInterceptorDependency.get(interceptorId);
-                    if (interceptorField == null) {
-                        throw new CarRetrofitException("Can not resolve target interceptor id:"
-                                + interceptorId + " for key:" + key);
+        private class ConverterRecord {
+            Converter<?, ?> converter;
+            Field field;
+            String[] interestedCategory;
+
+            ConverterRecord(Field field) {
+                this.field = field;
+                Convert convert = field.getDeclaredAnnotation(Convert.class);
+                if (convert == null) {
+                    throw new IllegalStateException("impossible");
+                }
+                interestedCategory = convert.category();
+                try {
+                    converter = (Converter<?, ?>) field.get(null);
+                } catch (ReflectiveOperationException illegal) {
+                    throw new CarRetrofitException(illegal);
+                }
+            }
+        }
+
+        private class InterceptorRecord {
+            Interceptor interceptor;
+            Field field;
+            int priority;
+            String[] interestedCategory;
+
+            InterceptorRecord(Field field) {
+                this.field = field;
+                Intercept intercept = field.getDeclaredAnnotation(Intercept.class);
+                if (intercept == null) {
+                    throw new IllegalStateException("impossible");
+                }
+                this.interestedCategory = intercept.category();
+                this.priority = intercept.priority();
+                try {
+                    interceptor = (Interceptor) field.get(null);
+                } catch (ReflectiveOperationException illegal) {
+                    throw new CarRetrofitException(illegal);
+                }
+            }
+        }
+
+        private void reorderAndProcessCategory() {
+            if (selfInterceptorDependency.size() > 0) {
+                HashMap<String, ArrayList<InterceptorRecord>> interceptorMap = new HashMap<>();
+                for (InterceptorRecord record : selfInterceptorDependency.values()) {
+                    for (String category : record.interestedCategory) {
+                        ArrayList<InterceptorRecord> recordBySameCategory = interceptorMap.get(category);
+                        if (recordBySameCategory == null) {
+                            recordBySameCategory = new ArrayList<>();
+                            interceptorMap.put(category, recordBySameCategory);
+                        }
+                        recordBySameCategory.add(record);
                     }
-                    try {
-                        Interceptor interceptor = (Interceptor) interceptorField.get(null);
-                        head = new InterceptorChain(head, interceptor);
-                    } catch (ReflectiveOperationException illegal) {
-                        throw new CarRetrofitException(illegal);
+                }
+                interceptorMap.forEach((category, recordBySameCategory) -> {
+                    Collections.sort(recordBySameCategory, (o1, o2) -> o1.priority - o2.priority);
+                    InterceptorChain head = null;
+                    for (int i = 0; i < recordBySameCategory.size(); i++) {
+                        head = new InterceptorChain(head, recordBySameCategory.get(i).interceptor);
+                    }
+                    selfInterceptorDependencyByCategory.put(category, head);
+                });
+            }
+
+            if (selfConverterDependency.size() > 0) {
+                for (ConverterRecord record : selfConverterDependency.values()) {
+                    for (String category : record.interestedCategory) {
+                        selfConverterDependencyByCategory.putIfAbsent(category, record);
                     }
                 }
             }
-            return head;
         }
 
-        ConverterStore getConverterByKey(Key key) {
-            ConverterStore converterStore = null;
-            Convert convert = key.method != null ?
-                    key.method.getDeclaredAnnotation(Convert.class) :
-                    key.field.getDeclaredAnnotation(Convert.class);
-            if (convert != null) {
-                int converterId = convert.value();
-                if (converterId != 0) {
-                    Field converterField = selfConverterDependency.get(converterId);
-                    if (converterField == null) {
-                        throw new CarRetrofitException("Can not resolve target converter id:"
-                                + converterId + " for key:" + key);
+        InterceptorChain getInterceptorByKey(Key key, String[] categoryArray, boolean includingParent) {
+            Intercept intercept = key.getAnnotation(Intercept.class);
+            InterceptorChain head = null;
+            if (intercept != null) {
+                InterceptorRecord record = selfInterceptorDependency.get(intercept.value());
+                if (record != null) {
+                    head = new InterceptorChain(null, record.interceptor);
+                }
+            }
+            if (head == null && categoryArray != null && categoryArray.length > 0) {
+                for (String category : categoryArray) {
+                    InterceptorChain categoryChain = selfInterceptorDependencyByCategory.get(category);
+                    if (head == null) {
+                        head = categoryChain;
+                    } else {
+                        head = head.copyAndAttach(categoryChain);
                     }
-                    try {
-                        Converter<?, ?> converter = (Converter<?, ?>) converterField.get(null);
-                        converterStore = new ConverterStore(key.toString());
-                        converterStore.addConverter(converter);
-                    } catch (ReflectiveOperationException illegal) {
-                        throw new CarRetrofitException(illegal);
+                }
+            }
+            return includingParent ? mChainHead.copyAndAttach(head) : head;
+        }
+
+        ConverterStore getConverterByKey(Key key, String[] categoryArray) {
+            ConverterStore converterStore = null;
+            Convert convert = key.getAnnotation(Convert.class);
+            if (convert != null) {
+                ConverterRecord record = selfConverterDependency.get(convert.value());
+                if (record != null) {
+                    converterStore = new ConverterStore(record.converter);
+                }
+            }
+            if (converterStore == null && categoryArray != null && categoryArray.length > 0) {
+                for (String category : categoryArray) {
+                    ConverterRecord record = selfConverterDependencyByCategory.get(category);
+                    if (record != null) {
+                        converterStore = new ConverterStore(record.converter);
+                        break;
                     }
                 }
             }
@@ -305,14 +319,27 @@ public final class CarRetrofit {
         }
 
         void importDependency(Class<?> target, boolean self) {
+            HashMap<Integer, Field> interceptorDependency = self ? new HashMap<>() : null;
+            HashMap<Integer, Field> converterDependency = self ? new HashMap<>() : null;
             try {
                 Method method = target.getDeclaredMethod("init", HashMap.class, HashMap.class,
                         HashMap.class);
-                method.invoke((Object) null, (Object) (self ? selfDependency : dependency),
-                        (Object) (self ? selfInterceptorDependency : null),
-                        (Object) (self ? selfConverterDependency : null));
+                method.invoke(null, self ? selfDependency : dependency,
+                        interceptorDependency, converterDependency);
             } catch (ReflectiveOperationException impossible) {
                 throw new IllegalStateException(impossible);
+            }
+            if (interceptorDependency != null) {
+                for (Map.Entry<Integer, Field> entry : interceptorDependency.entrySet()) {
+                    selfInterceptorDependency.put(entry.getKey(),
+                            new InterceptorRecord(entry.getValue()));
+                }
+            }
+            if (converterDependency != null) {
+                for (Map.Entry<Integer, Field> entry : converterDependency.entrySet()) {
+                    selfConverterDependency.put(entry.getKey(),
+                            new ConverterRecord(entry.getValue()));
+                }
             }
         }
 
@@ -438,11 +465,13 @@ public final class CarRetrofit {
         final ArrayList<ConverterWrapper<?, ?>> converterWrapperList = new ArrayList<>();
         final ArrayList<ConverterWrapper<?, ?>> commandPredictorList = new ArrayList<>();
         final ArrayList<Converter<?, ?>> allConverters = new ArrayList<>();
-        String scopeName;
         ConverterStore parentStore;
 
-        ConverterStore(String name) {
-            this.scopeName = name;
+        ConverterStore(Converter<?, ?> initial) {
+            addConverter(initial);
+        }
+
+        ConverterStore() {
         }
 
         void addParent(ConverterStore parent) {
@@ -1095,7 +1124,6 @@ public final class CarRetrofit {
     private static abstract class CommandImpl implements Command, Cloneable {
         int propertyId;
         int area;
-        String token;
         ApiRecord<?> record;
         ConverterStore store;
         InterceptorChain chain;
@@ -1107,9 +1135,12 @@ public final class CarRetrofit {
             this.record = record;
             this.source = record.source;
             this.key = key;
+        }
 
-            this.chain = record.getInterceptorByKey(key, delegateTarget() == this);
-            this.store = record.getConverterByKey(key);
+        final void resolveInterceptorAndConverterStore(String[] category) {
+            this.chain = record.getInterceptorByKey(key, category,
+                    delegateTarget() == this);
+            this.store = record.getConverterByKey(key, category);
         }
 
         final void resolveArea(int userDeclaredArea) {
@@ -1183,11 +1214,6 @@ public final class CarRetrofit {
         }
 
         @Override
-        public String getToken() {
-            return delegateTarget().token;
-        }
-
-        @Override
         public DataSource getSource() {
             return delegateTarget().source;
         }
@@ -1228,15 +1254,6 @@ public final class CarRetrofit {
         @Override
         public boolean fromApply() {
             return true;
-        }
-
-        @Override
-        void init(ApiRecord<?> record, Annotation annotation, Key key) {
-            super.init(record, annotation, key);
-            String userSet = ((Apply) annotation).token();
-            if (userSet.length() > 0) {
-                token = userSet;
-            }
         }
 
         @Override
@@ -1304,15 +1321,6 @@ public final class CarRetrofit {
         CommandInject(Class<?> injectClass, boolean doReturn) {
             this.targetClass = injectClass;
             this.doReturn = doReturn;
-        }
-
-        @Override
-        void init(ApiRecord<?> record, Annotation annotation, Key key) {
-            super.init(record, annotation, key);
-            String userSet = ((Inject) annotation).token();
-            if (userSet.length() > 0) {
-                token = userSet;
-            }
         }
 
         @Override
@@ -1425,11 +1433,8 @@ public final class CarRetrofit {
             List<String> elementList = Arrays.asList(combine.elements());
             Collections.sort(childrenCommand, (o1, o2) ->
                     elementList.indexOf(o1.getName()) - elementList.indexOf(o2.getName()));
-            String userSet = combine.token();
-            if (userSet.length() > 0) {
-                token = userSet;
-            }
             resolveStickyType(combine.sticky());
+            resolveInterceptorAndConverterStore(combine.category());
 
             ArrayList<CommandFlow> flowChildren = null;
             ArrayList<CommandImpl> otherChildren = null;
@@ -1728,10 +1733,7 @@ public final class CarRetrofit {
             this.propertyId = set.id();
             buildInValue = BuildInValue.build(set.value());
             resolveArea(set.area());
-            String userSet = set.token();
-            if (userSet.length() > 0) {
-                token = userSet;
-            }
+            resolveInterceptorAndConverterStore(set.category());
 
             if (buildInValue != null) {
                 return;
@@ -1808,19 +1810,13 @@ public final class CarRetrofit {
                     throw new CarRetrofitException("Can not use type ALL mode in Get operation");
                 }
                 resolveArea(get.area());
-                String userSet = get.token();
-                if (userSet.length() > 0) {
-                    token = userSet;
-                }
+                resolveInterceptorAndConverterStore(get.category());
             } else if (annotation instanceof Track) {
                 Track track = (Track) annotation;
                 propertyId = track.id();
                 type = track.type();
                 resolveArea(track.area());
-                String userSet = track.token();
-                if (userSet.length() > 0) {
-                    token = userSet;
-                }
+                resolveInterceptorAndConverterStore(track.category());
                 stickyGet = true;
             }
 
@@ -2019,11 +2015,7 @@ public final class CarRetrofit {
 
             resolveArea(track.area());
             resolveStickyType(track.sticky());
-            
-            String userSet = track.token();
-            if (userSet.length() > 0) {
-                token = userSet;
-            }
+            resolveInterceptorAndConverterStore(track.category());
 
             resolveConverter();
         }
@@ -2211,6 +2203,7 @@ public final class CarRetrofit {
             super.init(record, annotation, key);
             Delegate delegate = (Delegate) annotation;
             resolveStickyType(delegate.sticky());
+            resolveInterceptorAndConverterStore(delegate.category());
 
             if (targetCommand instanceof CommandFlow) {
                 CommandFlow targetFlowCommand = (CommandFlow) targetCommand;

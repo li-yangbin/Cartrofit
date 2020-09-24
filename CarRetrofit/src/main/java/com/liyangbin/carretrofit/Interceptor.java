@@ -30,8 +30,12 @@ class InterceptorChain implements Command {
             copyParent = new InterceptorChain(copyParent.parent, copyParent.interceptor);
             copyParent = copyParent.parent;
         }
-        newNode.parent = copy;
-        return newNode;
+        if (newNode != null) {
+            newNode.parent = copy;
+            return newNode;
+        } else {
+            return copy;
+        }
     }
 
     Object doProcess(Command command, Object parameter) throws Throwable {
@@ -82,11 +86,6 @@ class InterceptorChain implements Command {
     @Override
     public String getName() {
         return command.getName();
-    }
-
-    @Override
-    public String getToken() {
-        return command.getToken();
     }
 
     @Override

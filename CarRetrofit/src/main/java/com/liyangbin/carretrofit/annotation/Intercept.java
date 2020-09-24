@@ -5,12 +5,14 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
 import static java.lang.annotation.ElementType.FIELD;
+import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 @Documented
-@Target(FIELD)
+@Target({FIELD, METHOD})
 @Retention(RUNTIME)
 public @interface Intercept {
-    int[] value() default {};
+    int value() default 0;
     String[] category() default {};
+    int priority() default 0;
 }

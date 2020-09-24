@@ -20,5 +20,5 @@ public @interface Get {
 
     int area() default CarApi.DEFAULT_AREA_ID;
 
-    String token() default "";
+    String[] category() default {};
 }

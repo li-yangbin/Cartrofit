@@ -16,4 +16,5 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 public @interface Delegate {
     String target();
     StickyType sticky() default StickyType.NO_SET;
+    String[] category() default {};
 }

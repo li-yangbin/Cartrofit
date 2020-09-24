@@ -15,6 +15,6 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 public @interface Combine {
     String[] elements();
     String combinator();
-    String token() default "";
+    String[] category() default {};
     StickyType sticky() default StickyType.ON;
 }

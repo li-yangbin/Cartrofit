@@ -31,8 +31,6 @@ public interface Command {
 
     String getName();
 
-    String getToken();
-
     enum CommandType {
         SET,
         GET,
