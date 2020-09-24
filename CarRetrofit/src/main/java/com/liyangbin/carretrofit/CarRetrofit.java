@@ -7,6 +7,7 @@ import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.CarValue;
 import com.liyangbin.carretrofit.annotation.Combine;
 import com.liyangbin.carretrofit.annotation.ConsiderSuper;
+import com.liyangbin.carretrofit.annotation.Convert;
 import com.liyangbin.carretrofit.annotation.Delegate;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
@@ -20,7 +21,6 @@ import com.liyangbin.carretrofit.funtion.Function3;
 import com.liyangbin.carretrofit.funtion.Function4;
 import com.liyangbin.carretrofit.funtion.Function5;
 import com.liyangbin.carretrofit.funtion.Function6;
-import com.liyangbin.carretrofit.funtion.Operator;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AccessibleObject;
@@ -140,8 +140,7 @@ public final class CarRetrofit {
     }
 
     private class ApiRecord<T> {
-        private static final String INTERCEPTOR_PREFIX = "INTERCEPTOR";
-        private static final String CONVERTER_PREFIX = "CONVERTER";
+        private static final String ID_SUFFIX = ".Id";
 
         Class<T> clazz;
         String dataScope;
@@ -149,8 +148,8 @@ public final class CarRetrofit {
         T apiObj;
         StickyType stickyType;
 
-        ArrayList<Interceptor> apiSelfInterceptorList = new ArrayList<>();
-        ArrayList<Converter<?, ?>> apiSelfConverterList = new ArrayList<>();
+//        ArrayList<Interceptor> apiSelfInterceptorList = new ArrayList<>();
+//        ArrayList<Converter<?, ?>> apiSelfConverterList = new ArrayList<>();
 
         DataSource source;
         InterceptorChain interceptorChain;
@@ -160,8 +159,14 @@ public final class CarRetrofit {
         ArrayList<ApiRecord<?>> parentApi;
 
         HashMap<Integer, Method> selfDependency = new HashMap<>();
-        HashMap<Integer, Method> dependency;
+        HashMap<Integer, Field> selfInterceptorDependency = new HashMap<>();
+        HashMap<Integer, Field> selfConverterDependency = new HashMap<>();
+
+        HashMap<Integer, Method> dependency = new HashMap<>();
         HashMap<Method, InterceptorChain> methodBuildInInterceptor;
+
+//        HashMap<Key, InterceptorChain> interceptorCache = new HashMap<>();
+//        HashMap<Key, ConverterStore> converterCache = new HashMap<>();
 
         ApiRecord(Class<T> clazz) {
             this.clazz = clazz;
@@ -174,91 +179,141 @@ public final class CarRetrofit {
             }
 
             try {
-                Class<?> selfScopeClass = Class.forName(clazz.getName() + ".Id");
-                importDependency(selfScopeClass, selfDependency);
+                Class<?> selfScopeClass = Class.forName(clazz.getName() + ID_SUFFIX);
+                importDependency(selfScopeClass, true);
             } catch (ClassNotFoundException ignore) {
             }
 
             Class<?>[] dependencyClasses = carApi.dependency();
-            if (dependencyClasses.length > 0) {
-                dependency = new HashMap<>();
-                for (Class<?> dependencyClass : dependencyClasses) {
-                    importDependency(dependencyClass, dependency);
-                }
-            }
-
-            try {
-                Field[] fields = clazz.getDeclaredFields();
-                for (Field selfField : fields) {
-                    Intercept intercept = selfField.getAnnotation(Intercept.class);
-                    if (intercept != null) {
-                        Interceptor interceptor = (Interceptor) selfField.get(null);
-                        if (intercept.value().length > 0) {
-                            for (int id : intercept.value()) {
-                                Method method = selfDependency.get(id);
-                                if (method != null) {
-                                    saveInterceptor(method, interceptor);
-                                }
-                            }
-                        } else if (intercept.category().length > 0) {
-
-                        } else {
-                            apiSelfInterceptorList.add((Interceptor) selfField.get(null));
-                        }
-                    }
-                    if (Modifier.isStatic(selfField.getModifiers())) {
-                        String name = selfField.getName();
-                        if (name.startsWith(INTERCEPTOR_PREFIX)) {
-                            apiSelfInterceptorList.add((Interceptor) selfField.get(null));
-                        } else if (name.startsWith(CONVERTER_PREFIX)) {
-                            apiSelfConverterList.add((Converter<?, ?>) selfField.get(null));
-                        }
+            for (Class<?> dependencyClass : dependencyClasses) {
+                if (dependencyClass != clazz) {
+                    try {
+                        Class<?> dependentScopeClass =
+                                Class.forName(dependencyClass.getName() + ID_SUFFIX);
+                        importDependency(dependentScopeClass, false);
+                    } catch (ClassNotFoundException ignore) {
                     }
                 }
-            } catch (ReflectiveOperationException e) {
-                e.printStackTrace();
             }
 
-            interceptorChain = mChainHead;
-            if (apiSelfInterceptorList.size() > 0) {
-                for (int i = 0; i < apiSelfInterceptorList.size(); i++) {
-                    interceptorChain = new InterceptorChain(interceptorChain,
-                            apiSelfInterceptorList.get(i));
-                }
-            }
+//            try {
+//                Field[] fields = clazz.getDeclaredFields();
+//                for (Field selfField : fields) {
+//                    Intercept intercept = selfField.getAnnotation(Intercept.class);
+//                    if (intercept != null) {
+//                        Interceptor interceptor = (Interceptor) selfField.get(null);
+//                        if (intercept.value().length > 0) {
+//                            for (int id : intercept.value()) {
+//                                Method method = selfDependency.get(id);
+//                                if (method != null) {
+//                                    saveInterceptor(method, interceptor);
+//                                }
+//                            }
+//                        } else if (intercept.category().length > 0) {
+//
+//                        } else {
+//                            apiSelfInterceptorList.add((Interceptor) selfField.get(null));
+//                        }
+//                    }
+//                    if (Modifier.isStatic(selfField.getModifiers())) {
+//                        String name = selfField.getName();
+//                        if (name.startsWith(INTERCEPTOR_PREFIX)) {
+//                            apiSelfInterceptorList.add((Interceptor) selfField.get(null));
+//                        } else if (name.startsWith(CONVERTER_PREFIX)) {
+//                            apiSelfConverterList.add((Converter<?, ?>) selfField.get(null));
+//                        }
+//                    }
+//                }
+//            } catch (ReflectiveOperationException e) {
+//                e.printStackTrace();
+//            }
 
-            if (apiSelfConverterList.size() > 0) {
-                converterStore = new ConverterStore("api:" + clazz);
-                for (int i = 0; i < apiSelfConverterList.size(); i++) {
-                    converterStore.addConverter(apiSelfConverterList.get(i));
-                }
-                converterStore.addParent(mConverterStore);
-            } else {
-                converterStore = mConverterStore;
-            }
+//            interceptorChain = mChainHead;
+//            if (apiSelfInterceptorList.size() > 0) {
+//                for (int i = 0; i < apiSelfInterceptorList.size(); i++) {
+//                    interceptorChain = new InterceptorChain(interceptorChain,
+//                            apiSelfInterceptorList.get(i));
+//                }
+//            }
+//
+//            if (apiSelfConverterList.size() > 0) {
+//                converterStore = new ConverterStore("api:" + clazz);
+//                for (int i = 0; i < apiSelfConverterList.size(); i++) {
+//                    converterStore.addConverter(apiSelfConverterList.get(i));
+//                }
+//                converterStore.addParent(mConverterStore);
+//            } else {
+//                converterStore = mConverterStore;
+//            }
 
             this.source = Objects.requireNonNull(mDataMap.get(dataScope),
                     "Invalid scope:" + dataScope +
                     " make sure use a valid scope registered in Builder().addDataSource()");
         }
 
-        void importDependency(Class<?> target, HashMap<Integer, Method> map) {
-            try {
-                Method method = target.getDeclaredMethod("init", HashMap.class);
-                method.invoke(null, map);
-            } catch (ReflectiveOperationException e) {
-                e.printStackTrace();
+        InterceptorChain getInterceptorByKey(Key key, boolean includingParent) {
+            Intercept intercept = key.method != null ?
+                    key.method.getDeclaredAnnotation(Intercept.class) :
+                    key.field.getDeclaredAnnotation(Intercept.class);
+            InterceptorChain head = includingParent ? mChainHead : null;
+            if (intercept != null) {
+                for (int interceptorId : intercept.value()) {
+                    Field interceptorField = selfInterceptorDependency.get(interceptorId);
+                    if (interceptorField == null) {
+                        throw new CarRetrofitException("Can not resolve target interceptor id:"
+                                + interceptorId + " for key:" + key);
+                    }
+                    try {
+                        Interceptor interceptor = (Interceptor) interceptorField.get(null);
+                        head = new InterceptorChain(head, interceptor);
+                    } catch (ReflectiveOperationException illegal) {
+                        throw new CarRetrofitException(illegal);
+                    }
+                }
             }
+            return head;
         }
 
-        void saveInterceptor(Method method, Interceptor interceptor) {
-            InterceptorChain chain = methodBuildInInterceptor.get(method);
-            if (chain != null) {
-                chain = new InterceptorChain(chain, interceptor);
-            } else {
-                chain = new InterceptorChain(mChainHead, interceptor);
+        ConverterStore getConverterByKey(Key key) {
+            ConverterStore converterStore = null;
+            Convert convert = key.method != null ?
+                    key.method.getDeclaredAnnotation(Convert.class) :
+                    key.field.getDeclaredAnnotation(Convert.class);
+            if (convert != null) {
+                int converterId = convert.value();
+                if (converterId != 0) {
+                    Field converterField = selfConverterDependency.get(converterId);
+                    if (converterField == null) {
+                        throw new CarRetrofitException("Can not resolve target converter id:"
+                                + converterId + " for key:" + key);
+                    }
+                    try {
+                        Converter<?, ?> converter = (Converter<?, ?>) converterField.get(null);
+                        converterStore = new ConverterStore(key.toString());
+                        converterStore.addConverter(converter);
+                    } catch (ReflectiveOperationException illegal) {
+                        throw new CarRetrofitException(illegal);
+                    }
+                }
             }
-            methodBuildInInterceptor.put(method, chain);
+            if (converterStore == null) {
+                converterStore = mConverterStore;
+            } else {
+                converterStore.addParent(mConverterStore);
+            }
+            return converterStore;
+        }
+
+        void importDependency(Class<?> target, boolean self) {
+            try {
+                Method method = target.getDeclaredMethod("init", HashMap.class, HashMap.class,
+                        HashMap.class);
+                method.invoke((Object) null, (Object) (self ? selfDependency : dependency),
+                        (Object) (self ? selfInterceptorDependency : null),
+                        (Object) (self ? selfConverterDependency : null));
+            } catch (ReflectiveOperationException impossible) {
+                throw new IllegalStateException(impossible);
+            }
         }
 
         ArrayList<Key> getChildKey() {
@@ -391,14 +446,6 @@ public final class CarRetrofit {
         }
 
         void addParent(ConverterStore parent) {
-            ConverterStore loopParent = parent;
-            while (loopParent != null) {
-                if (loopParent == this) {
-                    throw new CarRetrofitException("Conflicted parent:" + parent.scopeName
-                            + " this:" + scopeName);
-                }
-                loopParent = loopParent.parentStore;
-            }
             parentStore = parent;
         }
 
@@ -1059,9 +1106,10 @@ public final class CarRetrofit {
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
             this.record = record;
             this.source = record.source;
-            this.store = record.converterStore;
-            this.chain = record.interceptorChain;
             this.key = key;
+
+            this.chain = record.getInterceptorByKey(key, delegateTarget() == this);
+            this.store = record.getConverterByKey(key);
         }
 
         final void resolveArea(int userDeclaredArea) {
@@ -1360,7 +1408,7 @@ public final class CarRetrofit {
 
     private static class CommandCombine extends CommandFlow {
 
-        Operator operator;
+        Converter<?, ?> combinator;
         String operatorExp;
         Class<?> functionClass;
 
@@ -1423,16 +1471,16 @@ public final class CarRetrofit {
             try {
                 Field combinatorField = record.clazz.getDeclaredField(operatorExp);
                 Object operatorObj = combinatorField.get(null);
-                String operatorFullName = Operator.class.getName();
+                String operatorFullName = Function2.class.getName();
                 String prefix = operatorFullName.substring(0, operatorFullName.lastIndexOf("."));
                 int childElementCount = childrenCommand.size();
                 String targetFunctionFullName = prefix + ".Function" + childElementCount;
                 functionClass = Class.forName(targetFunctionFullName);
                 if (functionClass.isInstance(operatorObj)) {
-                    this.operator = (Operator) Objects.requireNonNull(operatorObj,
+                    this.combinator = (Converter<?, ?>) Objects.requireNonNull(operatorObj,
                             "Failed to resolve operator:" + operatorExp);
                 } else {
-                    throw new CarRetrofitException("Operator:" + operatorExp
+                    throw new CarRetrofitException("Converter:" + operatorExp
                             + " doesn't match element count:" + childElementCount);
                 }
             } catch (ReflectiveOperationException e) {
@@ -1444,7 +1492,7 @@ public final class CarRetrofit {
 
         private void resolveConverter() {
             Class<?> originalType = null;
-            Class<?> implementByClass = lookUp(operator.getClass(), functionClass);
+            Class<?> implementByClass = lookUp(combinator.getClass(), functionClass);
             if (implementByClass != null) {
                 Type[] ifTypeArray = implementByClass.getGenericInterfaces();
                 for (Type ifType : ifTypeArray) {
@@ -1459,8 +1507,8 @@ public final class CarRetrofit {
                 }
             }
             if (originalType == null) {
-                throw new CarRetrofitException("Failed to resolve result type from:" + operator
-                        + " functionClass:" + functionClass.getSimpleName());
+                throw new CarRetrofitException("Failed to resolve result type from:"
+                        + combinator + " functionClass:" + functionClass.getSimpleName());
             }
 
             if (returnFlow) {
@@ -1484,21 +1532,21 @@ public final class CarRetrofit {
             try {
                 switch (elements.length) {
                     case 2:
-                        return ((Function2<Object, Object, Object>)operator).apply(effectIndex,
+                        return ((Function2<Object, Object, Object>)combinator).apply(effectIndex,
                                 elements[0], elements[1]);
                     case 3:
-                        return ((Function3<Object, Object, Object, Object>)operator)
+                        return ((Function3<Object, Object, Object, Object>)combinator)
                                 .apply(effectIndex, elements[0], elements[1], elements[2]);
                     case 4:
-                        return ((Function4<Object, Object, Object, Object, Object>)operator)
+                        return ((Function4<Object, Object, Object, Object, Object>)combinator)
                                 .apply(effectIndex, elements[0], elements[1], elements[2],
                                         elements[3]);
                     case 5:
-                        return ((Function5<Object, Object, Object, Object, Object, Object>)operator)
+                        return ((Function5<Object, Object, Object, Object, Object, Object>)combinator)
                                 .apply(effectIndex, elements[0], elements[1], elements[2],
                                         elements[3], elements[4]);
                     case 6:
-                        return ((Function6<Object, Object, Object, Object, Object, Object, Object>)operator)
+                        return ((Function6<Object, Object, Object, Object, Object, Object, Object>)combinator)
                                 .apply(effectIndex, elements[0], elements[1], elements[2],
                                         elements[3], elements[4], elements[5]);
                     default:
@@ -2208,7 +2256,7 @@ public final class CarRetrofit {
         @Override
         public Object invoke(Object parameter) throws Throwable {
             if (setCommand) {
-                return targetCommand.invoke(argConverter != null ?
+                return targetCommand.invokeWithChain(argConverter != null ?
                         argConverter.convert(parameter) : parameter);
             }
             return super.invoke(parameter);

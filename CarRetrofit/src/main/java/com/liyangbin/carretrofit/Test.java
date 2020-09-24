@@ -4,6 +4,7 @@ import android.car.hardware.property.CarPropertyManager;
 
 import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.Get;
+import com.liyangbin.carretrofit.annotation.Intercept;
 import com.liyangbin.carretrofit.annotation.ProcessSuper;
 import com.liyangbin.carretrofit.annotation.Set;
 
@@ -11,6 +12,14 @@ import java.util.ArrayList;
 
 @CarApi
 public interface Test {
+
+    @Intercept
+    Interceptor interceptor = new Interceptor() {
+        @Override
+        public Object process(Command command, Object parameter) throws Throwable {
+            return null;
+        }
+    };
 
     @Get(id = 123)
     int getIntSignal(int a, byte afsdc, ArrayList<String> list1, Object aaa);

@@ -10,9 +10,9 @@ import com.squareup.javapoet.TypeSpec;
 
 import java.io.IOException;
 import java.io.Writer;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -39,6 +39,7 @@ import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 
 import static javax.lang.model.element.Modifier.ABSTRACT;
+import static javax.lang.model.element.Modifier.DEFAULT;
 import static javax.lang.model.element.Modifier.FINAL;
 import static javax.lang.model.element.Modifier.PRIVATE;
 import static javax.lang.model.element.Modifier.PUBLIC;
@@ -99,12 +100,15 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                 .addModifiers(PUBLIC, FINAL);
 
         ArrayList<ExecutableElement> apiInterface = new ArrayList<>();
-        resolveExecutableElement(element, apiInterface, ElementKind.METHOD);
+        resolveExecutableElement(element, apiInterface);
 
         if (apiInterface.size() == 0) {
             logW("Empty CarApi interface found:" + apiClassSimpleName);
             return;
         }
+
+        ArrayList<VariableElement> apiField = new ArrayList<>();
+        resolveVariableElement(element, apiField);
 
         final int baseScopeId = getScopeBaseId(element.getQualifiedName().toString());
         if (!sGeneratedScopeId.add(baseScopeId)) {
@@ -113,16 +117,53 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             return;
         }
 
-        HashMap<String, String> indexMap = new HashMap<>();
+        HashMap<String, String> apiIndexMap = new HashMap<>();
         for (int i = 0; i < apiInterface.size(); i++) {
             ExecutableElement childElement = apiInterface.get(i);
             String name = childElement.getSimpleName().toString();
-            int index = baseScopeId | i;
-            indexMap.put(name, apiClassScopeName + "." + name);
+            int index = baseScopeId + i;
+            apiIndexMap.put(name, apiClassScopeName + "." + name);
             indexClassBuilder.addField(FieldSpec
                     .builder(TypeName.INT, name, STATIC, FINAL, PUBLIC)
                     .initializer("" + index)
                     .build());
+        }
+
+        HashMap<String, String> interceptorIndexMap = new HashMap<>();
+        HashMap<String, String> converterIndexMap = new HashMap<>();
+        for (int i = 0; i < apiField.size(); i++) {
+            VariableElement variableElement = apiField.get(i);
+            int index = baseScopeId + apiInterface.size() + i;
+            List<? extends AnnotationMirror> list = variableElement.getAnnotationMirrors();
+            boolean isInterceptor = false;
+            boolean isConverter = false;
+            for (int j = 0; j < list.size(); j++) {
+                AnnotationMirror annotation = list.get(j);
+                TypeElement annotatedElement = (TypeElement) annotation.getAnnotationType().asElement();
+                String name = annotatedElement.getSimpleName().toString();
+                if ("Intercept".equals(name)) {
+                    isInterceptor = true;
+                    break;
+                } else if ("Converter".equals(name)) {
+                    isConverter = true;
+                    break;
+                }
+            }
+            if (isInterceptor) {
+                String name = variableElement.getSimpleName().toString();
+                interceptorIndexMap.put(name, apiClassScopeName + "." + name);
+                indexClassBuilder.addField(FieldSpec
+                        .builder(TypeName.INT, name, STATIC, FINAL)
+                        .initializer("" + index)
+                        .build());
+            } else if (isConverter) {
+                String name = variableElement.getSimpleName().toString();
+                converterIndexMap.put(name, apiClassScopeName + "." + name);
+                indexClassBuilder.addField(FieldSpec
+                        .builder(TypeName.INT, name, STATIC, FINAL)
+                        .initializer("" + index)
+                        .build());
+            }
         }
 
         MethodSpec.Builder importBuilder = MethodSpec.methodBuilder("init");
@@ -132,13 +173,25 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                         ClassName.get(HashMap.class),
                         ClassName.get(Integer.class),
                         ClassName.get(Method.class)),
-                "map");
+                "apiMap");
+        importBuilder.addParameter(
+                ParameterizedTypeName.get(
+                        ClassName.get(HashMap.class),
+                        ClassName.get(Integer.class),
+                        ClassName.get(Field.class)),
+                "interceptorMap");
+        importBuilder.addParameter(
+                ParameterizedTypeName.get(
+                        ClassName.get(HashMap.class),
+                        ClassName.get(Integer.class),
+                        ClassName.get(Field.class)),
+                "converterMap");
         importBuilder.addStatement("final $T[] methods = $T.class.getDeclaredMethods()",
                 ClassName.get(Method.class), ClassName.get(element))
                 .beginControlFlow("for (Method method : methods)")
                 .addStatement("String methodName = method.getName()");
         boolean firstTime = true;
-        for (Map.Entry<String, String> entry : indexMap.entrySet()) {
+        for (Map.Entry<String, String> entry : apiIndexMap.entrySet()) {
             String judgement = "if (methodName.equals($S))";
             String name = entry.getKey();
             if (firstTime) {
@@ -147,12 +200,64 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                 importBuilder.nextControlFlow("else " + judgement, name);
             }
             firstTime = false;
-            importBuilder.addStatement("map.put($L, method)", entry.getValue());
+            importBuilder.addStatement("apiMap.put($L, method)", entry.getValue());
         }
         if (!firstTime) {
             importBuilder.endControlFlow();
         }
         importBuilder.endControlFlow();
+
+        if (interceptorIndexMap.size() > 0) {
+            importBuilder.addCode("\n");
+            importBuilder.beginControlFlow("if (interceptorMap != null)");
+            importBuilder.addStatement("final $T[] fields = $T.class.getDeclaredFields()",
+                    ClassName.get(Field.class), ClassName.get(element))
+                    .beginControlFlow("for (Field field : fields)")
+                    .addStatement("String fieldName = field.getName()");
+            firstTime = true;
+            for (Map.Entry<String, String> entry : interceptorIndexMap.entrySet()) {
+                String judgement = "if (fieldName.equals($S))";
+                String name = entry.getKey();
+                if (firstTime) {
+                    importBuilder.beginControlFlow(judgement, name);
+                } else {
+                    importBuilder.nextControlFlow("else " + judgement, name);
+                }
+                firstTime = false;
+                importBuilder.addStatement("interceptorMap.put($L, field)", entry.getValue());
+            }
+            if (!firstTime) {
+                importBuilder.endControlFlow();
+            }
+            importBuilder.endControlFlow();
+            importBuilder.endControlFlow();
+        }
+
+        if (converterIndexMap.size() > 0) {
+            importBuilder.addCode("\n");
+            importBuilder.beginControlFlow("if (converterMap != null)");
+            importBuilder.addStatement("final $T[] fields = $T.class.getDeclaredFields()",
+                    ClassName.get(Field.class), ClassName.get(element))
+                    .beginControlFlow("for (Field field : fields)")
+                    .addStatement("String fieldName = field.getName()");
+            firstTime = true;
+            for (Map.Entry<String, String> entry : converterIndexMap.entrySet()) {
+                String judgement = "if (fieldName.equals($S))";
+                String name = entry.getKey();
+                if (firstTime) {
+                    importBuilder.beginControlFlow(judgement, name);
+                } else {
+                    importBuilder.nextControlFlow("else " + judgement, name);
+                }
+                firstTime = false;
+                importBuilder.addStatement("converterMap.put($L, field)", entry.getValue());
+            }
+            if (!firstTime) {
+                importBuilder.endControlFlow();
+            }
+            importBuilder.endControlFlow();
+            importBuilder.endControlFlow();
+        }
         indexClassBuilder.addMethod(importBuilder.build());
 
         try (Writer writer = processingEnv.getFiler()
@@ -170,13 +275,8 @@ public class CarRetrofitProcessor extends AbstractProcessor {
     }
 
     private static int getScopeBaseId(String input) {
-        byte[] encode = Base64.getEncoder().encode(input.getBytes());
-        int result = 0;
-        for (byte b : encode) {
-            result += b;
-        }
         final int shiftBitCount = 9;
-        return result << shiftBitCount;
+        return input.hashCode() << shiftBitCount;
     }
 
     private void logI(String msg) {
@@ -191,14 +291,24 @@ public class CarRetrofitProcessor extends AbstractProcessor {
         processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, msg);
     }
 
-    private void resolveExecutableElement(TypeElement element, ArrayList<ExecutableElement> elements,
-                                          ElementKind targetKind) {
+    private void resolveExecutableElement(TypeElement element, ArrayList<ExecutableElement> elements) {
         List<? extends Element> enclosedElements = element.getEnclosedElements();
         for (int i = 0; i < enclosedElements.size(); i++) {
             Element elementMember = enclosedElements.get(i);
             ElementKind kind = elementMember.getKind();
-            if (kind == targetKind) {
+            if (kind == ElementKind.METHOD) {
                 elements.add((ExecutableElement) elementMember);
+            }
+        }
+    }
+
+    private void resolveVariableElement(TypeElement element, ArrayList<VariableElement> elements) {
+        List<? extends Element> enclosedElements = element.getEnclosedElements();
+        for (int i = 0; i < enclosedElements.size(); i++) {
+            Element elementMember = enclosedElements.get(i);
+            ElementKind kind = elementMember.getKind();
+            if (kind == ElementKind.FIELD) {
+                elements.add((VariableElement) elementMember);
             }
         }
     }
@@ -311,11 +421,11 @@ public class CarRetrofitProcessor extends AbstractProcessor {
         for (int i = 0; i < targetInterfaceList.size(); i++) {
             TypeElement targetInterface = targetInterfaceList.get(i);
             ArrayList<ExecutableElement> executableElements = new ArrayList<>();
-            resolveExecutableElement(targetInterface, executableElements, ElementKind.METHOD);
+            resolveExecutableElement(targetInterface, executableElements);
             List<? extends TypeMirror> interfaceList = targetInterface.getInterfaces();
             for (int j = 0; j < interfaceList.size(); j++) {
                 DeclaredType mirror = (DeclaredType) interfaceList.get(j);
-                resolveExecutableElement((TypeElement) mirror.asElement(), executableElements, ElementKind.METHOD);
+                resolveExecutableElement((TypeElement) mirror.asElement(), executableElements);
             }
 
             // declare these methods

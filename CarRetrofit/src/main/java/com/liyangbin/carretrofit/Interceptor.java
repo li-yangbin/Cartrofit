@@ -23,12 +23,15 @@ class InterceptorChain implements Command {
         this.interceptor = interceptor;
     }
 
-    void connect(InterceptorChain chain) {
-        InterceptorChain current = this;
-        while (current.parent != null) {
-            current = current.parent;
+    InterceptorChain copyAndAttach(InterceptorChain newNode) {
+        InterceptorChain copy = new InterceptorChain(this.parent, this.interceptor);
+        InterceptorChain copyParent = copy.parent;
+        while (copyParent != null) {
+            copyParent = new InterceptorChain(copyParent.parent, copyParent.interceptor);
+            copyParent = copyParent.parent;
         }
-        current.parent = chain;
+        newNode.parent = copy;
+        return newNode;
     }
 
     Object doProcess(Command command, Object parameter) throws Throwable {
