@@ -30,26 +30,25 @@ class InterceptorChain implements Command {
             copyParent = new InterceptorChain(copyParent.parent, copyParent.interceptor);
             copyParent = copyParent.parent;
         }
-        if (newNode != null) {
-            newNode.parent = copy;
-            return newNode;
+        return copy.attach(newNode);
+    }
+
+    InterceptorChain attach(InterceptorChain node) {
+        if (node != null) {
+            InterceptorChain loopNode = node;
+            while (loopNode.parent != null) {
+                loopNode = loopNode.parent;
+            }
+            loopNode.parent = this;
+            return node;
         } else {
-            return copy;
+            return this;
         }
     }
 
     Object doProcess(Command command, Object parameter) throws Throwable {
-        boolean commandChecked = true;
-        if (interceptor instanceof CommandPredictor) {
-            commandChecked = ((CommandPredictor) interceptor).checkCommand(command);
-        }
-        if (commandChecked) {
-            this.command = command;
-            return interceptor.process(this, parameter);
-        } else {
-            return parent != null ? parent.doProcess(this.command, parameter)
-                    : this.command.invoke(parameter);
-        }
+        this.command = command;
+        return interceptor.process(this, parameter);
     }
 
     @Override

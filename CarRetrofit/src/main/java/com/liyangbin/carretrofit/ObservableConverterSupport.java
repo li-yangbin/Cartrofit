@@ -1,7 +1,5 @@
 package com.liyangbin.carretrofit;
 
-import com.liyangbin.carretrofit.annotation.WrappedData;
-
 import androidx.annotation.NonNull;
 import androidx.databinding.BaseObservable;
 import androidx.databinding.ObservableBoolean;
@@ -12,9 +10,10 @@ import androidx.databinding.ObservableInt;
 import androidx.databinding.ObservableLong;
 import androidx.databinding.PropertyChangeRegistry;
 
+import com.liyangbin.carretrofit.annotation.WrappedData;
+
 import java.lang.reflect.Field;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 class ObservableConverter {
     static void addSupport() {
@@ -47,36 +46,20 @@ class ObservableConverterField implements FlowConverter<ObservableField<Object>>
 
     @Override
     public ObservableField<Object> convert(Flow<Object> value) {
-        return new FlowObservableField<>(value, Function.identity());
+        return new FlowObservableField<>(value);
     }
 
-    @Override
-    public <NEW_R> ObservableField<NEW_R> map(ObservableField<Object> dataObservableField,
-                                              Converter<Object, NEW_R> converter) {
-        FlowObservableField<NEW_R> field
-                = (FlowObservableField<NEW_R>) dataObservableField;
-        field.setMapper(converter);
-        return field;
-    }
-
-    private static class FlowObservableField<T> extends ObservableField<T> implements Consumer<Object> {
-        Flow<Object> flow;
-        Function<Object, T> mapper;
+    private static class FlowObservableField<T> extends ObservableField<T> implements Consumer<T> {
+        Flow<T> flow;
         boolean hasCallback;
 
-        public FlowObservableField(Flow<Object> flow, Function<Object, T> mapper) {
+        public FlowObservableField(Flow<T> flow) {
             this.flow = flow;
-            this.mapper = mapper;
-            flow.addObserver(this);
-        }
-
-        void setMapper(Function<Object, T> mapper) {
-            this.mapper = mapper;
         }
 
         @Override
-        public void accept(Object t) {
-            set(mapper.apply(t));
+        public void accept(T t) {
+            set(t);
         }
 
         @Override
@@ -107,23 +90,12 @@ class ObservableConverterInt implements FlowConverter<ObservableInt> {
         return new FlowObservableInt(value);
     }
 
-    @Override
-    public <NEW_R> Object map(ObservableInt observableInt, Converter<Object, NEW_R> converter) {
-        return FlowObservableInt.map(observableInt, (Function<Object, Integer>) converter);
-    }
-
     private static class FlowObservableInt extends ObservableInt implements Consumer<Object> {
         Flow<Object> flow;
         boolean hasCallback;
-        Function<Object, Integer> mapper;
 
         FlowObservableInt(Flow<Object> flow) {
             this.flow = flow;
-        }
-
-        static BaseObservable map(BaseObservable observable, Function<Object, Integer> mapper) {
-            ((FlowObservableInt)observable).mapper = mapper;
-            return observable;
         }
 
         @Override
@@ -146,7 +118,7 @@ class ObservableConverterInt implements FlowConverter<ObservableInt> {
 
         @Override
         public void accept(Object value) {
-            set(mapper != null ? mapper.apply(value) : (Integer) value);
+            set((Integer) value);
         }
     }
 }
@@ -159,23 +131,12 @@ class ObservableConverterByte implements FlowConverter<ObservableByte> {
         return new FlowObservableByte(value);
     }
 
-    @Override
-    public <NEW_R> Object map(ObservableByte observableByte, Converter<Object, NEW_R> converter) {
-        return FlowObservableByte.map(observableByte, (Function<Object, Byte>) converter);
-    }
-
     private static class FlowObservableByte extends ObservableByte implements Consumer<Object> {
         Flow<Object> flow;
         boolean hasCallback;
-        Function<Object, Byte> mapper;
 
         FlowObservableByte(Flow<Object> flow) {
             this.flow = flow;
-        }
-
-        static BaseObservable map(BaseObservable observable, Function<Object, Byte> mapper) {
-            ((FlowObservableByte)observable).mapper = mapper;
-            return observable;
         }
 
         @Override
@@ -198,7 +159,7 @@ class ObservableConverterByte implements FlowConverter<ObservableByte> {
 
         @Override
         public void accept(Object value) {
-            set(mapper != null ? mapper.apply(value) : (Byte) value);
+            set((Byte) value);
         }
     }
 }
@@ -211,24 +172,12 @@ class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
         return new FlowObservableBoolean(value);
     }
 
-    @Override
-    public <NEW_R> Object map(ObservableBoolean observableBoolean, Converter<Object, NEW_R> converter) {
-        return FlowObservableBoolean.map(observableBoolean, (Function<Object, Boolean>) converter);
-    }
-
     private static class FlowObservableBoolean extends ObservableBoolean implements Consumer<Object> {
         Flow<Object> flow;
         boolean hasCallback;
-        Function<Object, Boolean> mapper;
 
         public FlowObservableBoolean(Flow<Object> flow) {
             this.flow = flow;
-        }
-
-        static ObservableBoolean map(ObservableBoolean observableBoolean,
-                                     Function<Object, Boolean> mapper) {
-            ((FlowObservableBoolean)observableBoolean).mapper = mapper;
-            return observableBoolean;
         }
 
         @Override
@@ -251,7 +200,7 @@ class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
 
         @Override
         public void accept(Object value) {
-            set(mapper != null ? mapper.apply(value) : (Boolean) value);
+            set((Boolean) value);
         }
     }
 }
@@ -264,23 +213,12 @@ class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
         return new FlowObservableFloat(value);
     }
 
-    @Override
-    public <NEW_R> Object map(ObservableFloat observableFloat, Converter<Object, NEW_R> converter) {
-        return FlowObservableFloat.map(observableFloat, (Function<Object, Float>) converter);
-    }
-
     private static class FlowObservableFloat extends ObservableFloat implements Consumer<Object> {
         Flow<Object> flow;
         boolean hasCallback;
-        Function<Object, Float> mapper;
 
         FlowObservableFloat(Flow<Object> flow) {
             this.flow = flow;
-        }
-
-        static BaseObservable map(BaseObservable observable, Function<Object, Float> mapper) {
-            ((FlowObservableFloat)observable).mapper = mapper;
-            return observable;
         }
 
         @Override
@@ -303,7 +241,7 @@ class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
 
         @Override
         public void accept(Object value) {
-            set(mapper != null ? mapper.apply(value) : (Float) value);
+            set((Float) value);
         }
     }
 }
@@ -316,23 +254,12 @@ class ObservableConverterLong implements FlowConverter<ObservableLong> {
         return new FlowObservableLong(value);
     }
 
-    @Override
-    public <NEW_R> Object map(ObservableLong observableLong, Converter<Object, NEW_R> converter) {
-        return FlowObservableLong.map(observableLong, (Function<Object, Long>) converter);
-    }
-
     private static class FlowObservableLong extends ObservableLong implements Consumer<Object> {
         Flow<Object> flow;
         boolean hasCallback;
-        Function<Object, Long> mapper;
 
         FlowObservableLong(Flow<Object> flow) {
             this.flow = flow;
-        }
-
-        static BaseObservable map(BaseObservable observable, Function<Object, Long> mapper) {
-            ((FlowObservableLong)observable).mapper = mapper;
-            return observable;
         }
 
         @Override
@@ -355,7 +282,7 @@ class ObservableConverterLong implements FlowConverter<ObservableLong> {
 
         @Override
         public void accept(Object value) {
-            set(mapper != null ? mapper.apply(value) : (Long) value);
+            set((Long) value);
         }
     }
 }

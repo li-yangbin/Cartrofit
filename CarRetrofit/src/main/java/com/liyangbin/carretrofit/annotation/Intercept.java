@@ -1,5 +1,7 @@
 package com.liyangbin.carretrofit.annotation;
 
+import com.liyangbin.carretrofit.Command;
+
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
@@ -13,6 +15,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Retention(RUNTIME)
 public @interface Intercept {
     int value() default 0;
-    String[] category() default {};
+    Command.CommandType[] concernType() default {};
+    String[] category() default {Custom.ALL};
     int priority() default 0;
 }

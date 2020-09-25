@@ -30,16 +30,4 @@ public interface Command {
     Field getField();
 
     String getName();
-
-    enum CommandType {
-        SET,
-        GET,
-        TRACK,
-        UN_TRACK,
-        RECEIVE,
-        APPLY,
-        INJECT,
-        STICKY_GET,
-        COMBINE
-    }
 }

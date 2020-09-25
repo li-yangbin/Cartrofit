@@ -13,8 +13,8 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Target(METHOD)
 @Retention(RUNTIME)
 public @interface Combine {
-    String[] elements();
-    String combinator();
-    String[] category() default {};
+    int[] elements();
+    int combinator();
+    String[] category() default {Custom.ALL};
     StickyType sticky() default StickyType.ON;
 }

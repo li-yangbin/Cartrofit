@@ -2,7 +2,6 @@ package com.liyangbin.carretrofit;
 
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
-import androidx.lifecycle.Transformations;
 
 import java.util.function.Consumer;
 
@@ -23,23 +22,12 @@ class LiveDataConverterDefault implements FlowConverter<LiveData<Object>> {
     public LiveData<Object> convert(Flow<Object> value) {
         return new FlowLiveData<>(value);
     }
-
-    @Override
-    public <NEW_R> LiveData<NEW_R> map(LiveData<Object> raw, Converter<Object, NEW_R> converter) {
-        return Transformations.map(raw, converter::convert);
-    }
 }
 
 class LiveDataConverterMutable implements FlowConverter<MutableLiveData<Object>> {
     @Override
     public MutableLiveData<Object> convert(Flow<Object> value) {
         return new FlowLiveData<>(value);
-    }
-
-    @Override
-    public <NEW_R> MutableLiveData<NEW_R> map(MutableLiveData<Object> raw,
-                                              Converter<Object, NEW_R> converter) {
-        return (MutableLiveData<NEW_R>) Transformations.map(raw, converter::convert);
     }
 }
 

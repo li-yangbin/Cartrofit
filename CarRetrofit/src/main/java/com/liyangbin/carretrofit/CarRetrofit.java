@@ -8,6 +8,7 @@ import com.liyangbin.carretrofit.annotation.CarValue;
 import com.liyangbin.carretrofit.annotation.Combine;
 import com.liyangbin.carretrofit.annotation.ConsiderSuper;
 import com.liyangbin.carretrofit.annotation.Convert;
+import com.liyangbin.carretrofit.annotation.Custom;
 import com.liyangbin.carretrofit.annotation.Delegate;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
@@ -37,7 +38,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -83,7 +83,7 @@ public final class CarRetrofit {
 
     private CarRetrofit(Builder builder) {
         mConverterStore = new ConverterStore();
-        mConverterStore.addParent(GLOBAL_CONVERTER);
+        mConverterStore.addParentToEnd(GLOBAL_CONVERTER);
         mDataMap = builder.dataMap;
         mDefaultStickyType = builder.stickyType;
         if (mDataMap.isEmpty()) {
@@ -157,7 +157,7 @@ public final class CarRetrofit {
         HashMap<Integer, InterceptorRecord> selfInterceptorDependency = new HashMap<>();
         HashMap<String, InterceptorChain> selfInterceptorDependencyByCategory = new HashMap<>();
         HashMap<Integer, ConverterRecord> selfConverterDependency = new HashMap<>();
-        HashMap<String, ConverterRecord> selfConverterDependencyByCategory = new HashMap<>();
+        HashMap<String, ConverterStore> selfConverterDependencyByCategory = new HashMap<>();
 
         HashMap<Integer, Method> dependency = new HashMap<>();
 
@@ -264,58 +264,70 @@ public final class CarRetrofit {
             if (selfConverterDependency.size() > 0) {
                 for (ConverterRecord record : selfConverterDependency.values()) {
                     for (String category : record.interestedCategory) {
-                        selfConverterDependencyByCategory.putIfAbsent(category, record);
+                        ConverterStore storeBySameCategory = selfConverterDependencyByCategory.get(category);
+                        if (storeBySameCategory == null) {
+                            storeBySameCategory = new ConverterStore();
+                            selfConverterDependencyByCategory.put(category, storeBySameCategory);
+                        }
+                        storeBySameCategory.addConverter(record.converter);
                     }
                 }
             }
         }
 
-        InterceptorChain getInterceptorByKey(Key key, String[] categoryArray, boolean includingParent) {
-            Intercept intercept = key.getAnnotation(Intercept.class);
+        InterceptorChain getInterceptorByKey(Key key, CommandType type, boolean includingParent) {
+            Custom custom = key.getAnnotation(Custom.class);
             InterceptorChain head = null;
-            if (intercept != null) {
-                InterceptorRecord record = selfInterceptorDependency.get(intercept.value());
-                if (record != null) {
-                    head = new InterceptorChain(null, record.interceptor);
+            String[] categoryArray = custom != null ? custom.category() : new String[]{Custom.ALL};
+            for (String category : categoryArray) {
+                InterceptorChain categoryChain = selfInterceptorDependencyByCategory.get(category);
+                if (head == null) {
+                    head = categoryChain;
+                } else {
+                    head = head.attach(categoryChain);
                 }
             }
-            if (head == null && categoryArray != null && categoryArray.length > 0) {
-                for (String category : categoryArray) {
-                    InterceptorChain categoryChain = selfInterceptorDependencyByCategory.get(category);
-                    if (head == null) {
-                        head = categoryChain;
-                    } else {
-                        head = head.copyAndAttach(categoryChain);
-                    }
+            if (custom != null) {
+                InterceptorRecord record = selfInterceptorDependency.get(custom.interceptBy());
+                if (record != null) {
+                    head = new InterceptorChain(head, record.interceptor);
                 }
             }
             return includingParent ? mChainHead.copyAndAttach(head) : head;
         }
 
-        ConverterStore getConverterByKey(Key key, String[] categoryArray) {
+        ConverterStore getConverterByKey(Key key, CommandType type) {
+            Custom custom = key.getAnnotation(Custom.class);
             ConverterStore converterStore = null;
-            Convert convert = key.getAnnotation(Convert.class);
-            if (convert != null) {
-                ConverterRecord record = selfConverterDependency.get(convert.value());
+            if (custom != null) {
+                ConverterRecord record = selfConverterDependency.get(custom.convertBy());
                 if (record != null) {
                     converterStore = new ConverterStore(record.converter);
                 }
             }
-            if (converterStore == null && categoryArray != null && categoryArray.length > 0) {
-                for (String category : categoryArray) {
-                    ConverterRecord record = selfConverterDependencyByCategory.get(category);
-                    if (record != null) {
-                        converterStore = new ConverterStore(record.converter);
-                        break;
+            String[] categoryArray = custom != null ? custom.category() : new String[]{Custom.ALL};
+            for (String category : categoryArray) {
+                ConverterStore store = selfConverterDependencyByCategory.get(category);
+                if (store != null) {
+                    if (converterStore == null) {
+                        converterStore = store;
+                    } else {
+                        converterStore.addParentToEnd(store);
                     }
+                    break;
                 }
             }
             if (converterStore == null) {
                 converterStore = mConverterStore;
             } else {
-                converterStore.addParent(mConverterStore);
+                converterStore.addParentToEnd(mConverterStore);
             }
             return converterStore;
+        }
+
+        Converter<?, ?> getConverterById(int id) {
+            ConverterRecord record = selfConverterDependency.get(id);
+            return record != null ? record.converter : null;
         }
 
         void importDependency(Class<?> target, boolean self) {
@@ -474,8 +486,12 @@ public final class CarRetrofit {
         ConverterStore() {
         }
 
-        void addParent(ConverterStore parent) {
-            parentStore = parent;
+        void addParentToEnd(ConverterStore parent) {
+            ConverterStore store = this;
+            while (store.parentStore != null) {
+                store = store.parentStore;
+            }
+            store.parentStore = parent;
         }
 
         void addConverter(Converter<?, ?> converter) {
@@ -599,7 +615,7 @@ public final class CarRetrofit {
             from = from.isPrimitive() ? boxTypeOf(from) : from;
             to = to.isPrimitive() ? boxTypeOf(to) : to;
             Converter<?, ?> converter = store.findWithCommand(command, from, to);
-            if (from == to || converter != null) {
+            if (converter != null) {
                 return converter;
             }
             converter = store.findWithoutCommand(from, to);
@@ -714,6 +730,23 @@ public final class CarRetrofit {
 
     private CommandImpl getOrCreateCommand(ApiRecord<?> record, Key key) {
         return getOrCreateCommandIfChecked(record, key, null, FLAG_PARSE_ALL);
+    }
+
+    private CommandImpl getOrCreateCommandById(ApiRecord<?> record, int id, int flag) {
+        Method method = record.selfDependency.get(id);
+        if (method == null) {
+            method = record.dependency.get(id);
+        }
+        if (method == null) {
+            throw new CarRetrofitException("Can not resolve target Id:" + id + " from:" + this);
+        }
+        CommandImpl command = getOrCreateCommandIfChecked(getApi(method.getDeclaringClass()),
+                new Key(method), null, flag);
+        if (command == null) {
+            throw new CarRetrofitException("Can not resolve target Id:" + id
+                    + " in specific type from:" + this);
+        }
+        return command;
     }
 
     private CommandImpl getOrCreateCommandIfChecked(ApiRecord<?> record, Key key,
@@ -953,13 +986,9 @@ public final class CarRetrofit {
                 return null;
             }
             CommandUnTrack command = new CommandUnTrack();
-            final String targetTrack = unTrack.track();
-            searchAndCreateChildCommand(record,
-                    childKey -> targetTrack.equals(childKey.getName()),
-                    child -> {
-                        command.setTrackCommand((CommandFlow) child);
-                        return false;
-                    }, FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE | FLAG_PARSE_DELEGATE);
+            final int targetTrack = unTrack.track();
+            command.setTrackCommand((CommandFlow) getOrCreateCommandById(record, targetTrack,
+                    FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE));
             command.init(record, unTrack, key);
             return command;
         }
@@ -1023,27 +1052,16 @@ public final class CarRetrofit {
                 return null;
             }
             CommandCombine command = new CommandCombine();
-            List<String> elementList = new ArrayList<>(Arrays.asList(combine.elements()));
-            searchAndCreateChildCommand(record,
-                    childKey -> {
-                        if (childKey.equals(key)) {
-                            return false;
-                        }
-                        return elementList.contains(childKey.getName());
-                    },
-                    child -> {
-                        command.addChildCommand(child);
-                        elementList.remove(child.getName());
-                        return elementList.size() > 0;
-                    }, FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE
-                            | FLAG_PARSE_DELEGATE);
-            if (elementList.size() > 0) {
-                throw new CarRetrofitException("Can not find target child element on Combine:"
-                        + key + " missing element:" + elementList);
-            }
-            if (command.childrenCommand.size() <= 1) {
+            int[] elements = combine.elements();
+            if (elements.length <= 1) {
                 throw new CarRetrofitException("Must declare more than one element on Combine:"
-                        + key + " element:" + command.childrenCommand);
+                        + key + " elements:" + Arrays.toString(elements));
+            }
+            for (int element : elements) {
+                CommandImpl childCommand = getOrCreateCommandById(record, element,
+                        FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE
+                        | FLAG_PARSE_DELEGATE);
+                command.addChildCommand(childCommand);
             }
             command.init(record, combine, key);
             return command;
@@ -1054,17 +1072,9 @@ public final class CarRetrofit {
             if (checker != null && !checker.test(key)) {
                 return null;
             }
-            String target = delegate.target();
             CommandDelegate command = new CommandDelegate();
-            searchAndCreateChildCommand(record,
-                    childKey -> childKey.getName().equals(target),
-                    targetCommand -> {
-                        command.setTargetCommand(targetCommand);
-                        return false;
-                    }, FLAG_PARSE_ALL &~ FLAG_PARSE_DELEGATE);
-            if (command.targetCommand == null) {
-                throw new CarRetrofitException("Can not resolve delegate target:" + target);
-            }
+            command.setTargetCommand(getOrCreateCommandById(record, delegate.target(),
+                    FLAG_PARSE_ALL));
             command.init(record, delegate, key);
             return command;
         }
@@ -1135,12 +1145,9 @@ public final class CarRetrofit {
             this.record = record;
             this.source = record.source;
             this.key = key;
-        }
 
-        final void resolveInterceptorAndConverterStore(String[] category) {
-            this.chain = record.getInterceptorByKey(key, category,
-                    delegateTarget() == this);
-            this.store = record.getConverterByKey(key, category);
+            this.chain = record.getInterceptorByKey(key, type(), delegateTarget() == this);
+            this.store = record.getConverterByKey(key, type());
         }
 
         final void resolveArea(int userDeclaredArea) {
@@ -1417,7 +1424,7 @@ public final class CarRetrofit {
     private static class CommandCombine extends CommandFlow {
 
         Converter<?, ?> combinator;
-        String operatorExp;
+        int combinatorId;
         Class<?> functionClass;
 
         @Override
@@ -1430,11 +1437,7 @@ public final class CarRetrofit {
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
             super.init(record, annotation, key);
             Combine combine = (Combine) annotation;
-            List<String> elementList = Arrays.asList(combine.elements());
-            Collections.sort(childrenCommand, (o1, o2) ->
-                    elementList.indexOf(o1.getName()) - elementList.indexOf(o2.getName()));
             resolveStickyType(combine.sticky());
-            resolveInterceptorAndConverterStore(combine.category());
 
             ArrayList<CommandFlow> flowChildren = null;
             ArrayList<CommandImpl> otherChildren = null;
@@ -1472,10 +1475,9 @@ public final class CarRetrofit {
                 }
             }
 
-            operatorExp = combine.combinator();
+            combinatorId = combine.combinator();
             try {
-                Field combinatorField = record.clazz.getDeclaredField(operatorExp);
-                Object operatorObj = combinatorField.get(null);
+                Object operatorObj = record.getConverterById(combinatorId);
                 String operatorFullName = Function2.class.getName();
                 String prefix = operatorFullName.substring(0, operatorFullName.lastIndexOf("."));
                 int childElementCount = childrenCommand.size();
@@ -1483,9 +1485,9 @@ public final class CarRetrofit {
                 functionClass = Class.forName(targetFunctionFullName);
                 if (functionClass.isInstance(operatorObj)) {
                     this.combinator = (Converter<?, ?>) Objects.requireNonNull(operatorObj,
-                            "Failed to resolve operator:" + operatorExp);
+                            "Failed to resolve id:" + combinatorId);
                 } else {
-                    throw new CarRetrofitException("Converter:" + operatorExp
+                    throw new CarRetrofitException("Converter:" + combinatorId
                             + " doesn't match element count:" + childElementCount);
                 }
             } catch (ReflectiveOperationException e) {
@@ -1559,7 +1561,7 @@ public final class CarRetrofit {
                 }
             } catch (ClassCastException castError) {
                 throw new CarRetrofitException("Value:" + Arrays.toString(elements)
-                        + " can not apply tp operator:" + operatorExp, castError);
+                        + " can not apply tp combinator:" + combinatorId, castError);
             }
         }
 
@@ -1610,7 +1612,7 @@ public final class CarRetrofit {
 
         @Override
         String toCommandString() {
-            return super.toCommandString() + " operator:" + operatorExp;
+            return super.toCommandString() + " combinator:" + combinatorId;
         }
 
         private static class CombineData {
@@ -1733,7 +1735,6 @@ public final class CarRetrofit {
             this.propertyId = set.id();
             buildInValue = BuildInValue.build(set.value());
             resolveArea(set.area());
-            resolveInterceptorAndConverterStore(set.category());
 
             if (buildInValue != null) {
                 return;
@@ -1810,13 +1811,11 @@ public final class CarRetrofit {
                     throw new CarRetrofitException("Can not use type ALL mode in Get operation");
                 }
                 resolveArea(get.area());
-                resolveInterceptorAndConverterStore(get.category());
             } else if (annotation instanceof Track) {
                 Track track = (Track) annotation;
                 propertyId = track.id();
                 type = track.type();
                 resolveArea(track.area());
-                resolveInterceptorAndConverterStore(track.category());
                 stickyGet = true;
             }
 
@@ -2015,7 +2014,6 @@ public final class CarRetrofit {
 
             resolveArea(track.area());
             resolveStickyType(track.sticky());
-            resolveInterceptorAndConverterStore(track.category());
 
             resolveConverter();
         }
@@ -2203,7 +2201,6 @@ public final class CarRetrofit {
             super.init(record, annotation, key);
             Delegate delegate = (Delegate) annotation;
             resolveStickyType(delegate.sticky());
-            resolveInterceptorAndConverterStore(delegate.category());
 
             if (targetCommand instanceof CommandFlow) {
                 CommandFlow targetFlowCommand = (CommandFlow) targetCommand;
