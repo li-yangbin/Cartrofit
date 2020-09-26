@@ -11,9 +11,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Target(METHOD)
 @Retention(RUNTIME)
 public @interface Custom {
-    String ALL = "ALL";
-
     int interceptBy() default 0;
     int convertBy() default 0;
-    String[] category() default {ALL};
+    String[] category() default {};
 }

@@ -154,10 +154,8 @@ public final class CarRetrofit {
         ArrayList<ApiRecord<?>> parentApi;
 
         HashMap<Integer, Method> selfDependency = new HashMap<>();
-        HashMap<Integer, InterceptorRecord> selfInterceptorDependency = new HashMap<>();
-        HashMap<String, InterceptorChain> selfInterceptorDependencyByCategory = new HashMap<>();
-        HashMap<Integer, ConverterRecord> selfConverterDependency = new HashMap<>();
-        HashMap<String, ConverterStore> selfConverterDependencyByCategory = new HashMap<>();
+        ConverterManager converterManager = new ConverterManager();
+        InterceptorManager interceptorManager = new InterceptorManager();
 
         HashMap<Integer, Method> dependency = new HashMap<>();
 
@@ -189,133 +187,193 @@ public final class CarRetrofit {
                 }
             }
 
-            reorderAndProcessCategory();
-
             this.source = Objects.requireNonNull(mDataMap.get(dataScope),
                     "Invalid scope:" + dataScope +
                     " make sure use a valid scope registered in Builder().addDataSource()");
         }
 
-        private class ConverterRecord {
-            Converter<?, ?> converter;
-            Field field;
-            String[] interestedCategory;
-
-            ConverterRecord(Field field) {
-                this.field = field;
-                Convert convert = field.getDeclaredAnnotation(Convert.class);
-                if (convert == null) {
-                    throw new IllegalStateException("impossible");
-                }
-                interestedCategory = convert.category();
-                try {
-                    converter = (Converter<?, ?>) field.get(null);
-                } catch (ReflectiveOperationException illegal) {
-                    throw new CarRetrofitException(illegal);
-                }
-            }
-        }
-
         private class InterceptorRecord {
             Interceptor interceptor;
-            Field field;
             int priority;
-            String[] interestedCategory;
 
-            InterceptorRecord(Field field) {
-                this.field = field;
-                Intercept intercept = field.getDeclaredAnnotation(Intercept.class);
-                if (intercept == null) {
-                    throw new IllegalStateException("impossible");
-                }
-                this.interestedCategory = intercept.category();
-                this.priority = intercept.priority();
-                try {
-                    interceptor = (Interceptor) field.get(null);
-                } catch (ReflectiveOperationException illegal) {
-                    throw new CarRetrofitException(illegal);
-                }
+            InterceptorRecord(Interceptor interceptor, int priority) {
+                this.interceptor = interceptor;
+                this.priority = priority;
             }
         }
 
-        private void reorderAndProcessCategory() {
-            if (selfInterceptorDependency.size() > 0) {
-                HashMap<String, ArrayList<InterceptorRecord>> interceptorMap = new HashMap<>();
-                for (InterceptorRecord record : selfInterceptorDependency.values()) {
-                    for (String category : record.interestedCategory) {
-                        ArrayList<InterceptorRecord> recordBySameCategory = interceptorMap.get(category);
-                        if (recordBySameCategory == null) {
-                            recordBySameCategory = new ArrayList<>();
-                            interceptorMap.put(category, recordBySameCategory);
+        private abstract class AbstractManager<RECORD, OBJ, A extends Annotation> {
+            HashMap<String, ArrayList<RECORD>> recordListByCategory = new HashMap<>();
+            HashMap<CommandType, ArrayList<RECORD>> recordListByType = new HashMap<>();
+            HashMap<Integer, RECORD> recordByIndex = new HashMap<>();
+            ArrayList<RECORD> concernAll = new ArrayList<>();
+
+            void add(int index, Field field, Class<A> annotationClass) {
+                A annotation = field.getDeclaredAnnotation(annotationClass);
+                if (annotation == null) {
+                    throw new IllegalStateException("impossible");
+                }
+                OBJ obj;
+                try {
+                    obj = (OBJ) field.get(null);
+                } catch (ReflectiveOperationException illegal) {
+                    throw new CarRetrofitException(illegal);
+                }
+                RECORD record = onCreate(obj, annotation);
+
+                if (isAll(annotation)) {
+                    concernAll.add(record);
+                } else {
+                    recordByIndex.put(index, record);
+
+                    CommandType[] concernType = concernType(annotation);
+                    String[] categoryArray = concernCategory(annotation);
+                    if (concernType.length > 0) {
+                        if (categoryArray.length > 0) {
+                            throw new CarRetrofitException(annotationClass.getSimpleName()
+                                    + " can not declare both type and category attribute");
                         }
-                        recordBySameCategory.add(record);
+                        for (CommandType type : concernType) {
+                            ArrayList<RECORD> recordByType = recordListByType.get(type);
+                            if (recordByType == null) {
+                                recordByType = new ArrayList<>();
+                                recordListByType.put(type, recordByType);
+                            }
+                            recordByType.add(record);
+                        }
+                    } else {
+                        for (String category : categoryArray) {
+                            ArrayList<RECORD> recordByCategory = recordListByCategory.get(category);
+                            if (recordByCategory == null) {
+                                recordByCategory = new ArrayList<>();
+                                recordListByCategory.put(category, recordByCategory);
+                            }
+                            recordByCategory.add(record);
+                        }
                     }
                 }
-                interceptorMap.forEach((category, recordBySameCategory) -> {
-                    Collections.sort(recordBySameCategory, (o1, o2) -> o1.priority - o2.priority);
-                    InterceptorChain head = null;
-                    for (int i = 0; i < recordBySameCategory.size(); i++) {
-                        head = new InterceptorChain(head, recordBySameCategory.get(i).interceptor);
-                    }
-                    selfInterceptorDependencyByCategory.put(category, head);
-                });
             }
 
-            if (selfConverterDependency.size() > 0) {
-                for (ConverterRecord record : selfConverterDependency.values()) {
-                    for (String category : record.interestedCategory) {
-                        ConverterStore storeBySameCategory = selfConverterDependencyByCategory.get(category);
-                        if (storeBySameCategory == null) {
-                            storeBySameCategory = new ConverterStore();
-                            selfConverterDependencyByCategory.put(category, storeBySameCategory);
+            abstract boolean isAll(A a);
+
+            abstract String[] concernCategory(A a);
+
+            abstract CommandType[] concernType(A a);
+
+            abstract RECORD onCreate(OBJ obj, A a);
+
+            abstract ArrayList<OBJ> extract(ArrayList<RECORD> recordList);
+
+            ArrayList<OBJ> find(int index, String[] category, CommandType type) {
+                ArrayList<RECORD> result = new ArrayList<>();
+                RECORD fromIndex = recordByIndex.get(index);
+                if (fromIndex != null) {
+                    result.add(fromIndex);
+                }
+                if (category != null) {
+                    for (String string : category) {
+                        ArrayList<RECORD> fromCategory = recordListByCategory.get(string);
+                        if (fromCategory != null) {
+                            result.addAll(fromCategory);
                         }
-                        storeBySameCategory.addConverter(record.converter);
                     }
                 }
+                ArrayList<RECORD> fromType = recordListByType.get(type);
+                if (fromType != null) {
+                    result.addAll(fromType);
+                }
+                result.addAll(concernAll);
+                return extract(result);
+            }
+        }
+
+        private final class InterceptorManager extends
+                AbstractManager<InterceptorRecord, Interceptor, Intercept> {
+            @Override
+            boolean isAll(Intercept intercept) {
+                return intercept.all();
+            }
+            @Override
+            String[] concernCategory(Intercept intercept) {
+                return intercept.category();
+            }
+            @Override
+            CommandType[] concernType(Intercept intercept) {
+                return intercept.concernType();
+            }
+            @Override
+            InterceptorRecord onCreate(Interceptor interceptor, Intercept intercept) {
+                return new InterceptorRecord(interceptor, intercept.priority());
+            }
+            @Override
+            ArrayList<Interceptor> extract(ArrayList<InterceptorRecord> recordList) {
+                boolean needShuffle = false;
+                for (int i = 0; i < recordList.size(); i++) {
+                    if (recordList.get(i).priority != 0) {
+                        needShuffle = true;
+                        break;
+                    }
+                }
+                if (needShuffle) {
+                    Collections.sort(recordList, (o1, o2) -> o1.priority - o2.priority);
+                }
+                ArrayList<Interceptor> result = new ArrayList<>();
+                for (int i = 0; i < recordList.size(); i++) {
+                    result.add(recordList.get(i).interceptor);
+                }
+                return result;
+            }
+        }
+
+        private final class ConverterManager extends
+                AbstractManager<Converter<?, ?>, Converter<?, ?>, Convert> {
+            @Override
+            boolean isAll(Convert convert) {
+                return convert.all();
+            }
+            @Override
+            String[] concernCategory(Convert convert) {
+                return convert.category();
+            }
+            @Override
+            CommandType[] concernType(Convert convert) {
+                return convert.concernType();
+            }
+            @Override
+            Converter<?, ?> onCreate(Converter<?, ?> converter, Convert convert) {
+                return converter;
+            }
+            @Override
+            ArrayList<Converter<?, ?>> extract(ArrayList<Converter<?, ?>> recordList) {
+                return recordList;
             }
         }
 
         InterceptorChain getInterceptorByKey(Key key, CommandType type, boolean includingParent) {
             Custom custom = key.getAnnotation(Custom.class);
-            InterceptorChain head = null;
-            String[] categoryArray = custom != null ? custom.category() : new String[]{Custom.ALL};
-            for (String category : categoryArray) {
-                InterceptorChain categoryChain = selfInterceptorDependencyByCategory.get(category);
-                if (head == null) {
-                    head = categoryChain;
-                } else {
-                    head = head.attach(categoryChain);
-                }
+            int explicitlyIndex = custom != null ? custom.interceptBy() : 0;
+            String[] explicitlyCategory = custom != null ? custom.category() : null;
+            ArrayList<Interceptor> interceptorList =
+                    interceptorManager.find(explicitlyIndex, explicitlyCategory, type);
+            InterceptorChain head = includingParent ? mChainHead : null;
+            for (int i = 0; i < interceptorList.size(); i++) {
+                head = new InterceptorChain(head, interceptorList.get(i));
             }
-            if (custom != null) {
-                InterceptorRecord record = selfInterceptorDependency.get(custom.interceptBy());
-                if (record != null) {
-                    head = new InterceptorChain(head, record.interceptor);
-                }
-            }
-            return includingParent ? mChainHead.copyAndAttach(head) : head;
+            return head;
         }
 
         ConverterStore getConverterByKey(Key key, CommandType type) {
             Custom custom = key.getAnnotation(Custom.class);
+            int explicitlyIndex = custom != null ? custom.convertBy() : 0;
+            String[] explicitlyCategory = custom != null ? custom.category() : null;
+            ArrayList<Converter<?, ?>> converterList =
+                    converterManager.find(explicitlyIndex, explicitlyCategory, type);
             ConverterStore converterStore = null;
-            if (custom != null) {
-                ConverterRecord record = selfConverterDependency.get(custom.convertBy());
-                if (record != null) {
-                    converterStore = new ConverterStore(record.converter);
+            for (int i = 0; i < converterList.size(); i++) {
+                if (converterStore == null) {
+                    converterStore = new ConverterStore();
                 }
-            }
-            String[] categoryArray = custom != null ? custom.category() : new String[]{Custom.ALL};
-            for (String category : categoryArray) {
-                ConverterStore store = selfConverterDependencyByCategory.get(category);
-                if (store != null) {
-                    if (converterStore == null) {
-                        converterStore = store;
-                    } else {
-                        converterStore.addParentToEnd(store);
-                    }
-                    break;
-                }
+                converterStore.addConverter(converterList.get(i));
             }
             if (converterStore == null) {
                 converterStore = mConverterStore;
@@ -326,8 +384,7 @@ public final class CarRetrofit {
         }
 
         Converter<?, ?> getConverterById(int id) {
-            ConverterRecord record = selfConverterDependency.get(id);
-            return record != null ? record.converter : null;
+            return converterManager.recordByIndex.get(id);
         }
 
         void importDependency(Class<?> target, boolean self) {
@@ -343,14 +400,12 @@ public final class CarRetrofit {
             }
             if (interceptorDependency != null) {
                 for (Map.Entry<Integer, Field> entry : interceptorDependency.entrySet()) {
-                    selfInterceptorDependency.put(entry.getKey(),
-                            new InterceptorRecord(entry.getValue()));
+                    interceptorManager.add(entry.getKey(), entry.getValue(), Intercept.class);
                 }
             }
             if (converterDependency != null) {
                 for (Map.Entry<Integer, Field> entry : converterDependency.entrySet()) {
-                    selfConverterDependency.put(entry.getKey(),
-                            new ConverterRecord(entry.getValue()));
+                    converterManager.add(entry.getKey(), entry.getValue(), Convert.class);
                 }
             }
         }
