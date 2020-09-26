@@ -39,4 +39,5 @@ dependencies {
     testImplementation 'androidx.lifecycle:lifecycle-livedata:2.0.0'
     compileOnly 'androidx.lifecycle:lifecycle-livedata:2.0.0'
     annotationProcessor project(':processorlib')
+    testAnnotationProcessor project(':processorlib')
 }

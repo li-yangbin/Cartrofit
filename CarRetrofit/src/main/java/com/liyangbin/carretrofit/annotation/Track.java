@@ -21,7 +21,5 @@ public @interface Track {
 
     CarType type() default CarType.VALUE;
 
-    String[] category() default {};
-
     StickyType sticky() default StickyType.NO_SET;
 }

@@ -4,6 +4,6 @@ public interface FlowConverter<T> extends Converter<Flow<Object>, T>, CommandPre
 
     @Override
     default boolean checkCommand(Command command) {
-        return command.type() == Command.CommandType.TRACK;
+        return command.type() == CommandType.TRACK || command.type() == CommandType.COMBINE;
     }
 }

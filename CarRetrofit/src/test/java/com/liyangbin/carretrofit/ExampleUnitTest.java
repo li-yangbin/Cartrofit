@@ -368,7 +368,7 @@ public class ExampleUnitTest {
     @AfterClass
     public static void end() {
         try {
-            Thread.sleep(20 * 1000);
+            Thread.sleep(10 * 1000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -393,6 +393,7 @@ public class ExampleUnitTest {
 
     @Test
     public void setGetInt() {
+        print("setGetInt");
         int value = api.getIntSignal();
         print("before int value:" + value);
         api.setIntSignal(100);
@@ -532,16 +533,22 @@ public class ExampleUnitTest {
     @Test
     public void combineTest() {
 
-        api.trackStringAndCombine().subscribe(new Consumer<String>() {
-            @Override
-            public void accept(String string) throws Exception {
-                print("combine receive:" + string);
-            }
-        });
+//        api.trackStringAndCombine().subscribe(new Consumer<String>() {
+//            @Override
+//            public void accept(String string) throws Exception {
+//                print("combine receive:" + string);
+//            }
+//        });
     }
 
     @Test
     public void combineDelegate() {
+        api.trackIntAndBoolean().subscribe(new Consumer<String>() {
+            @Override
+            public void accept(String string) throws Exception {
+                print("combine accept:" + string);
+            }
+        });
 
 //        api.trackStringAndCombine().subscribe(new Consumer<String>() {
 //            @Override
@@ -549,12 +556,12 @@ public class ExampleUnitTest {
 //                print("combine receive:" + string);
 //            }
 //        });
-            api.trackIntDelegate().subscribe(new Consumer<String>() {
-            @Override
-            public void accept(String value) throws Exception {
-                print("delegate accept:" + value);
-            }
-        });
+//            api.trackIntDelegate().subscribe(new Consumer<String>() {
+//            @Override
+//            public void accept(String value) throws Exception {
+//                print("delegate accept:" + value);
+//            }
+//        });
     }
 
     @Test

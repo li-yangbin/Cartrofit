@@ -4,6 +4,7 @@ import com.liyangbin.carretrofit.annotation.Apply;
 import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.CarValue;
 import com.liyangbin.carretrofit.annotation.Combine;
+import com.liyangbin.carretrofit.annotation.Convert;
 import com.liyangbin.carretrofit.annotation.Delegate;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
@@ -14,6 +15,8 @@ import com.liyangbin.carretrofit.funtion.Function2;
 import androidx.databinding.ObservableBoolean;
 import io.reactivex.Observable;
 import io.reactivex.Single;
+
+import static com.liyangbin.carretrofit.TestCarApiId.*;
 
 @CarApi(scope = "test")
 public interface TestCarApi {
@@ -73,12 +76,13 @@ public interface TestCarApi {
     @Track(id = 0, sticky = StickyType.ON)
     Observable<Integer> trackIntReactive();
 
-    @Delegate(target = "trackStringAndCombine")
+    @Delegate(target = trackStringAndCombine)
     Observable<String> trackIntDelegate();
 
     @Track(id = 0, sticky = StickyType.ON)
     Observable<Boolean> trackBooleanReactive();
 
+    @Convert
     Function2<String, Boolean, String> combinator_aa = new Function2<String, Boolean, String>() {
 
         @Override
@@ -87,9 +91,10 @@ public interface TestCarApi {
         }
     };
 
-    @Combine(elements = {"trackStringSignal", "trackBooleanReactive"}, combinator = "combinator_aa")
+    @Combine(elements = {trackStringSignal, trackBooleanReactive}, combinator = TestCarApiId.combinator_aa)
     Observable<String> trackIntAndBoolean();
 
+    @Convert
     Function2<String, String, String> combinator_bb = new Function2<String, String, String>() {
 
         @Override
@@ -98,7 +103,7 @@ public interface TestCarApi {
         }
     };
 
-    @Combine(elements = {"trackStringSignal", "trackIntAndBoolean"}, combinator = "combinator_bb")
+    @Combine(elements = {trackStringSignal, trackIntAndBoolean}, combinator = TestCarApiId.combinator_bb)
     Observable<String> trackStringAndCombine();
 
     @Track(id = 0)

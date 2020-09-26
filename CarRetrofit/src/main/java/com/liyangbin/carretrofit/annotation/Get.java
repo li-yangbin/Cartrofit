@@ -19,6 +19,4 @@ public @interface Get {
     CarType type() default CarType.VALUE;
 
     int area() default CarApi.DEFAULT_AREA_ID;
-
-    String[] category() default {};
 }

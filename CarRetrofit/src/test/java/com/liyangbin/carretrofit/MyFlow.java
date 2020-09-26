@@ -17,11 +17,6 @@ public class MyFlow implements Consumer<Object> {
         this.flow.addObserver(this);
     }
 
-    MyFlow setMapper(Function<Object, Boolean> function) {
-        mapper = function;
-        return this;
-    }
-
     public void addConsumer(Consumer<Boolean> consumer) {
         this.consumer = consumer;
     }
@@ -37,10 +32,5 @@ class ConverterImpl implements FlowConverter<MyFlow> {
     @Override
     public MyFlow convert(Flow<Object> value) {
         return new MyFlow(value);
-    }
-
-    @Override
-    public <NEW_R> MyFlow map(MyFlow tMyFlow, Converter<Object, NEW_R> converter) {
-        return tMyFlow.setMapper((Function<Object, Boolean>) converter);
     }
 }

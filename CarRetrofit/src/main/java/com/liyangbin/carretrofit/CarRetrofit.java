@@ -48,7 +48,7 @@ import java.util.function.Supplier;
 @SuppressWarnings("unchecked")
 public final class CarRetrofit {
 
-    private static final ConverterStore GLOBAL_CONVERTER = new ConverterStore(null);
+    private static final ConverterStore GLOBAL_CONVERTER = new ConverterStore();
     private static final Object SKIP = new Object();
     private static CarRetrofit sDefault;
 
@@ -141,7 +141,7 @@ public final class CarRetrofit {
     }
 
     private class ApiRecord<T> {
-        private static final String ID_SUFFIX = ".Id";
+        private static final String ID_SUFFIX = "Id";
 
         Class<T> clazz;
         String dataScope;
@@ -534,10 +534,6 @@ public final class CarRetrofit {
         final ArrayList<Converter<?, ?>> allConverters = new ArrayList<>();
         ConverterStore parentStore;
 
-        ConverterStore(Converter<?, ?> initial) {
-            addConverter(initial);
-        }
-
         ConverterStore() {
         }
 
@@ -674,7 +670,7 @@ public final class CarRetrofit {
                 return converter;
             }
             converter = store.findWithoutCommand(from, to);
-            if (converter != null) {
+            if (from == to || converter != null) {
                 return converter;
             }
             throw new CarRetrofitException("Can not resolve converter from:"
@@ -2411,14 +2407,16 @@ public final class CarRetrofit {
             this(base, null, command);
         }
 
-        private FlowWrapper(Flow<T> base, Function<?, ?> function, CommandReceive command) {
+        private FlowWrapper(Flow<T> base, Function<?, ?> function, CommandReceive receiver) {
             super(base, (Function<T, T>) function);
-            receiverList.add(command);
-            command.flowWrapper = (FlowWrapper<Object>) this;
+            addCommandReceiver(receiver);
         }
 
         void addCommandReceiver(CommandReceive receiver) {
-            receiverList.add(receiver);
+            if (receiver != null) {
+                receiverList.add(receiver);
+                receiver.flowWrapper = (FlowWrapper<Object>) this;
+            }
         }
 
         @Override

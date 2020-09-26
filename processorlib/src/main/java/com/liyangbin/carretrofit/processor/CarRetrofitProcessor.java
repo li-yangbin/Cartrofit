@@ -141,10 +141,11 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                 AnnotationMirror annotation = list.get(j);
                 TypeElement annotatedElement = (TypeElement) annotation.getAnnotationType().asElement();
                 String name = annotatedElement.getSimpleName().toString();
+                logI("name:" + name);
                 if ("Intercept".equals(name)) {
                     isInterceptor = true;
                     break;
-                } else if ("Converter".equals(name)) {
+                } else if ("Convert".equals(name)) {
                     isConverter = true;
                     break;
                 }
@@ -153,14 +154,14 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                 String name = variableElement.getSimpleName().toString();
                 interceptorIndexMap.put(name, apiClassScopeName + "." + name);
                 indexClassBuilder.addField(FieldSpec
-                        .builder(TypeName.INT, name, STATIC, FINAL)
+                        .builder(TypeName.INT, name, STATIC, FINAL, PUBLIC)
                         .initializer("" + index)
                         .build());
             } else if (isConverter) {
                 String name = variableElement.getSimpleName().toString();
                 converterIndexMap.put(name, apiClassScopeName + "." + name);
                 indexClassBuilder.addField(FieldSpec
-                        .builder(TypeName.INT, name, STATIC, FINAL)
+                        .builder(TypeName.INT, name, STATIC, FINAL, PUBLIC)
                         .initializer("" + index)
                         .build());
             }
