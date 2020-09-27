@@ -543,19 +543,19 @@ public class ExampleUnitTest {
 
     @Test
     public void combineDelegate() {
-        api.trackIntAndBoolean().subscribe(new Consumer<String>() {
-            @Override
-            public void accept(String string) throws Exception {
-                print("combine accept:" + string);
-            }
-        });
-
-//        api.trackStringAndCombine().subscribe(new Consumer<String>() {
+//        api.trackIntAndBoolean().subscribe(new Consumer<String>() {
 //            @Override
 //            public void accept(String string) throws Exception {
-//                print("combine receive:" + string);
+//                print("combine accept:" + string);
 //            }
 //        });
+
+        api.trackStringAndCombine().subscribe(new Consumer<String>() {
+            @Override
+            public void accept(String string) throws Exception {
+                print("combine receive:" + string);
+            }
+        });
 //            api.trackIntDelegate().subscribe(new Consumer<String>() {
 //            @Override
 //            public void accept(String value) throws Exception {

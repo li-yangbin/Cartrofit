@@ -39,7 +39,6 @@ import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 
 import static javax.lang.model.element.Modifier.ABSTRACT;
-import static javax.lang.model.element.Modifier.DEFAULT;
 import static javax.lang.model.element.Modifier.FINAL;
 import static javax.lang.model.element.Modifier.PRIVATE;
 import static javax.lang.model.element.Modifier.PUBLIC;
@@ -125,6 +124,7 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             apiIndexMap.put(name, apiClassScopeName + "." + name);
             indexClassBuilder.addField(FieldSpec
                     .builder(TypeName.INT, name, STATIC, FINAL, PUBLIC)
+                    .addJavadoc("{@link " + apiClassSimpleName + "#" + name + "}")
                     .initializer("" + index)
                     .build());
         }
@@ -141,7 +141,6 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                 AnnotationMirror annotation = list.get(j);
                 TypeElement annotatedElement = (TypeElement) annotation.getAnnotationType().asElement();
                 String name = annotatedElement.getSimpleName().toString();
-                logI("name:" + name);
                 if ("Intercept".equals(name)) {
                     isInterceptor = true;
                     break;
@@ -152,16 +151,20 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             }
             if (isInterceptor) {
                 String name = variableElement.getSimpleName().toString();
-                interceptorIndexMap.put(name, apiClassScopeName + "." + name);
+                String nameWithPrefix = "_" + name;
+                interceptorIndexMap.put(name, apiClassScopeName + "." + nameWithPrefix);
                 indexClassBuilder.addField(FieldSpec
-                        .builder(TypeName.INT, name, STATIC, FINAL, PUBLIC)
+                        .builder(TypeName.INT, nameWithPrefix, STATIC, FINAL)
+                        .addJavadoc("{@link " + apiClassSimpleName + "#" + name + "}")
                         .initializer("" + index)
                         .build());
             } else if (isConverter) {
                 String name = variableElement.getSimpleName().toString();
-                converterIndexMap.put(name, apiClassScopeName + "." + name);
+                String nameWithPrefix = "_" + name;
+                converterIndexMap.put(name, apiClassScopeName + "." + nameWithPrefix);
                 indexClassBuilder.addField(FieldSpec
-                        .builder(TypeName.INT, name, STATIC, FINAL, PUBLIC)
+                        .builder(TypeName.INT, nameWithPrefix, STATIC, FINAL)
+                        .addJavadoc("{@link " + apiClassSimpleName + "#" + name + "}")
                         .initializer("" + index)
                         .build());
             }

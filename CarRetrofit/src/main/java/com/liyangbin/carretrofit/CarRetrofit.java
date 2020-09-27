@@ -1550,6 +1550,10 @@ public final class CarRetrofit {
 
         private void resolveConverter() {
             Class<?> originalType = null;
+            if (combinator.getClass().isSynthetic()) {
+                throw new CarRetrofitException("Can not declare combinator in lambda expression:"
+                        + combinator.getClass());
+            }
             Class<?> implementByClass = lookUp(combinator.getClass(), functionClass);
             if (implementByClass != null) {
                 Type[] ifTypeArray = implementByClass.getGenericInterfaces();
