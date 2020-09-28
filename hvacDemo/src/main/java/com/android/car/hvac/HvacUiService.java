@@ -129,13 +129,14 @@ public class HvacUiService extends Service {
             @Override
             protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
                 boolean sysUIShowing = (mDisplayMetrics.heightPixels != bottom);
-                mInitialYOffset = (sysUIShowing) ? -mNavBarHeight : 0;
+//                mInitialYOffset = (sysUIShowing) ? -mNavBarHeight : 0;
                 layoutHvacUi();
                 // we now have initial state so this empty view is not longer needed.
                 mWindowManager.removeView(this);
                 mAddedViews.remove(this);
             }
         };
+        Log.i(TAG, "onCreate");
         addViewToWindowManagerAndTrack(windowSizeTest, testparams);
         IntentFilter filter = new IntentFilter();
         filter.addAction(CAR_INTENT_ACTION_TOGGLE_HVAC_CONTROLS);
@@ -151,6 +152,7 @@ public class HvacUiService extends Service {
      * the expanded view's windows are created and sized but are invisible.
      */
     private void layoutHvacUi() {
+        Log.i(TAG, "layoutHvacUi");
         LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,

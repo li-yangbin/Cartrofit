@@ -22,5 +22,5 @@
     <!-- This is temporary flag instead of removing the functionality altogether as the system
      ui is updated. It hides the semi-circle click targets/temp indicators that overlay
      the system nav bar.-->
-    <bool name="config_showCollapsedBars">false</bool>
+    <bool name="config_showCollapsedBars">true</bool>
 </resources>

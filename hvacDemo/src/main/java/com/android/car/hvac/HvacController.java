@@ -120,16 +120,16 @@ public class HvacController extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        if (getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+//        if (getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
 //            if (SystemProperties.getBoolean(DEMO_MODE_PROPERTY, false)) {
-//                IBinder binder = (new LocalHvacPropertyService()).getCarPropertyService();
-//                initHvacManager(new CarHvacManager(binder, this, new Handler()));
+                IBinder binder = (new LocalHvacPropertyService()).getCarPropertyService();
+                initHvacManager(new CarHvacManager(binder, this, new Handler()));
 //                return;
 //            }
-
-            mCarApiClient = Car.createCar(this, mCarConnectionCallback);
-            mCarApiClient.connect();
-        }
+//
+//            mCarApiClient = Car.createCar(this, mCarConnectionCallback);
+//            mCarApiClient.connect();
+//        }
     }
 
     @Override
