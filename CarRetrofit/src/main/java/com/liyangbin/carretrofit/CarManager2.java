@@ -21,25 +21,24 @@ public class CarManager2 implements DataSource {
     private final HashMap<Integer, AreaPool> publishedFlowList = new HashMap<>();
     private HashMap<Integer, CarPropertyConfig<?>> mConfigMap = new HashMap<>();
 
-    @SuppressWarnings("unchecked")
     @Override
-    public <VALUE> VALUE get(int key, int area, CarType type) throws Exception {
+    public Object get(int key, int area, CarType type) throws Exception {
         switch (type) {
             case VALUE:
                 return mExtManager.getProperty(extractValueType(key), key, area);
             case AVAILABILITY:
                 boolean result = mManager.isPropertyAvailable(key, area);
-                return (VALUE) Boolean.valueOf(result);
+                return Boolean.valueOf(result);
             case CONFIG:
                 if (mConfigMap.containsKey(key)) {
-                    return (VALUE) mConfigMap.get(key);
+                    return mConfigMap.get(key);
                 }
                 List<CarPropertyConfig> list = mManager.getPropertyList();
                 if (list != null) {
                     list.forEach(carPropertyConfig ->
                             mConfigMap.put(carPropertyConfig.getPropertyId(), carPropertyConfig));
                 }
-                return (VALUE) mConfigMap.get(key);
+                return mConfigMap.get(key);
             case ALL:
             default:
                 throw new IllegalArgumentException("Can not call get() with " + type + " type");
@@ -47,8 +46,8 @@ public class CarManager2 implements DataSource {
     }
 
     @Override
-    public <VALUE> void set(int key, int area, VALUE value) throws Exception {
-        mExtManager.setProperty(extractValueType(key), key, area, value);
+    public <TYPE> void set(int key, int area, TYPE value) throws Exception {
+        mExtManager.setProperty((Class<? super TYPE>) extractValueType(key), key, area, value);
     }
 
     public void trackRootIfNeeded() throws Exception {
@@ -172,7 +171,11 @@ public class CarManager2 implements DataSource {
 
     @Nullable
     @Override
-    public <VALUE> Class<VALUE> extractValueType(int key) throws Exception {
-        return this.<CarPropertyConfig<VALUE>>get(key, 0, CarType.CONFIG).getPropertyType();
+    public Class<?> extractValueType(int key) throws Exception {
+        return ((CarPropertyConfig<?>)get(key, 0, CarType.CONFIG)).getPropertyType();
+    }
+
+    @Override
+    public void onCommandCreate(Command command) {
     }
 }

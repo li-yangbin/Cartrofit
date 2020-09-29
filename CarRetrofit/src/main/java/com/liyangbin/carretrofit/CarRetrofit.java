@@ -100,11 +100,11 @@ public final class CarRetrofit {
 
     private static class DummyDataSource implements DataSource {
         @Override
-        public <VALUE> VALUE get(int key, int area, CarType type) {
+        public Object get(int key, int area, CarType type) {
             throw new IllegalStateException("impossible");
         }
         @Override
-        public <VALUE> void set(int key, int area, VALUE value) {
+        public <TYPE> void set(int key, int area, TYPE value) {
             throw new IllegalStateException("impossible");
         }
         @Override
@@ -112,7 +112,11 @@ public final class CarRetrofit {
             throw new IllegalStateException("impossible");
         }
         @Override
-        public <VALUE> Class<VALUE> extractValueType(int key) {
+        public Class<?> extractValueType(int key) {
+            throw new IllegalStateException("impossible");
+        }
+        @Override
+        public void onCommandCreate(Command command) {
             throw new IllegalStateException("impossible");
         }
     }
@@ -190,6 +194,22 @@ public final class CarRetrofit {
             this.source = Objects.requireNonNull(mDataMap.get(dataScope),
                     "Invalid scope:" + dataScope +
                     " make sure use a valid scope registered in Builder().addDataSource()");
+        }
+
+        int loadId(CommandImpl command) {
+            if (command.key.method == null) {
+                return 0;
+            }
+            for (Map.Entry<Integer, Method> entry : selfDependency.entrySet()){
+                if (command.key.method.equals(entry.getValue())) {
+                    return entry.getKey();
+                }
+            }
+            throw new IllegalStateException("impossible situation");
+        }
+
+        void onCommandCreate(CommandImpl command) {
+            source.onCommandCreate(command);
         }
 
         private class InterceptorRecord {
@@ -1191,6 +1211,7 @@ public final class CarRetrofit {
         DataSource source;
         Class<?> userDataClass;
         Key key;
+        int id;
 
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
             this.record = record;
@@ -1199,6 +1220,8 @@ public final class CarRetrofit {
 
             this.chain = record.getInterceptorByKey(key, type(), delegateTarget() == this);
             this.store = record.getConverterByKey(key, type());
+            this.id = record.loadId(this);
+            record.onCommandCreate(this);
         }
 
         final void resolveArea(int userDeclaredArea) {
@@ -1219,6 +1242,11 @@ public final class CarRetrofit {
             } catch (CloneNotSupportedException error) {
                 throw new CarRetrofitException(error);
             }
+        }
+
+        @Override
+        public int getId() {
+            return id;
         }
 
         @Override
@@ -1279,6 +1307,16 @@ public final class CarRetrofit {
         @Override
         public final String toString() {
             return "Command[" + type() + delegateTarget().toCommandString() + "]";
+        }
+
+        @Override
+        public void addInterceptor(Interceptor interceptor) {
+            chain = new InterceptorChain(chain, interceptor);
+        }
+
+        @Override
+        public void setConverter(Converter<?, ?> converter) {
+            store.addConverter(converter);
         }
 
         CommandImpl delegateTarget() {

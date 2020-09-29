@@ -5,7 +5,13 @@ import java.lang.reflect.Method;
 
 public interface Command {
 
+    int getId();
+
     void setPropertyId(int propertyId);
+
+    void addInterceptor(Interceptor interceptor);
+
+    void setConverter(Converter<?, ?> converter);
 
     int getPropertyId();
 

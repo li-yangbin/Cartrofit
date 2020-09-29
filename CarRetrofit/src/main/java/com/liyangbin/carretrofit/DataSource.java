@@ -3,11 +3,13 @@ package com.liyangbin.carretrofit;
 import android.car.hardware.CarPropertyValue;
 
 public interface DataSource {
-    <VALUE> VALUE get(int key, int area, CarType type) throws Exception;
+    Object get(int key, int area, CarType type) throws Exception;
 
-    <VALUE> void set(int key, int area, VALUE value) throws Exception;
+    <TYPE> void set(int key, int area, TYPE value) throws Exception;
 
     Flow<CarPropertyValue<?>> track(int key, int area) throws Exception;
 
-    <VALUE> Class<VALUE> extractValueType(int key) throws Exception;
+    Class<?> extractValueType(int key) throws Exception;
+
+    void onCommandCreate(Command command);
 }

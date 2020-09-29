@@ -123,6 +123,16 @@ class InterceptorChain implements Command {
     }
 
     @Override
+    public int getId() {
+        return command.getId();
+    }
+
+    @Override
+    public void addInterceptor(Interceptor interceptor) {
+        command.addInterceptor(interceptor);
+    }
+
+    @Override
     public int hashCode() {
         return command.hashCode();
     }

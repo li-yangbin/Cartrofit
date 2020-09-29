@@ -9,33 +9,33 @@ import java.util.Random;
 
 public class TestCarManager extends CarManager2 {
 
-    public static final HashMap<Integer, Combo<?>> typeMockMap = new HashMap<>();
+    public static final HashMap<Integer, Combo> typeMockMap = new HashMap<>();
 
-    public static class Combo<T> {
-        public Class<T> clazz;
-        public T value;
+    public static class Combo {
+        public Class<?> clazz;
+        public Object value;
 
-        public Combo(Class<T> clazz, T value) {
+        public Combo(Class<?> clazz, Object value) {
             this.clazz = clazz;
             this.value = value;
         }
     }
 
     static {
-        typeMockMap.put(0, new Combo<>(int.class, 10));
-        typeMockMap.put(1, new Combo<>(int[].class, new int[]{10}));
+        typeMockMap.put(0, new Combo(int.class, 10));
+        typeMockMap.put(1, new Combo(int[].class, new int[]{10}));
 
-        typeMockMap.put(2, new Combo<>(String.class, "hello"));
-        typeMockMap.put(3, new Combo<>(String[].class, new String[]{"hello"}));
+        typeMockMap.put(2, new Combo(String.class, "hello"));
+        typeMockMap.put(3, new Combo(String[].class, new String[]{"hello"}));
 
-        typeMockMap.put(4, new Combo<>(byte.class, (byte) 12));
-        typeMockMap.put(5, new Combo<>(byte[].class, new byte[]{12, 100, 34, 12, 43, 1, 87, 59}));
+        typeMockMap.put(4, new Combo(byte.class, (byte) 12));
+        typeMockMap.put(5, new Combo(byte[].class, new byte[]{12, 100, 34, 12, 43, 1, 87, 59}));
 
-        typeMockMap.put(6, new Combo<>(int.class, 20));
-        typeMockMap.put(7, new Combo<>(int[].class, new int[]{20}));
+        typeMockMap.put(6, new Combo(int.class, 20));
+        typeMockMap.put(7, new Combo(int[].class, new int[]{20}));
 
-        typeMockMap.put(8, new Combo<>(String.class, "world"));
-        typeMockMap.put(9, new Combo<>(String[].class, new String[]{"world"}));
+        typeMockMap.put(8, new Combo(String.class, "world"));
+        typeMockMap.put(9, new Combo(String[].class, new String[]{"world"}));
     }
 
     {
@@ -71,7 +71,7 @@ public class TestCarManager extends CarManager2 {
     @Override
     public void notifyChange(CarPropertyValue<?> value) {
         super.notifyChange(value);
-        Combo<Object> combo = (Combo<Object>) typeMockMap.get(value.getPropertyId());
+        Combo combo = typeMockMap.get(value.getPropertyId());
         combo.value = value;
     }
 
@@ -109,20 +109,20 @@ public class TestCarManager extends CarManager2 {
     }
 
     @Override
-    public synchronized  <Value> Value get(int key, int area, CarType type) {
-        return (Value) typeMockMap.get(key).value;
+    public synchronized Object get(int key, int area, CarType type) {
+        return typeMockMap.get(key).value;
     }
 
     @Override
-    public synchronized <Value> void set(int key, int area, Value value) {
-        Combo<Value> combo = (Combo<Value>) typeMockMap.get(key);
+    public synchronized void set(int key, int area, Object value) {
+        Combo combo = typeMockMap.get(key);
         combo.value = value;
 //        notifyChange(key, value);
     }
 
     @Nullable
     @Override
-    public synchronized <Value> Class<Value> extractValueType(int key) {
-        return (Class<Value>) typeMockMap.get(key).clazz;
+    public synchronized Class<?> extractValueType(int key) {
+        return typeMockMap.get(key).clazz;
     }
 }
