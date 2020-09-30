@@ -23,14 +23,14 @@ class InterceptorChain implements Command {
         this.interceptor = interceptor;
     }
 
-    InterceptorChain copyAndAttach(InterceptorChain newNode) {
+    InterceptorChain copy() {
         InterceptorChain copy = new InterceptorChain(this.parent, this.interceptor);
         InterceptorChain copyParent = copy.parent;
         while (copyParent != null) {
             copyParent = new InterceptorChain(copyParent.parent, copyParent.interceptor);
             copyParent = copyParent.parent;
         }
-        return copy.attach(newNode);
+        return copy;
     }
 
     InterceptorChain attach(InterceptorChain node) {
@@ -44,6 +44,14 @@ class InterceptorChain implements Command {
         } else {
             return this;
         }
+    }
+
+    void addToBottom(Interceptor interceptor) {
+        InterceptorChain loopNode = this;
+        while (loopNode.parent != null) {
+            loopNode = loopNode.parent;
+        }
+        loopNode.parent = new InterceptorChain(null, interceptor);
     }
 
     Object doProcess(Command command, Object parameter) throws Throwable {
@@ -128,8 +136,18 @@ class InterceptorChain implements Command {
     }
 
     @Override
-    public void addInterceptor(Interceptor interceptor) {
-        command.addInterceptor(interceptor);
+    public void addInterceptorToTop(Interceptor interceptor) {
+        command.addInterceptorToTop(interceptor);
+    }
+
+    @Override
+    public void addInterceptorToBottom(Interceptor interceptor) {
+        command.addInterceptorToBottom(interceptor);
+    }
+
+    @Override
+    public void setConverter(Converter<?, ?> converter) {
+        command.setConverter(converter);
     }
 
     @Override

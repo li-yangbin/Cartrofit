@@ -7,6 +7,7 @@ import android.car.hardware.hvac.CarHvacManager;
 import com.liyangbin.carretrofit.Command;
 import com.liyangbin.carretrofit.Interceptor;
 import com.liyangbin.carretrofit.annotation.CarApi;
+import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Set;
 
 @CarApi
@@ -31,6 +32,12 @@ public interface HvacApi {
 
     @Set(id = CarHvacManager.ID_ZONED_TEMP_SETPOINT, area = PASSENGER_ZONE_ID)
     void setPassengerTemperature(int temperature);
+
+    @Get(id = CarHvacManager.ID_ZONED_TEMP_SETPOINT, area = DRIVER_ZONE_ID)
+    int getDriverTemperature();
+
+    @Get(id = CarHvacManager.ID_ZONED_TEMP_SETPOINT, area = PASSENGER_ZONE_ID)
+    int getPassengerTemperature();
 
     @Set(id = CarHvacManager.ID_ZONED_HVAC_POWER_ON, area = SEAT_ALL)
     void setPowerState(boolean onOff);

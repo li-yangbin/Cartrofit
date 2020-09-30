@@ -9,7 +9,9 @@ public interface Command {
 
     void setPropertyId(int propertyId);
 
-    void addInterceptor(Interceptor interceptor);
+    void addInterceptorToTop(Interceptor interceptor);
+
+    void addInterceptorToBottom(Interceptor interceptor);
 
     void setConverter(Converter<?, ?> converter);
 

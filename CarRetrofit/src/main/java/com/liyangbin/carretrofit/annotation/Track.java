@@ -19,6 +19,8 @@ public @interface Track {
 
     int area() default CarApi.DEFAULT_AREA_ID;
 
+    int restoreId() default 0;
+
     CarType type() default CarType.VALUE;
 
     StickyType sticky() default StickyType.NO_SET;
