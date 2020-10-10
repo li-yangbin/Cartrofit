@@ -4,6 +4,9 @@ import android.car.hardware.CarPropertyValue;
 
 import androidx.annotation.Nullable;
 
+import com.liyangbin.carretrofit.annotation.Convert;
+import com.liyangbin.carretrofit.funtion.Function2;
+
 import java.util.HashMap;
 import java.util.Random;
 
@@ -57,7 +60,7 @@ public class TestCarManager extends CarManager2 {
 //                        if (obj.getClass().isArray()) {
 //                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + Arrays.toString((Object[])obj));
 //                        } else {
-                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + obj);
+//                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + obj);
 //                        }
                         notifyChange(new CarPropertyValue<>(key, 0, obj));
                     }
@@ -67,6 +70,24 @@ public class TestCarManager extends CarManager2 {
         }, "test_thread");
         tester.start();
     }
+
+    @Convert
+    Function2<String, Boolean, String> combinator_aa = new Function2<String, Boolean, String>() {
+
+        @Override
+        public String apply(String value1, Boolean value2) {
+            return value1 + " assemble " + value2;
+        }
+    };
+
+    @Convert
+    Function2<String, String, String> combinator_bb = new Function2<String, String, String>() {
+
+        @Override
+        public String apply(String value1, String value2) {
+            return value1 + " assemble 22 " + value2;
+        }
+    };
 
     @Override
     public void notifyChange(CarPropertyValue<?> value) {
@@ -117,7 +138,7 @@ public class TestCarManager extends CarManager2 {
     public synchronized void set(int key, int area, Object value) {
         Combo combo = typeMockMap.get(key);
         combo.value = value;
-//        notifyChange(key, value);
+//        notifyChange(new CarPropertyValue<>(key, area, value));
     }
 
     @Nullable

@@ -1,32 +1,30 @@
 package com.liyangbin.carretrofit;
 
+import androidx.databinding.ObservableBoolean;
+
 import com.liyangbin.carretrofit.annotation.Apply;
 import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.CarValue;
 import com.liyangbin.carretrofit.annotation.Combine;
-import com.liyangbin.carretrofit.annotation.Convert;
 import com.liyangbin.carretrofit.annotation.Delegate;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
 import com.liyangbin.carretrofit.annotation.Set;
 import com.liyangbin.carretrofit.annotation.Track;
-import com.liyangbin.carretrofit.funtion.Function2;
 
-import androidx.databinding.ObservableBoolean;
 import io.reactivex.Observable;
 import io.reactivex.Single;
 
-import static com.liyangbin.carretrofit.TestCarApiId.*;
+import static com.liyangbin.carretrofit.TestCarApiId.combinator_aa;
+import static com.liyangbin.carretrofit.TestCarApiId.combinator_bb;
+import static com.liyangbin.carretrofit.TestCarApiId.setIntSignal;
+import static com.liyangbin.carretrofit.TestCarApiId.trackBooleanReactive;
+import static com.liyangbin.carretrofit.TestCarApiId.trackIntAndBoolean;
+import static com.liyangbin.carretrofit.TestCarApiId.trackStringAndCombine;
+import static com.liyangbin.carretrofit.TestCarApiId.trackStringSignal;
 
-@CarApi(scope = "test")
+@CarApi(scope = TestCarManager.class)
 public interface TestCarApi {
-
-//    Interceptor INTERCEPTOR = (command, parameter) -> {
-//        System.out.println("before process command:" + command + " parameter:" + parameter);
-//        Object obj = command.invoke(parameter);
-//        System.out.println("after process command:" + command + " parameter:" + parameter);
-//        return obj;
-//    };
 
     @Get(id = 0)
     int getIntSignal();
@@ -73,37 +71,19 @@ public interface TestCarApi {
     @Track(id = 0)
     Flow<Integer> trackIntSignal();
 
-    @Track(id = 0, sticky = StickyType.ON)
+    @Track(id = 0, restoreId = setIntSignal)
     Observable<Integer> trackIntReactive();
 
-    @Delegate(target = trackStringAndCombine)
+    @Delegate(trackStringAndCombine)
     Observable<String> trackIntDelegate();
 
     @Track(id = 0, sticky = StickyType.ON)
     Observable<Boolean> trackBooleanReactive();
 
-    @Convert
-    Function2<String, Boolean, String> combinator_aa = new Function2<String, Boolean, String>() {
-
-        @Override
-        public String apply(String value1, Boolean value2) {
-            return value1 + " assemble " + value2;
-        }
-    };
-
-    @Combine(elements = {trackStringSignal, trackBooleanReactive}, combinator = TestCarApiId.combinator_aa)
+    @Combine(elements = {trackStringSignal, trackBooleanReactive}, combinator = combinator_aa)
     Observable<String> trackIntAndBoolean();
 
-    @Convert
-    Function2<String, String, String> combinator_bb = new Function2<String, String, String>() {
-
-        @Override
-        public String apply(String value1, String value2) {
-            return value1 + " assemble 22 " + value2;
-        }
-    };
-
-    @Combine(elements = {trackStringSignal, trackIntAndBoolean}, combinator = TestCarApiId.combinator_bb)
+    @Combine(elements = {trackStringSignal, trackIntAndBoolean}, combinator = combinator_bb)
     Observable<String> trackStringAndCombine();
 
     @Track(id = 0)

@@ -58,6 +58,7 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             + " Do not modify this file directly";
 
     static final String TARGET_CAR_API = PACKAGE_NAME + ".annotation.CarApi";
+    static final String TARGET_CAR_API_SCOPE = "scope";
 
     private static Set<Integer> sGeneratedScopeId = new HashSet<>();
 
@@ -106,9 +107,6 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             return;
         }
 
-        ArrayList<VariableElement> apiField = new ArrayList<>();
-        resolveVariableElement(element, apiField);
-
         final int baseScopeId = getScopeBaseId(element.getQualifiedName().toString());
         if (!sGeneratedScopeId.add(baseScopeId)) {
             logE("conflict scopeId: 0x" + Integer.toHexString(baseScopeId)
@@ -127,6 +125,29 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                     .addJavadoc("{@link " + apiClassSimpleName + "#" + name + "}")
                     .initializer("" + index)
                     .build());
+        }
+
+        List<? extends AnnotationMirror> annotationList = element.getAnnotationMirrors();
+        ArrayList<VariableElement> apiField = new ArrayList<>();
+        TypeElement fieldScopeElement = null;
+
+        anchor:for (int i = 0; i < annotationList.size(); i++) {
+            AnnotationMirror annotation = annotationList.get(i);
+            TypeElement annotatedElement = (TypeElement) annotation.getAnnotationType().asElement();
+            if (TARGET_CAR_API.equals(annotatedElement.getQualifiedName().toString())) {
+                for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry
+                        : annotation.getElementValues().entrySet()) {
+                    ExecutableElement method = entry.getKey();
+                    AnnotationValue value = entry.getValue();
+                    String methodName = method.getSimpleName().toString();
+                    if (TARGET_CAR_API_SCOPE.equals(methodName)) {
+                        DeclaredType type = (DeclaredType) value.getValue();
+                        fieldScopeElement = (TypeElement) type.asElement();
+                        resolveVariableElement(fieldScopeElement, apiField);
+                        break anchor;
+                    }
+                }
+            }
         }
 
         HashMap<String, String> interceptorIndexMap = new HashMap<>();
@@ -151,20 +172,18 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             }
             if (isInterceptor) {
                 String name = variableElement.getSimpleName().toString();
-                String nameWithPrefix = "_" + name;
-                interceptorIndexMap.put(name, apiClassScopeName + "." + nameWithPrefix);
+                interceptorIndexMap.put(name, apiClassScopeName + "." + name);
                 indexClassBuilder.addField(FieldSpec
-                        .builder(TypeName.INT, nameWithPrefix, STATIC, FINAL)
-                        .addJavadoc("{@link " + apiClassSimpleName + "#" + name + "}")
+                        .builder(TypeName.INT, name, STATIC, FINAL)
+                        .addJavadoc("{@link $T#" + name + "}", ClassName.get(fieldScopeElement))
                         .initializer("" + index)
                         .build());
             } else if (isConverter) {
                 String name = variableElement.getSimpleName().toString();
-                String nameWithPrefix = "_" + name;
-                converterIndexMap.put(name, apiClassScopeName + "." + nameWithPrefix);
+                converterIndexMap.put(name, apiClassScopeName + "." + name);
                 indexClassBuilder.addField(FieldSpec
-                        .builder(TypeName.INT, nameWithPrefix, STATIC, FINAL)
-                        .addJavadoc("{@link " + apiClassSimpleName + "#" + name + "}")
+                        .builder(TypeName.INT, name, STATIC, FINAL)
+                        .addJavadoc("{@link $T#" + name + "}", ClassName.get(fieldScopeElement))
                         .initializer("" + index)
                         .build());
             }
@@ -215,7 +234,7 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             importBuilder.addCode("\n");
             importBuilder.beginControlFlow("if (interceptorMap != null)");
             importBuilder.addStatement("final $T[] fields = $T.class.getDeclaredFields()",
-                    ClassName.get(Field.class), ClassName.get(element))
+                    ClassName.get(Field.class), ClassName.get(fieldScopeElement))
                     .beginControlFlow("for (Field field : fields)")
                     .addStatement("String fieldName = field.getName()");
             firstTime = true;
@@ -241,7 +260,7 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             importBuilder.addCode("\n");
             importBuilder.beginControlFlow("if (converterMap != null)");
             importBuilder.addStatement("final $T[] fields = $T.class.getDeclaredFields()",
-                    ClassName.get(Field.class), ClassName.get(element))
+                    ClassName.get(Field.class), ClassName.get(fieldScopeElement))
                     .beginControlFlow("for (Field field : fields)")
                     .addStatement("String fieldName = field.getName()");
             firstTime = true;

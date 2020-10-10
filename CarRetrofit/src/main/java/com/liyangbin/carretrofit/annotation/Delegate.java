@@ -14,6 +14,6 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Target({METHOD, FIELD})
 @Retention(RUNTIME)
 public @interface Delegate {
-    int target();
+    int value();
     StickyType sticky() default StickyType.NO_SET;
 }

@@ -43,6 +43,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -54,6 +55,7 @@ public final class CarRetrofit {
     private static final ConverterStore GLOBAL_CONVERTER = new ConverterStore();
     private static final Object SKIP = new Object();
     private static CarRetrofit sDefault;
+    private static final StickyType DEFAULT_STICKY_TYPE = StickyType.ON;
 
     private static final int FLAG_FIRST_BIT = 1;
 
@@ -70,7 +72,7 @@ public final class CarRetrofit {
             |FLAG_PARSE_DELEGATE;
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
 
-    private HashMap<String, DataSource> mDataMap;
+    private HashMap<Class<?>, DataSource> mDataMap;
     private ConverterStore mConverterStore;
     private InterceptorChain mChainHead;
     private StickyType mDefaultStickyType;
@@ -92,7 +94,7 @@ public final class CarRetrofit {
         if (mDataMap.isEmpty()) {
             throw new IllegalArgumentException("CarRetrofit must be setup with data source");
         }
-        mDataMap.put(CarApi.DUMMY_SCOPE, new DummyDataSource());
+        mDataMap.put(DataSource.class, new DummyDataSource());
         for (int i = 0; i < builder.converters.size(); i++) {
             mConverterStore.addConverter(builder.converters.get(i));
         }
@@ -120,7 +122,6 @@ public final class CarRetrofit {
         }
         @Override
         public void onCommandCreate(Command command) {
-            throw new IllegalStateException("impossible");
         }
     }
 
@@ -151,7 +152,7 @@ public final class CarRetrofit {
         private static final String ID_SUFFIX = "Id";
 
         Class<T> clazz;
-        String dataScope;
+        Class<?> dataScope;
         int apiArea;
         T apiObj;
         StickyType stickyType;
@@ -176,13 +177,17 @@ public final class CarRetrofit {
                 stickyType = mDefaultStickyType;
             }
 
+            this.source = Objects.requireNonNull(mDataMap.get(dataScope),
+                    "Invalid scope:" + dataScope +
+                            " make sure use a valid scope registered in Builder().addDataSource()");
+
             try {
                 Class<?> selfScopeClass = Class.forName(clazz.getName() + ID_SUFFIX);
                 importDependency(selfScopeClass, true);
             } catch (ClassNotFoundException ignore) {
             }
 
-            Class<?>[] dependencyClasses = carApi.dependency();
+            Class<?>[] dependencyClasses = clazz.getInterfaces();
             for (Class<?> dependencyClass : dependencyClasses) {
                 if (dependencyClass != clazz) {
                     try {
@@ -193,10 +198,6 @@ public final class CarRetrofit {
                     }
                 }
             }
-
-            this.source = Objects.requireNonNull(mDataMap.get(dataScope),
-                    "Invalid scope:" + dataScope +
-                    " make sure use a valid scope registered in Builder().addDataSource()");
         }
 
         int loadId(CommandImpl command) {
@@ -238,7 +239,8 @@ public final class CarRetrofit {
                 }
                 OBJ obj;
                 try {
-                    obj = (OBJ) field.get(null);
+                    field.setAccessible(true);
+                    obj = (OBJ) field.get(source);
                 } catch (ReflectiveOperationException illegal) {
                     throw new CarRetrofitException(illegal);
                 }
@@ -378,7 +380,7 @@ public final class CarRetrofit {
             String[] explicitlyCategory = custom != null ? custom.category() : null;
             ArrayList<Interceptor> interceptorList =
                     interceptorManager.find(explicitlyIndex, explicitlyCategory, type);
-            InterceptorChain head = includingParent ? mChainHead.copy() : null;
+            InterceptorChain head = includingParent && mChainHead != null ? mChainHead.copy() : null;
             for (int i = 0; i < interceptorList.size(); i++) {
                 head = new InterceptorChain(head, interceptorList.get(i));
             }
@@ -704,12 +706,12 @@ public final class CarRetrofit {
 
     public static final class Builder {
         private ArrayList<Converter<?, ?>> converters = new ArrayList<>();
-        private HashMap<String, DataSource> dataMap = new HashMap<>();
+        private HashMap<Class<?>, DataSource> dataMap = new HashMap<>();
         private ArrayList<Interceptor> interceptors = new ArrayList<>();
-        private StickyType stickyType = StickyType.NO_SET;
+        private StickyType stickyType = DEFAULT_STICKY_TYPE;
 
-        public Builder addDataSource(String sourceKey, DataSource source) {
-            this.dataMap.put(sourceKey, source);
+        public Builder addDataSource(DataSource source) {
+            this.dataMap.put(source.getClass(), source);
             return this;
         }
 
@@ -835,7 +837,7 @@ public final class CarRetrofit {
             if (key.isInvalid()) {
                 throw new CarRetrofitException("Invalid key:" + key);
             }
-            command = parseAnnotation(record, key, checker, flag);
+            command = createCommand(record, key, checker, flag);
             if (command != null) {
                 synchronized (mCommandCache) {
                     mCommandCache.put(key, command);
@@ -1018,8 +1020,8 @@ public final class CarRetrofit {
         }
     }
 
-    private CommandImpl parseAnnotation(ApiRecord<?> record, Key key,
-                                        Predicate<Key> checker, int flag) {
+    private CommandImpl createCommand(ApiRecord<?> record, Key key,
+                                      Predicate<Key> checker, int flag) {
         Set set = (flag & FLAG_PARSE_SET) != 0 ? key.getAnnotation(Set.class) : null;
         if (set != null) {
             if (checker != null && !checker.test(key)) {
@@ -1046,11 +1048,11 @@ public final class CarRetrofit {
                 return null;
             }
             CommandTrack command = new CommandTrack();
+            command.init(record, track, key);
             if (track.restoreId() != 0) {
                 command.setRestoreSet((CommandSet) getOrCreateCommandById(record,
                         track.restoreId(), FLAG_PARSE_SET));
             }
-            command.init(record, track, key);
             return command;
         }
 
@@ -1147,7 +1149,7 @@ public final class CarRetrofit {
                 return null;
             }
             CommandDelegate command = new CommandDelegate();
-            command.setTargetCommand(getOrCreateCommandById(record, delegate.target(),
+            command.setTargetCommand(getOrCreateCommandById(record, delegate.value(),
                     FLAG_PARSE_ALL));
             command.init(record, delegate, key);
             return command;
@@ -1310,7 +1312,8 @@ public final class CarRetrofit {
 
         @Override
         public final String toString() {
-            return "Command[" + type() + delegateTarget().toCommandString() + "]";
+            return "Command 0x" + Integer.toHexString(hashCode())
+                    + " [" + type() + delegateTarget().toCommandString() + "]";
         }
 
         @Override
@@ -1980,6 +1983,9 @@ public final class CarRetrofit {
     }
 
     private static abstract class CommandFlow extends CommandImpl {
+        private static final Timer sTimeOutTimer = new Timer("timeout-tracker");
+        private static final long TIMEOUT_DELAY = 1500;
+
         Converter<Object, ?> resultConverter;
         Converter<Object, ?> mapConverter;
         boolean mapFlowSuppressed;
@@ -1988,23 +1994,120 @@ public final class CarRetrofit {
 
         boolean returnFlow;
         private boolean registerTrack;
-        Flow<Object> trackingFlow;
         ArrayList<CommandImpl> childrenCommand = new ArrayList<>();
 
-        void addChildCommand(CommandImpl command) {
-            childrenCommand.add(command);
+        CommandSet restoreSetCommand;
+
+        // runtime variable
+        Flow<Object> trackingFlow;
+        TimerTask task;
+        ArrayList<WeakReference<CommandReceive>> receiveCommandList;
+        AtomicBoolean monitorSetResponseRegistered = new AtomicBoolean();
+
+        void setRestoreSet(CommandSet commandSet) {
+            restoreSetCommand = commandSet;
+            if (stickyType == StickyType.NO_SET || stickyType == StickyType.OFF) {
+                throw new CarRetrofitException("Sticky type must be ON if restore command is set");
+            }
+            System.out.println("setRestoreSet :" + commandSet);
+            commandSet.addInterceptorToBottom((command, parameter) -> {
+                if (monitorSetResponseRegistered.get()) {
+                    System.out.println("commandSet addInterceptorToBottom:" + parameter);
+                    synchronized (sTimeOutTimer) {
+                        if (task != null) {
+                            task.cancel();
+                        }
+                        sTimeOutTimer.schedule(task = new TimerTask() {
+                            @Override
+                            public void run() {
+                                System.out.println("commandSet restore command scheduled");
+                                restoreDispatch();
+                            }
+                        }, TIMEOUT_DELAY);
+                    }
+                }
+                return command.invoke(parameter);
+            });
         }
 
         CommandReceive createCommandReceive() {
             CommandReceive receive = new CommandReceive(this);
             receive.init(record, null, key);
+            if (restoreSetCommand != null) {
+                if (receiveCommandList == null) {
+                    receiveCommandList = new ArrayList<>();
+                }
+                receiveCommandList.add(new WeakReference<>(receive));
+                if (monitorSetResponseRegistered.compareAndSet(false, true)) {
+                    receive.addInterceptorToTop((command, parameter) -> {
+                        synchronized (sTimeOutTimer) {
+                            if (task != null) {
+                                System.out.println("commandSet restore command unscheduled");
+                                task.cancel();
+                                task = null;
+                            } else {
+                                System.out.println("commandSet restore nothing unscheduled");
+                            }
+                        }
+                        return command.invoke(parameter);
+                    });
+                }
+            }
             return receive;
+        }
+
+        void restoreDispatch() {
+            ArrayList<WeakReference<CommandReceive>> commandReceiveList;
+            synchronized (sTimeOutTimer) {
+                task = null;
+                if (receiveCommandList != null) {
+                    commandReceiveList = (ArrayList<WeakReference<CommandReceive>>) receiveCommandList.clone();
+                } else {
+                    commandReceiveList = null;
+                }
+            }
+            if (commandReceiveList != null) {
+                boolean purgeExpired = false;
+                for (int i = 0; i < commandReceiveList.size(); i++) {
+                    WeakReference<CommandReceive> receiveRef = commandReceiveList.get(i);
+                    CommandReceive commandReceive = receiveRef.get();
+                    if (commandReceive != null) {
+                        StickyFlow<?> stickyFlow = (StickyFlow<?>) commandReceive.flowWrapper;
+                        try {
+                            System.out.println("commandSet restore command executed");
+                            commandReceive.invokeWithChain(stickyFlow.get());
+                        } catch (Throwable throwable) {
+                            throw new RuntimeException(throwable);
+                        }
+                    } else {
+                        purgeExpired = true;
+                    }
+                }
+                if (purgeExpired) {
+                    synchronized (sTimeOutTimer) {
+                        for (int i = receiveCommandList.size() - 1; i >= 0; i--) {
+                            WeakReference<CommandReceive> receiveRef =
+                                    receiveCommandList.get(i);
+                            if (receiveRef.get() == null) {
+                                receiveCommandList.remove(i);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        void addChildCommand(CommandImpl command) {
+            childrenCommand.add(command);
         }
 
         @Override
         CommandFlow shallowCopy() {
             CommandFlow commandFlow = (CommandFlow) super.shallowCopy();
             commandFlow.trackingFlow = null;
+            commandFlow.task = null;
+            commandFlow.receiveCommandList = null;
+            commandFlow.monitorSetResponseRegistered = new AtomicBoolean();
             return commandFlow;
         }
 
@@ -2098,98 +2201,12 @@ public final class CarRetrofit {
     }
 
     private static class CommandTrack extends CommandFlow {
-        private static final Timer sTimeOutTimer = new Timer("timeout-tracker");
-
         CarType type;
         CommandGet stickyGet;
         Annotation annotation;
-        private TimerTask task;
-        private ArrayList<WeakReference<CommandReceive>> receiveCommandList;
-        private boolean monitorSetResponseRegistered;
-        private boolean dispatchStickyDataIfSetTimeout;
 
         CommandTrack() {
             returnFlow = true;
-        }
-
-        void setRestoreSet(CommandSet commandSet) {
-            dispatchStickyDataIfSetTimeout = true;
-            commandSet.addInterceptorToBottom((command, parameter) -> {
-                synchronized (sTimeOutTimer) {
-                    if (task != null) {
-                        task.cancel();
-                    }
-                    sTimeOutTimer.schedule(task = new TimerTask() {
-                        @Override
-                        public void run() {
-                            restoreDispatch();
-                        }
-                    }, 1500);
-                }
-                return command.invoke(parameter);
-            });
-        }
-
-        @Override
-        CommandReceive createCommandReceive() {
-            CommandReceive receive = super.createCommandReceive();
-            if (dispatchStickyDataIfSetTimeout) {
-                if (receiveCommandList == null) {
-                    receiveCommandList = new ArrayList<>();
-                }
-                receiveCommandList.add(new WeakReference<>(receive));
-                if (!monitorSetResponseRegistered) {
-                    monitorSetResponseRegistered = true;
-                    receive.addInterceptorToTop((command, parameter) -> {
-                        synchronized (sTimeOutTimer) {
-                            if (task != null) {
-                                task.cancel();
-                                task = null;
-                            }
-                        }
-                        return command.invoke(parameter);
-                    });
-                }
-            }
-            return receive;
-        }
-
-        void restoreDispatch() {
-            ArrayList<WeakReference<CommandReceive>> commandReceiveList = null;
-            synchronized (sTimeOutTimer) {
-                task = null;
-                if (receiveCommandList != null) {
-                    commandReceiveList =
-                            (ArrayList<WeakReference<CommandReceive>>) receiveCommandList.clone();
-                }
-            }
-            if (commandReceiveList != null) {
-                boolean purgeExpired = false;
-                for (int i = 0; i < commandReceiveList.size(); i++) {
-                    WeakReference<CommandReceive> receiveRef = commandReceiveList.get(i);
-                    CommandReceive commandReceive = receiveRef.get();
-                    if (commandReceive != null) {
-                        StickyFlow<?> stickyFlow = (StickyFlow<?>) commandReceive.flowWrapper;
-                        try {
-                            commandReceive.invokeWithChain(stickyFlow.get());
-                        } catch (Throwable throwable) {
-                            throw new RuntimeException(throwable);
-                        }
-                    } else {
-                        purgeExpired = true;
-                    }
-                }
-                if (purgeExpired) {
-                    synchronized (sTimeOutTimer) {
-                        for (int i = receiveCommandList.size() - 1; i >= 0; i--) {
-                            WeakReference<CommandReceive> receiveRef = receiveCommandList.get(i);
-                            if (receiveRef.get() == null) {
-                                receiveCommandList.remove(i);
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         @Override
@@ -2399,6 +2416,7 @@ public final class CarRetrofit {
                 targetFlowCommand.stickyType = this.stickyType;
                 targetFlowCommand.registerTrack = false;
                 targetFlowCommand.mapFlowSuppressed = true;
+                targetFlowCommand.setRestoreSet(targetFlowCommand.restoreSetCommand);
             }
             setCommand = targetCommand.type() == CommandType.SET;
             resolveConverter();

@@ -318,7 +318,7 @@ public class ExampleUnitTest {
     @BeforeClass
     public static void start() {
         CarRetrofit.setDefault(new CarRetrofit.Builder()
-                .addDataSource("test", new TestCarManager())
+                .addDataSource(new TestCarManager())
                 .addConverter(new CalendarConverter())
                 .addConverter(new ConverterImpl())
                 .addConverter(new TwoWayConverter<Integer, MappedData>() {
@@ -468,12 +468,27 @@ public class ExampleUnitTest {
 
     @Test
     public void converterScopeTest() {
+        api.trackIntReactive().subscribe(new Consumer<Integer>() {
+            @Override
+            public void accept(Integer integer) throws Exception {
+                print("int accept:" + integer);
+            }
+        });
         api.trackBooleanReactive().subscribe(new Consumer<Boolean>() {
             @Override
             public void accept(Boolean aBoolean) throws Exception {
                 print("boolean accept:" + aBoolean);
             }
         });
+        CarRetrofit.fromDefault(TestChildCarApi.class)
+                .trackIntReactiveAlias()
+                .subscribe(new Consumer<Integer>() {
+            @Override
+            public void accept(Integer integer) throws Exception {
+                print("child int accept:" + integer);
+            }
+        });
+        api.setIntSignal(10086);
 //        api.trackIntSignal().addObserver(new java.util.function.Consumer<Integer>() {
 //            @Override
 //            public void accept(Integer value) {
