@@ -95,21 +95,6 @@ public interface TestCarApi {
     @Track(id = 0)
     MyFlow trackCustomFlow();
 
-//    @MultiSet(set = {@Set(key = 6, token = "six"),
-//                    @Set(key = 7, token = "seven"),
-//                    @Set(key = 8, token = "eight"),
-//                    @Set(key = 9, token = "nine")})
-//    void set6789Values(@Param(token = "seven") int[] seven,
-//                       @Param(token = "six") int six,
-//                       @Param(token = "nine") String[] nine,
-//                       @Param(token = "eight") String eight);
-//
-//    @MultiSet(set = {@Set(key = 6, token = "abc"),
-//            @Set(key = 7, token = "abcd"),
-//            @Set(key = 8, token = "cvb"),
-//            @Set(key = 9, token = "vbns")})
-//    void set6789ComboValues(@MultiParam ExampleUnitTest.CarData cardata);
-
     @Apply
     void applyComboValues(ExampleUnitTest.CarData cardata);
 

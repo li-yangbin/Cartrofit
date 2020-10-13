@@ -474,21 +474,21 @@ public class ExampleUnitTest {
 //                print("int accept:" + integer);
 //            }
 //        });
-        api.trackBooleanReactive().subscribe(new Consumer<Boolean>() {
-            @Override
-            public void accept(Boolean aBoolean) throws Exception {
-                print("boolean accept:" + aBoolean);
-            }
-        });
-//        CarRetrofit.fromDefault(TestChildCarApi.class)
-//                .trackIntReactiveAlias()
-//                .subscribe(new Consumer<Integer>() {
+//        api.trackBooleanReactive().subscribe(new Consumer<Boolean>() {
 //            @Override
-//            public void accept(Integer integer) throws Exception {
-//                print("child int accept:" + integer);
+//            public void accept(Boolean aBoolean) throws Exception {
+//                print("boolean accept:" + aBoolean);
 //            }
 //        });
-//        api.setIntSignal(10086);
+        CarRetrofit.fromDefault(TestChildCarApi.class)
+                .trackIntReactiveAlias()
+                .subscribe(new Consumer<Integer>() {
+            @Override
+            public void accept(Integer integer) throws Exception {
+                print("child int accept:" + integer);
+            }
+        });
+        api.setIntSignal(10086);
 //        api.trackIntSignal().addObserver(new java.util.function.Consumer<Integer>() {
 //            @Override
 //            public void accept(Integer value) {
@@ -558,25 +558,25 @@ public class ExampleUnitTest {
 
     @Test
     public void combineDelegate() {
-//        api.trackIntAndBoolean().subscribe(new Consumer<String>() {
-//            @Override
-//            public void accept(String string) throws Exception {
-//                print("combine accept:" + string);
-//            }
-//        });
-
-        api.trackStringAndCombine().subscribe(new Consumer<String>() {
+        api.trackIntAndBoolean().subscribe(new Consumer<String>() {
             @Override
             public void accept(String string) throws Exception {
-                print("combine receive:" + string);
+                print("combine accept:" + string);
             }
         });
-//            api.trackIntDelegate().subscribe(new Consumer<String>() {
+
+//        api.trackStringAndCombine().subscribe(new Consumer<String>() {
 //            @Override
-//            public void accept(String value) throws Exception {
-//                print("delegate accept:" + value);
+//            public void accept(String string) throws Exception {
+//                print("combine receive:" + string);
 //            }
 //        });
+            api.trackIntDelegate().subscribe(new Consumer<String>() {
+            @Override
+            public void accept(String value) throws Exception {
+                print("delegate accept:" + value);
+            }
+        });
     }
 
     @Test

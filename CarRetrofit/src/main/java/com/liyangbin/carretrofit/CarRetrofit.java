@@ -1250,6 +1250,7 @@ public final class CarRetrofit {
             this.record = owner.record;
             this.source = owner.source;
             this.key = owner.key;
+            this.propertyId = owner.propertyId;
             this.area = owner.area;
 
             this.chain = owner.chain;

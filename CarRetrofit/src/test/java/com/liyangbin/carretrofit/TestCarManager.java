@@ -54,7 +54,7 @@ public class TestCarManager extends CarManager2 {
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-                    int key = 0/*random.nextInt(10)*/;
+                    int key = token ? 2 : 0/*random.nextInt(10)*/;
                     synchronized (typeMockMap) {
                         Object obj = generateRandomValue(random, typeMockMap.get(key).clazz);
 //                        if (obj.getClass().isArray()) {
