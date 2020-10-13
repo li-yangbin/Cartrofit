@@ -54,7 +54,7 @@ public class TestCarManager extends CarManager2 {
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-                    int key = token ? 2 : 0/*random.nextInt(10)*/;
+                    int key = 0/*random.nextInt(10)*/;
                     synchronized (typeMockMap) {
                         Object obj = generateRandomValue(random, typeMockMap.get(key).clazz);
 //                        if (obj.getClass().isArray()) {
@@ -69,6 +69,18 @@ public class TestCarManager extends CarManager2 {
             }
         }, "test_thread");
         tester.start();
+    }
+
+    @Override
+    public void onCommandCreate(Command command) {
+        switch (command.getId()) {
+            case TestCarApiId.trackIntReactive:
+                System.out.println("onCommandCreate trackIntReactive " + command);
+                break;
+            case TestChildCarApiId.trackIntReactiveAlias:
+                System.out.println("onCommandCreate trackIntReactiveAlias " + command);
+                break;
+        }
     }
 
     @Convert

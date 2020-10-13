@@ -1,5 +1,6 @@
 package com.liyangbin.carretrofit.annotation;
 
+import com.liyangbin.carretrofit.CarType;
 import com.liyangbin.carretrofit.StickyType;
 
 import java.lang.annotation.Documented;
@@ -16,4 +17,6 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 public @interface Delegate {
     int value();
     StickyType sticky() default StickyType.NO_SET;
+    int restoreId() default 0;
+    CarType type() default CarType.NO_SET;
 }

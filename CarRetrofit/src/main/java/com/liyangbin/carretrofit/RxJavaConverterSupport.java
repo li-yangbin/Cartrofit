@@ -99,7 +99,11 @@ class FlowObservable extends Observable<Object> implements Consumer<Object>, Dis
     @Override
     public void accept(Object t) {
         if (!disposed.get()) {
-            observer.onNext(t);
+            try {
+                observer.onNext(t);
+            } catch (Exception exception) {
+                observer.onError(exception);
+            }
             if (singleShot) {
                 observer.onComplete();
                 dispose();

@@ -368,7 +368,7 @@ public class ExampleUnitTest {
     @AfterClass
     public static void end() {
         try {
-            Thread.sleep(10 * 1000);
+            Thread.sleep(20 * 1000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -468,27 +468,27 @@ public class ExampleUnitTest {
 
     @Test
     public void converterScopeTest() {
-        api.trackIntReactive().subscribe(new Consumer<Integer>() {
-            @Override
-            public void accept(Integer integer) throws Exception {
-                print("int accept:" + integer);
-            }
-        });
+//        api.trackIntReactive().subscribe(new Consumer<Integer>() {
+//            @Override
+//            public void accept(Integer integer) throws Exception {
+//                print("int accept:" + integer);
+//            }
+//        });
         api.trackBooleanReactive().subscribe(new Consumer<Boolean>() {
             @Override
             public void accept(Boolean aBoolean) throws Exception {
                 print("boolean accept:" + aBoolean);
             }
         });
-        CarRetrofit.fromDefault(TestChildCarApi.class)
-                .trackIntReactiveAlias()
-                .subscribe(new Consumer<Integer>() {
-            @Override
-            public void accept(Integer integer) throws Exception {
-                print("child int accept:" + integer);
-            }
-        });
-        api.setIntSignal(10086);
+//        CarRetrofit.fromDefault(TestChildCarApi.class)
+//                .trackIntReactiveAlias()
+//                .subscribe(new Consumer<Integer>() {
+//            @Override
+//            public void accept(Integer integer) throws Exception {
+//                print("child int accept:" + integer);
+//            }
+//        });
+//        api.setIntSignal(10086);
 //        api.trackIntSignal().addObserver(new java.util.function.Consumer<Integer>() {
 //            @Override
 //            public void accept(Integer value) {

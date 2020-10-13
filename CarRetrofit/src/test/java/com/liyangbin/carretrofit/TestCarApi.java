@@ -71,7 +71,7 @@ public interface TestCarApi {
     @Track(id = 0)
     Flow<Integer> trackIntSignal();
 
-    @Track(id = 0, restoreId = setIntSignal)
+    @Track(id = 0, restoreSet = setIntSignal)
     Observable<Integer> trackIntReactive();
 
     @Delegate(trackStringAndCombine)

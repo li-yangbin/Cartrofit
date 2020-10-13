@@ -66,10 +66,8 @@ public final class CarRetrofit {
     private static final int FLAG_PARSE_INJECT = FLAG_FIRST_BIT << 4;
     private static final int FLAG_PARSE_APPLY = FLAG_FIRST_BIT << 5;
     private static final int FLAG_PARSE_COMBINE = FLAG_FIRST_BIT << 6;
-    private static final int FLAG_PARSE_DELEGATE = FLAG_FIRST_BIT << 7;
     private static final int FLAG_PARSE_ALL = FLAG_PARSE_SET | FLAG_PARSE_GET | FLAG_PARSE_TRACK
-            | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE
-            |FLAG_PARSE_DELEGATE;
+            | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE;
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
 
     private HashMap<Class<?>, DataSource> mDataMap;
@@ -805,6 +803,11 @@ public final class CarRetrofit {
     }
 
     private CommandImpl getOrCreateCommandById(ApiRecord<?> record, int id, int flag) {
+        return getOrCreateCommandById(record, id, flag, true);
+    }
+
+    private CommandImpl getOrCreateCommandById(ApiRecord<?> record, int id, int flag,
+                                               boolean throwIfNotFound) {
         Method method = record.selfDependency.get(id);
         if (method == null) {
             method = record.dependency.get(id);
@@ -814,7 +817,7 @@ public final class CarRetrofit {
         }
         CommandImpl command = getOrCreateCommandIfChecked(getApi(method.getDeclaringClass()),
                 new Key(method), null, flag);
-        if (command == null) {
+        if (throwIfNotFound && command == null) {
             throw new CarRetrofitException("Can not resolve target Id:" + id
                     + " in specific type from:" + this);
         }
@@ -1029,6 +1032,11 @@ public final class CarRetrofit {
             }
             CommandSet command = new CommandSet();
             command.init(record, set, key);
+            if (set.restoreTrack() != 0) {
+                CommandTrack trackCommand = (CommandTrack) getOrCreateCommandById(record,
+                        set.restoreTrack(), FLAG_PARSE_TRACK);
+                trackCommand.setRestoreCommand(command);
+            }
             return command;
         }
 
@@ -1048,11 +1056,11 @@ public final class CarRetrofit {
                 return null;
             }
             CommandTrack command = new CommandTrack();
-            command.init(record, track, key);
-            if (track.restoreId() != 0) {
-                command.setRestoreSet((CommandSet) getOrCreateCommandById(record,
-                        track.restoreId(), FLAG_PARSE_SET));
+            if (track.restoreSet() != 0) {
+                command.setRestoreCommand(getOrCreateCommandById(record, track.restoreSet(),
+                        FLAG_PARSE_SET));
             }
+            command.init(record, track, key);
             return command;
         }
 
@@ -1135,24 +1143,32 @@ public final class CarRetrofit {
             }
             for (int element : elements) {
                 CommandImpl childCommand = getOrCreateCommandById(record, element,
-                        FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE
-                        | FLAG_PARSE_DELEGATE);
+                        FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
                 command.addChildCommand(childCommand);
             }
             command.init(record, combine, key);
             return command;
         }
 
-        Delegate delegate = (flag & FLAG_PARSE_DELEGATE) != 0 ? key.getAnnotation(Delegate.class) : null;
+        Delegate delegate = key.getAnnotation(Delegate.class);
         if (delegate != null) {
             if (checker != null && !checker.test(key)) {
                 return null;
             }
-            CommandDelegate command = new CommandDelegate();
-            command.setTargetCommand(getOrCreateCommandById(record, delegate.value(),
-                    FLAG_PARSE_ALL));
-            command.init(record, delegate, key);
-            return command;
+            CommandImpl delegateTarget = getOrCreateCommandById(record, delegate.value(),
+                    flag, false);
+            if (delegateTarget != null) {
+                CommandDelegate command = new CommandDelegate();
+                command.setTargetCommand(delegateTarget);
+                if (delegate.restoreId() != 0) {
+                    command.restoreCommand = getOrCreateCommandById(record,
+                            delegate.restoreId(), FLAG_PARSE_SET | FLAG_PARSE_TRACK);
+                } else if (delegateTarget instanceof CommandFlow) {
+                    command.restoreCommand = ((CommandFlow) delegateTarget).restoreCommand;
+                }
+                command.init(record, delegate, key);
+                return command;
+            }
         }
         return null;
     }
@@ -1230,6 +1246,17 @@ public final class CarRetrofit {
             record.onCommandCreate(this);
         }
 
+        void init(CommandImpl owner) {
+            this.record = owner.record;
+            this.source = owner.source;
+            this.key = owner.key;
+            this.area = owner.area;
+
+            this.chain = owner.chain;
+            this.store = owner.store;
+            this.id = owner.id;
+        }
+
         final void resolveArea(int userDeclaredArea) {
             if (userDeclaredArea != CarApi.DEFAULT_AREA_ID) {
                 this.area = userDeclaredArea;
@@ -1244,7 +1271,7 @@ public final class CarRetrofit {
 
         CommandImpl shallowCopy() {
             try {
-                return (CommandImpl) clone();
+                return (CommandImpl) delegateTarget().clone();
             } catch (CloneNotSupportedException error) {
                 throw new CarRetrofitException(error);
             }
@@ -1337,6 +1364,13 @@ public final class CarRetrofit {
 
         CommandImpl delegateTarget() {
             return this;
+        }
+
+        boolean isReturnFlow() {
+            return false;
+        }
+
+        void overrideFromDelegate(CommandFlow delegateCommand) {
         }
 
         String toCommandString() {
@@ -1543,14 +1577,17 @@ public final class CarRetrofit {
             super.init(record, annotation, key);
             Combine combine = (Combine) annotation;
             resolveStickyType(combine.sticky());
+            if (stickyType == StickyType.NO_SET || stickyType == StickyType.OFF) {
+                throw new CarRetrofitException("Must declare stickyType ON for combine command");
+            }
 
             ArrayList<CommandFlow> flowChildren = null;
             ArrayList<CommandImpl> otherChildren = null;
             for (int i = 0; i < childrenCommand.size(); i++) {
                 CommandImpl childCommand = childrenCommand.get(i);
+                childCommand.overrideFromDelegate(this);
                 if (childCommand instanceof CommandFlow) {
                     CommandFlow flowChild = (CommandFlow) childCommand;
-                    returnFlow |= flowChild.returnFlow;
                     flowChild.registerTrack = false;
                     flowChild.mapFlowSuppressed = true;
                     if (this.stickyType == StickyType.NO_SET
@@ -1602,6 +1639,16 @@ public final class CarRetrofit {
             resolveConverter();
         }
 
+        @Override
+        public boolean isReturnFlow() {
+            for (int i = 0; i < childrenCommand.size(); i++) {
+                if (childrenCommand.get(i).isReturnFlow()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private void resolveConverter() {
             Class<?> originalType = null;
             if (combinator.getClass().isSynthetic()) {
@@ -1627,7 +1674,7 @@ public final class CarRetrofit {
                         + combinator + " functionClass:" + functionClass.getSimpleName());
             }
 
-            if (returnFlow) {
+            if (isReturnFlow()) {
                 Converter<?, ?> converter = ConverterStore.find(this, Flow.class,
                         key.getTrackClass(), store);
                 resultConverter = (Converter<Object, ?>) converter;
@@ -1683,7 +1730,7 @@ public final class CarRetrofit {
                 elementResult[i] = childCommand.invokeWithChain(null);
             }
             Object result;
-            if (returnFlow) {
+            if (isReturnFlow()) {
                 Flow<Object> flow;
                 CombineFlow combineFlow = new CombineFlow(elementResult);
                 if (mapConverter != null) {
@@ -1912,23 +1959,25 @@ public final class CarRetrofit {
         @Override
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
             super.init(record, annotation, key);
-            if (annotation instanceof Get) {
-                Get get = (Get) annotation;
-                propertyId = get.id();
-                type = get.type();
-                if (type == CarType.ALL) {
-                    throw new CarRetrofitException("Can not use type ALL mode in Get operation");
-                }
-                resolveArea(get.area());
-            } else if (annotation instanceof Track) {
-                Track track = (Track) annotation;
-                propertyId = track.id();
-                type = track.type();
-                resolveArea(track.area());
-                stickyGet = true;
+            Get get = (Get) annotation;
+            propertyId = get.id();
+            type = get.type();
+            if (type == CarType.ALL) {
+                throw new CarRetrofitException("Can not use type ALL mode in Get operation");
             }
+            resolveArea(get.area());
+            resolveResultConverter(key.getGetClass());
+        }
 
-            resolveResultConverter(stickyGet ? key.getUserConcernClass() : key.getGetClass());
+        @Override
+        void init(CommandImpl owner) {
+            super.init(owner);
+            if (owner instanceof CommandTrack) {
+                CommandTrack commandTrack = (CommandTrack) owner;
+                type = commandTrack.type;
+                stickyGet = true;
+                resolveResultConverter(key.getUserConcernClass());
+            }
         }
 
         private void resolveResultConverter(Class<?> userReturnClass) {
@@ -1992,11 +2041,10 @@ public final class CarRetrofit {
 
         StickyType stickyType;
 
-        boolean returnFlow;
         private boolean registerTrack;
         ArrayList<CommandImpl> childrenCommand = new ArrayList<>();
 
-        CommandSet restoreSetCommand;
+        CommandImpl restoreCommand;
 
         // runtime variable
         Flow<Object> trackingFlow;
@@ -2004,13 +2052,31 @@ public final class CarRetrofit {
         ArrayList<WeakReference<CommandReceive>> receiveCommandList;
         AtomicBoolean monitorSetResponseRegistered = new AtomicBoolean();
 
-        void setRestoreSet(CommandSet commandSet) {
-            restoreSetCommand = commandSet;
+        /**
+         * Principle: Flow command paired non-Flow command
+         */
+        void setRestoreCommand(CommandImpl restoreCommand) {
+            if (isReturnFlow()) {
+                if (restoreCommand.isReturnFlow()) {
+                    throw new CarRetrofitException("Invalid flow restore:" + restoreCommand
+                            + " on flow:" + this);
+                }
+                this.restoreCommand = restoreCommand;
+            } else {
+                if (!restoreCommand.isReturnFlow()) {
+                    throw new CarRetrofitException("Invalid non-flow restore:" + restoreCommand
+                            + " on non-Flow:" + this);
+                }
+                ((CommandFlow) restoreCommand).setupRestoreInterceptor(this);
+            }
+        }
+
+        void setupRestoreInterceptor(CommandImpl restoreCommand) {
             if (stickyType == StickyType.NO_SET || stickyType == StickyType.OFF) {
                 throw new CarRetrofitException("Sticky type must be ON if restore command is set");
             }
-            System.out.println("setRestoreSet :" + commandSet);
-            commandSet.addInterceptorToBottom((command, parameter) -> {
+            System.out.println("setRestoreCommand :" + restoreCommand);
+            restoreCommand.addInterceptorToBottom((command, parameter) -> {
                 if (monitorSetResponseRegistered.get()) {
                     System.out.println("commandSet addInterceptorToBottom:" + parameter);
                     synchronized (sTimeOutTimer) {
@@ -2032,8 +2098,8 @@ public final class CarRetrofit {
 
         CommandReceive createCommandReceive() {
             CommandReceive receive = new CommandReceive(this);
-            receive.init(record, null, key);
-            if (restoreSetCommand != null) {
+            receive.init(this);
+            if (restoreCommand != null) {
                 if (receiveCommandList == null) {
                     receiveCommandList = new ArrayList<>();
                 }
@@ -2111,6 +2177,18 @@ public final class CarRetrofit {
             return commandFlow;
         }
 
+        @Override
+        void overrideFromDelegate(CommandFlow delegateCommand) {
+            registerTrack = false;
+            mapFlowSuppressed = true;
+            if (delegateCommand.stickyType != StickyType.NO_SET) {
+                stickyType = delegateCommand.stickyType;
+            }
+            if (delegateCommand.restoreCommand != null) {
+                setRestoreCommand(delegateCommand.restoreCommand);
+            }
+        }
+
         void resolveStickyType(StickyType stickyType) {
             if (stickyType == StickyType.NO_SET) {
                 this.stickyType = record.stickyType;
@@ -2176,7 +2254,7 @@ public final class CarRetrofit {
 
         @Override
         public Object invoke(Object parameter) throws Throwable {
-            if (returnFlow && registerTrack) {
+            if (isReturnFlow() && registerTrack) {
                 if (trackingFlow == null) {
                     trackingFlow = (Flow<Object>) doInvoke();
                 }
@@ -2205,8 +2283,10 @@ public final class CarRetrofit {
         CommandGet stickyGet;
         Annotation annotation;
 
-        CommandTrack() {
-            returnFlow = true;
+        @Override
+        void setRestoreCommand(CommandImpl restoreCommand) {
+            super.setRestoreCommand(restoreCommand);
+            setupRestoreInterceptor(restoreCommand);
         }
 
         @Override
@@ -2231,6 +2311,11 @@ public final class CarRetrofit {
             CommandTrack commandTrack = (CommandTrack) super.shallowCopy();
             commandTrack.stickyGet = null;
             return commandTrack;
+        }
+
+        @Override
+        public boolean isReturnFlow() {
+            return true;
         }
 
         @Override
@@ -2296,7 +2381,7 @@ public final class CarRetrofit {
             if (stickyType == StickyType.ON || stickyType == StickyType.ON_NO_CACHE) {
                 if (stickyGet == null) {
                     stickyGet = new CommandGet();
-                    stickyGet.init(record, annotation, key);
+                    stickyGet.init(this);
                 }
                 result = new StickyFlowImpl<>(result, stickyType == StickyType.ON,
                         () -> {
@@ -2402,33 +2487,34 @@ public final class CarRetrofit {
     private static class CommandDelegate extends CommandFlow {
         CommandImpl targetCommand;
         Converter<Object, ?> argConverter;
-        boolean setCommand;
+        CarType carType;
+        boolean commandSet;
 
         @Override
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
             super.init(record, annotation, key);
             Delegate delegate = (Delegate) annotation;
             resolveStickyType(delegate.sticky());
+            carType = delegate.type();
+            commandSet = type() == CommandType.SET;
 
-            if (targetCommand instanceof CommandFlow) {
-                CommandFlow targetFlowCommand = (CommandFlow) targetCommand;
-                this.returnFlow = targetFlowCommand.returnFlow;
-                targetFlowCommand.stickyType = this.stickyType;
-                targetFlowCommand.registerTrack = false;
-                targetFlowCommand.mapFlowSuppressed = true;
-                targetFlowCommand.setRestoreSet(targetFlowCommand.restoreSetCommand);
-            }
-            setCommand = targetCommand.type() == CommandType.SET;
+            targetCommand.overrideFromDelegate(this);
+
             resolveConverter();
         }
 
+        @Override
+        public boolean isReturnFlow() {
+            return targetCommand.isReturnFlow();
+        }
+
         private void resolveConverter() {
-            if (setCommand) {
+            if (commandSet) {
                 if (targetCommand.userDataClass != null) {
                     argConverter = (Converter<Object, ?>) ConverterStore.find(this,
                             targetCommand.userDataClass, userDataClass = key.getSetClass(), store);
                 }
-            } else if (returnFlow) {
+            } else if (isReturnFlow()) {
                 resultConverter = (Converter<Object, ?>) ConverterStore.find(this,
                         Flow.class, key.getTrackClass(), store);
                 mapConverter = findMapConverter(targetCommand.userDataClass);
@@ -2437,7 +2523,7 @@ public final class CarRetrofit {
             }
         }
 
-       void setTargetCommand(CommandImpl targetCommand) {
+        void setTargetCommand(CommandImpl targetCommand) {
             this.targetCommand = targetCommand.shallowCopy();
         }
 
@@ -2454,7 +2540,7 @@ public final class CarRetrofit {
 
         @Override
         public Object invoke(Object parameter) throws Throwable {
-            if (setCommand) {
+            if (commandSet) {
                 return targetCommand.invokeWithChain(argConverter != null ?
                         argConverter.convert(parameter) : parameter);
             }
