@@ -10,6 +10,8 @@ import com.liyangbin.carretrofit.funtion.Function2;
 import java.util.HashMap;
 import java.util.Random;
 
+import static com.liyangbin.carretrofit.TestCarApiId.*;
+
 public class TestCarManager extends CarManager2 {
 
     public static final HashMap<Integer, Combo> typeMockMap = new HashMap<>();
@@ -74,7 +76,7 @@ public class TestCarManager extends CarManager2 {
     @Override
     public void onCommandCreate(Command command) {
         switch (command.getId()) {
-            case TestCarApiId.trackIntReactive:
+            case trackIntReactive:
                 System.out.println("onCommandCreate trackIntReactive " + command);
                 command.addInterceptorToTop(new Interceptor() {
                     @Override
@@ -84,7 +86,7 @@ public class TestCarManager extends CarManager2 {
                     }
                 });
                 break;
-            case TestCarApiId.trackIntReactiveAlias:
+            case trackIntReactiveAlias:
                 System.out.println("onCommandCreate trackIntReactiveAlias " + command);
                 command.addInterceptorToTop(new Interceptor() {
                     @Override

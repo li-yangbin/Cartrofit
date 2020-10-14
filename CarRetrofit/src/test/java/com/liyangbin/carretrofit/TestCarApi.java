@@ -15,14 +15,7 @@ import com.liyangbin.carretrofit.annotation.Track;
 import io.reactivex.Observable;
 import io.reactivex.Single;
 
-import static com.liyangbin.carretrofit.TestCarApiId.combinator_aa;
-import static com.liyangbin.carretrofit.TestCarApiId.combinator_bb;
-import static com.liyangbin.carretrofit.TestCarApiId.setIntSignal;
-import static com.liyangbin.carretrofit.TestCarApiId.trackBooleanReactive;
-import static com.liyangbin.carretrofit.TestCarApiId.trackIntAndBoolean;
-import static com.liyangbin.carretrofit.TestCarApiId.trackIntReactive;
-import static com.liyangbin.carretrofit.TestCarApiId.trackStringAndCombine;
-import static com.liyangbin.carretrofit.TestCarApiId.trackStringSignal;
+import static com.liyangbin.carretrofit.TestCarApiId.*;
 
 @CarApi(scope = TestCarManager.class)
 public interface TestCarApi {
