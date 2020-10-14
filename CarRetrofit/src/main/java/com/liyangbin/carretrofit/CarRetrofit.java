@@ -709,12 +709,16 @@ public final class CarRetrofit {
         private StickyType stickyType = DEFAULT_STICKY_TYPE;
 
         public Builder addDataSource(DataSource source) {
-            this.dataMap.put(source.getClass(), source);
+            DataSource existedSource = dataMap.put(source.getClass(), source);
+            if (existedSource != null) {
+                throw new CarRetrofitException("Duplicate data source:" + existedSource);
+            }
             return this;
         }
 
         public Builder addDataSource(CarRetrofit retrofit) {
-            this.dataMap.putAll(retrofit.mDataMap);
+            dataMap.clear();
+            dataMap.putAll(retrofit.mDataMap);
             return this;
         }
 
@@ -1166,7 +1170,7 @@ public final class CarRetrofit {
                 } else if (delegateTarget instanceof CommandFlow) {
                     command.restoreCommand = ((CommandFlow) delegateTarget).restoreCommand;
                 }
-                command.init(record, delegate, key);
+                command.init(delegateTarget.record, delegate, key);
                 return command;
             }
         }
@@ -2112,8 +2116,6 @@ public final class CarRetrofit {
                                 System.out.println("commandSet restore command unscheduled");
                                 task.cancel();
                                 task = null;
-                            } else {
-                                System.out.println("commandSet restore nothing unscheduled");
                             }
                         }
                         return command.invoke(parameter);
@@ -2198,17 +2200,6 @@ public final class CarRetrofit {
             }
         }
 
-        StickyType suppressStickyType(StickyType stickyType) {
-            StickyType oldType = this.stickyType;
-            if (this.stickyType == stickyType || stickyType == StickyType.NO_SET) {
-                return this.stickyType;
-            }
-            if (!registerTrack) {
-                this.stickyType = stickyType;
-            }
-            return oldType;
-        }
-
         @Override
         void init(ApiRecord<?> record, Annotation annotation, Key key) {
             super.init(record, annotation, key);
@@ -2273,7 +2264,7 @@ public final class CarRetrofit {
         String toCommandString() {
             String fromSuper = super.toCommandString();
             if (stickyType != StickyType.NO_SET) {
-                fromSuper += " stickyType:" + stickyType;
+                fromSuper += " sticky:" + stickyType;
             }
             return fromSuper;
         }

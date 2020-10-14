@@ -17,7 +17,7 @@ public @interface CarApi {
     int GLOBAL_AREA_ID = 0;
     int DEFAULT_AREA_ID = 0xFFFFFFFF;
 
-    Class<?> scope() default DataSource.class;
+    Class<? extends DataSource> scope() default DataSource.class;
 
     int area() default DEFAULT_AREA_ID;
 

@@ -20,6 +20,7 @@ import static com.liyangbin.carretrofit.TestCarApiId.combinator_bb;
 import static com.liyangbin.carretrofit.TestCarApiId.setIntSignal;
 import static com.liyangbin.carretrofit.TestCarApiId.trackBooleanReactive;
 import static com.liyangbin.carretrofit.TestCarApiId.trackIntAndBoolean;
+import static com.liyangbin.carretrofit.TestCarApiId.trackIntReactive;
 import static com.liyangbin.carretrofit.TestCarApiId.trackStringAndCombine;
 import static com.liyangbin.carretrofit.TestCarApiId.trackStringSignal;
 
@@ -73,6 +74,9 @@ public interface TestCarApi {
 
     @Track(id = 0, restoreSet = setIntSignal)
     Observable<Integer> trackIntReactive();
+
+    @Delegate(trackIntReactive)
+    Observable<Integer> trackIntReactiveAlias();
 
     @Delegate(trackStringAndCombine)
     Observable<String> trackIntDelegate();

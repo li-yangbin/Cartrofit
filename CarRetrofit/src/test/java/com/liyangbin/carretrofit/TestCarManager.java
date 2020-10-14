@@ -76,9 +76,40 @@ public class TestCarManager extends CarManager2 {
         switch (command.getId()) {
             case TestCarApiId.trackIntReactive:
                 System.out.println("onCommandCreate trackIntReactive " + command);
+                command.addInterceptorToTop(new Interceptor() {
+                    @Override
+                    public Object process(Command command, Object parameter) throws Throwable {
+                        System.out.println("interceptor trackIntReactive " + command);
+                        return command.invoke(parameter);
+                    }
+                });
                 break;
-            case TestChildCarApiId.trackIntReactiveAlias:
+            case TestCarApiId.trackIntReactiveAlias:
                 System.out.println("onCommandCreate trackIntReactiveAlias " + command);
+                command.addInterceptorToTop(new Interceptor() {
+                    @Override
+                    public Object process(Command command, Object parameter) throws Throwable {
+                        System.out.println("interceptor11 trackIntReactiveAlias " + command);
+                        return command.invoke(parameter);
+                    }
+                });
+                command.addInterceptorToTop(new Interceptor() {
+                    @Override
+                    public Object process(Command command, Object parameter) throws Throwable {
+                        System.out.println("interceptor22 trackIntReactiveAlias " + command);
+                        if (command.type() == CommandType.RECEIVE) {
+                            return null;
+                        }
+                        return command.invoke(parameter);
+                    }
+                });
+                command.addInterceptorToTop(new Interceptor() {
+                    @Override
+                    public Object process(Command command, Object parameter) throws Throwable {
+                        System.out.println("interceptor33 trackIntReactiveAlias " + command);
+                        return command.invoke(parameter);
+                    }
+                });
                 break;
         }
     }
