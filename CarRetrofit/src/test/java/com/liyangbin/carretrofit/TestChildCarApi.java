@@ -8,7 +8,7 @@ import io.reactivex.Observable;
 import static com.liyangbin.carretrofit.TestCarApiId.*;
 
 @CarApi
-public interface TestChildCarApi extends TestCarApi {
+public interface TestChildCarApi {
 
     @Delegate(getIntSignal)
     int getIntValueAlias();

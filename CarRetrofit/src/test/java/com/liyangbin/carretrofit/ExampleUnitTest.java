@@ -1,6 +1,7 @@
 package com.liyangbin.carretrofit;
 
 import com.liyangbin.carretrofit.annotation.Apply;
+import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
 import com.liyangbin.carretrofit.annotation.Set;
@@ -468,32 +469,32 @@ public class ExampleUnitTest {
 
     @Test
     public void converterScopeTest() {
-        api.trackIntReactive().subscribe(new Consumer<Integer>() {
-            @Override
-            public void accept(Integer integer) throws Exception {
-                print("int accept:" + integer);
-            }
-        });
-        api.trackIntReactiveAlias().subscribe(new Consumer<Integer>() {
-            @Override
-            public void accept(Integer integer) throws Exception {
-                print("int delegate accept:" + integer);
-            }
-        });
+//        api.trackIntReactive().subscribe(new Consumer<Integer>() {
+//            @Override
+//            public void accept(Integer integer) throws Exception {
+//                print("int accept:" + integer);
+//            }
+//        });
+//        api.trackIntReactiveAlias().subscribe(new Consumer<Integer>() {
+//            @Override
+//            public void accept(Integer integer) throws Exception {
+//                print("int delegate accept:" + integer);
+//            }
+//        });
 //        api.trackBooleanReactive().subscribe(new Consumer<Boolean>() {
 //            @Override
 //            public void accept(Boolean aBoolean) throws Exception {
 //                print("boolean accept:" + aBoolean);
 //            }
 //        });
-//        CarRetrofit.fromDefault(TestChildCarApi.class)
-//                .trackIntReactiveAlias()
-//                .subscribe(new Consumer<Integer>() {
-//            @Override
-//            public void accept(Integer integer) throws Exception {
-//                print("child int accept:" + integer);
-//            }
-//        });
+        CarRetrofit.fromDefault(TestChildCarApi.class)
+                .trackIntReactiveAlias()
+                .subscribe(new Consumer<Integer>() {
+            @Override
+            public void accept(Integer integer) throws Exception {
+                print("child int accept:" + integer);
+            }
+        });
 //        api.setIntSignal(10086);
 //        api.trackIntSignal().addObserver(new java.util.function.Consumer<Integer>() {
 //            @Override
@@ -577,12 +578,12 @@ public class ExampleUnitTest {
 //                print("combine receive:" + string);
 //            }
 //        });
-            api.trackIntDelegate().subscribe(new Consumer<String>() {
-            @Override
-            public void accept(String value) throws Exception {
-                print("delegate accept:" + value);
-            }
-        });
+//            api.trackIntDelegate().subscribe(new Consumer<String>() {
+//            @Override
+//            public void accept(String value) throws Exception {
+//                print("delegate accept:" + value);
+//            }
+//        });
     }
 
     @Test
@@ -647,7 +648,7 @@ public class ExampleUnitTest {
         int baseAbc = 4321;
     }
 
-    //    @ApplySuper
+    @CarApi(scope = TestCarManager.class)
     public static class InnerData extends BaseData {
         @Get(id = 1)
         @Set(id = 1)
@@ -677,6 +678,7 @@ public class ExampleUnitTest {
         }
     }
 
+    @CarApi(scope = TestCarManager.class)
     public static class CarData {
         @Set(id = 6)
         @Get(id = 6)

@@ -7,6 +7,7 @@ import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
+import com.squareup.javapoet.WildcardTypeName;
 
 import java.io.IOException;
 import java.io.Writer;
@@ -61,8 +62,7 @@ public class CarRetrofitProcessor extends AbstractProcessor {
     static final String TARGET_CAR_API = PACKAGE_NAME + ".annotation.CarApi";
     static final String TARGET_CAR_API_SCOPE = "scope";
 
-    private HashMap<Integer, ClassName> mScopeMap = new HashMap<>();
-    private TypeSpec.Builder mIdTypeBuilder;
+    private final HashMap<Integer, ClassName> mScopeMap = new HashMap<>();
 
     @Override
     public boolean process(Set<? extends TypeElement> set, RoundEnvironment roundEnvironment) {
@@ -94,32 +94,37 @@ public class CarRetrofitProcessor extends AbstractProcessor {
     }
 
     private void processIdMapperClass() {
-        if (mIdTypeBuilder == null) {
+        if (mScopeMap.size() == 0) {
             return;
         }
-        mIdTypeBuilder.addField(FieldSpec
+        TypeSpec.Builder routerBuilder = TypeSpec.classBuilder(ID_MAPPER_NAME)
+                .addModifiers(PUBLIC, FINAL);;
+        routerBuilder.addField(FieldSpec
                 .builder(TypeName.INT, "SCOPE_MASK")
                 .addModifiers(PRIVATE, STATIC, FINAL)
                 .initializer("0x" + Integer.toHexString(SCOPE_MASK))
                 .build());
-        MethodSpec.Builder builder = MethodSpec.methodBuilder("getMethodById")
+
+        MethodSpec.Builder methodBuilder = MethodSpec.methodBuilder("findApiClassById")
                 .addModifiers(STATIC, PUBLIC)
-                .returns(TypeName.get(Method.class))
+                .returns(ParameterizedTypeName.get(ClassName.get(Class.class),
+                        WildcardTypeName.subtypeOf(Object.class)))
                 .addParameter(TypeName.INT, "id");
-        if (mScopeMap.size() > 0) {
-            builder.beginControlFlow("switch(id & SCOPE_MASK)");
-            for (Map.Entry<Integer, ClassName> entry : mScopeMap.entrySet()) {
-                builder.addCode("case $L: ", entry.getKey())
-                        .addStatement("return $T.class", entry.getValue());
-            }
-            builder.endControlFlow();
+        methodBuilder.beginControlFlow("switch(id & SCOPE_MASK)");
+        for (Map.Entry<Integer, ClassName> entry : mScopeMap.entrySet()) {
+            methodBuilder
+                    .addCode("case $L: ", entry.getKey())
+                    .addStatement("return $T.class", entry.getValue());
         }
-        builder.addStatement("return null");
-        mIdTypeBuilder.addMethod(builder.build());
+        methodBuilder.endControlFlow();
+        methodBuilder.addStatement("return null");
+
+        routerBuilder.addMethod(methodBuilder.build());
+
         try (Writer writer = processingEnv.getFiler()
                 .createSourceFile(ID_MAPPER_NAME.reflectionName())
                 .openWriter()) {
-            JavaFile.builder(PACKAGE_NAME, mIdTypeBuilder.build())
+            JavaFile.builder(PACKAGE_NAME, routerBuilder.build())
                     .addFileComment(COMMENT_COMMON)
                     .skipJavaLangImports(true)
                     .indent("    ")
@@ -128,13 +133,10 @@ public class CarRetrofitProcessor extends AbstractProcessor {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        mIdTypeBuilder = null;
+        mScopeMap.clear();
     }
 
     private void processCarApiClass(TypeElement element) {
-        if (mIdTypeBuilder == null) {
-            mIdTypeBuilder = TypeSpec.classBuilder(ID_MAPPER_NAME).addModifiers(PUBLIC, FINAL);
-        }
         PackageElement packageElement = (PackageElement) element.getEnclosingElement();
         String packageName = packageElement.getQualifiedName().toString();
         String apiClassName = element.getSimpleName().toString();
@@ -151,7 +153,7 @@ public class CarRetrofitProcessor extends AbstractProcessor {
         }
 
         final int baseScopeId = getScopeBaseId(element.getQualifiedName().toString());
-        if (mScopeMap.put(baseScopeId, idClassName) != null) {
+        if (mScopeMap.put(baseScopeId, ClassName.get(element)) != null) {
             logE("conflict scopeId: 0x" + Integer.toHexString(baseScopeId)
                     + " from:" + apiClassName);
             return;

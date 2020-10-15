@@ -47,7 +47,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.function.Supplier;
 
 @SuppressWarnings("unchecked")
 public final class CarRetrofit {
@@ -69,6 +68,7 @@ public final class CarRetrofit {
     private static final int FLAG_PARSE_ALL = FLAG_PARSE_SET | FLAG_PARSE_GET | FLAG_PARSE_TRACK
             | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE;
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
+    private static Method sRouterFinderMethod;
 
     private HashMap<Class<?>, DataSource> mDataMap;
     private ConverterStore mConverterStore;
@@ -136,6 +136,19 @@ public final class CarRetrofit {
                 "Call setDefault() before calling fromDefault()").from(api);
     }
 
+    private static Class<?> findApiClassById(int id) {
+        try {
+            if (sRouterFinderMethod == null) {
+                Class<?> idRouterClass = Class.forName(CarRetrofit.class.getPackage().getName()
+                        + ".IdRouter");
+                sRouterFinderMethod = idRouterClass.getMethod("findApiClassById", int.class);
+            }
+            return (Class<?>) sRouterFinderMethod.invoke(null, id);
+        } catch (ReflectiveOperationException e) {
+            return null;
+        }
+    }
+
     private static Class<?> getClassFromType(Type type) {
         if (type instanceof ParameterizedType) {
             ParameterizedType parameterizedType = (ParameterizedType) type;
@@ -163,35 +176,25 @@ public final class CarRetrofit {
         ConverterManager converterManager = new ConverterManager();
         InterceptorManager interceptorManager = new InterceptorManager();
 
-        HashMap<Integer, Method> dependency = new HashMap<>();
-
         ApiRecord(Class<T> clazz) {
             this.clazz = clazz;
-            CarApi carApi = Objects.requireNonNull(clazz.getAnnotation(CarApi.class));
-            this.dataScope = carApi.scope();
-            this.apiArea = carApi.area();
-            this.stickyType = carApi.defaultSticky();
-            if (stickyType == StickyType.NO_SET) {
-                stickyType = mDefaultStickyType;
-            }
+            CarApi carApi = clazz.getAnnotation(CarApi.class);
+            if (carApi != null) {
+                this.dataScope = carApi.scope();
+                this.apiArea = carApi.area();
+                this.stickyType = carApi.defaultSticky();
+                if (stickyType == StickyType.NO_SET) {
+                    stickyType = mDefaultStickyType;
+                }
 
-            this.source = Objects.requireNonNull(mDataMap.get(dataScope),
-                    "Invalid scope:" + dataScope +
-                            " make sure use a valid scope registered in Builder().addDataSource()");
+                this.source = Objects.requireNonNull(mDataMap.get(dataScope),
+                        "Invalid scope:" + dataScope +
+                                " make sure use a valid scope registered in Builder().addDataSource()");
 
-            try {
-                Class<?> selfScopeClass = Class.forName(clazz.getName() + ID_SUFFIX);
-                importDependency(selfScopeClass, true);
-            } catch (ClassNotFoundException ignore) {
-            }
-
-            Class<?>[] dependencyClasses = clazz.getInterfaces();
-            for (Class<?> dependencyClass : dependencyClasses) {
-                if (dependencyClass != clazz) {
+                if (clazz.isInterface()) {
                     try {
-                        Class<?> dependentScopeClass =
-                                Class.forName(dependencyClass.getName() + ID_SUFFIX);
-                        importDependency(dependentScopeClass, false);
+                        Class<?> selfScopeClass = Class.forName(clazz.getName() + ID_SUFFIX);
+                        importDependency(selfScopeClass);
                     } catch (ClassNotFoundException ignore) {
                     }
                 }
@@ -207,7 +210,7 @@ public final class CarRetrofit {
                     return entry.getKey();
                 }
             }
-            throw new IllegalStateException("impossible situation");
+            throw new IllegalStateException(command + " can not find id in:" + this);
         }
 
         void onCommandCreate(CommandImpl command) {
@@ -403,26 +406,21 @@ public final class CarRetrofit {
             return converterManager.recordByIndex.get(id);
         }
 
-        void importDependency(Class<?> target, boolean self) {
-            HashMap<Integer, Field> interceptorDependency = self ? new HashMap<>() : null;
-            HashMap<Integer, Field> converterDependency = self ? new HashMap<>() : null;
+        void importDependency(Class<?> target) {
+            HashMap<Integer, Field> interceptorDependency = new HashMap<>();
+            HashMap<Integer, Field> converterDependency = new HashMap<>();
             try {
                 Method method = target.getDeclaredMethod("init", HashMap.class, HashMap.class,
                         HashMap.class);
-                method.invoke(null, self ? selfDependency : dependency,
-                        interceptorDependency, converterDependency);
+                method.invoke(null, selfDependency, interceptorDependency, converterDependency);
             } catch (ReflectiveOperationException impossible) {
                 throw new IllegalStateException(impossible);
             }
-            if (interceptorDependency != null) {
-                for (Map.Entry<Integer, Field> entry : interceptorDependency.entrySet()) {
-                    interceptorManager.add(entry.getKey(), entry.getValue(), Intercept.class);
-                }
+            for (Map.Entry<Integer, Field> entry : interceptorDependency.entrySet()) {
+                interceptorManager.add(entry.getKey(), entry.getValue(), Intercept.class);
             }
-            if (converterDependency != null) {
-                for (Map.Entry<Integer, Field> entry : converterDependency.entrySet()) {
-                    converterManager.add(entry.getKey(), entry.getValue(), Convert.class);
-                }
+            for (Map.Entry<Integer, Field> entry : converterDependency.entrySet()) {
+                converterManager.add(entry.getKey(), entry.getValue(), Convert.class);
             }
         }
 
@@ -791,10 +789,10 @@ public final class CarRetrofit {
         synchronized (mApiCache) {
             ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
             if (record == null) {
-                if (api.isAnnotationPresent(CarApi.class)) {
+                if (api.isAnnotationPresent(CarApi.class) || !throwIfNotDeclareCarApi) {
                     record = new ApiRecord<>(api);
                     mApiCache.put(api, record);
-                } else if (throwIfNotDeclareCarApi) {
+                } else {
                     throw new CarRetrofitException("Do declare CarApi annotation in class:" + api);
                 }
             }
@@ -814,10 +812,11 @@ public final class CarRetrofit {
                                                boolean throwIfNotFound) {
         Method method = record.selfDependency.get(id);
         if (method == null) {
-            method = record.dependency.get(id);
-        }
-        if (method == null) {
-            throw new CarRetrofitException("Can not resolve target Id:" + id + " from:" + this);
+            Class<?> apiClass = findApiClassById(id);
+            if (apiClass == record.clazz || apiClass == null) {
+                throw new CarRetrofitException("Can not find target Id:" + id + " from:" + apiClass);
+            }
+            return getOrCreateCommandById(getApi(apiClass, true), id, flag, throwIfNotFound);
         }
         CommandImpl command = getOrCreateCommandIfChecked(getApi(method.getDeclaringClass()),
                 new Key(method), null, flag);
@@ -1100,7 +1099,7 @@ public final class CarRetrofit {
                     }, child -> {
                         command.addChildCommand(child);
                         return true;
-                    }, FLAG_PARSE_INJECT | FLAG_PARSE_GET | FLAG_PARSE_TRACK);
+                    }, FLAG_PARSE_INJECT | FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
             if (command.childrenCommand.size() == 0
                     && !InjectReceiver.class.isAssignableFrom(targetClass)) {
                 throw new CarRetrofitException("Failed to parse Inject command from type:"
@@ -1170,7 +1169,7 @@ public final class CarRetrofit {
                 } else if (delegateTarget instanceof CommandFlow) {
                     command.restoreCommand = ((CommandFlow) delegateTarget).restoreCommand;
                 }
-                command.init(delegateTarget.record, delegate, key);
+                command.init(record, delegate, key);
                 return command;
             }
         }
@@ -1239,18 +1238,32 @@ public final class CarRetrofit {
         Key key;
         int id;
 
-        void init(ApiRecord<?> record, Annotation annotation, Key key) {
+        final void init(ApiRecord<?> record, Annotation annotation, Key key) {
             this.record = record;
             this.source = record.source;
+            if (this.source == null && requireSource()) {
+                throw new CarRetrofitException("Declare CarApi.scope() attribute" +
+                        " in your scope class:" + record.clazz);
+            }
             this.key = key;
 
             this.chain = record.getInterceptorByKey(key, type(), delegateTarget() == this);
             this.store = record.getConverterByKey(key, type());
             this.id = record.loadId(this);
+
+            onInit(annotation);
+
             record.onCommandCreate(this);
         }
 
-        void init(CommandImpl owner) {
+        boolean requireSource() {
+            return true;
+        }
+
+        void onInit(Annotation annotation) {
+        }
+
+        void copyFrom(CommandImpl owner) {
             this.record = owner.record;
             this.source = owner.source;
             this.key = owner.key;
@@ -1345,7 +1358,7 @@ public final class CarRetrofit {
         @Override
         public final String toString() {
             return "Command 0x" + Integer.toHexString(hashCode())
-                    + " [" + type() + delegateTarget().toCommandString() + "]";
+                    + " [" + type() + " " + toCommandString() + "]";
         }
 
         @Override
@@ -1380,9 +1393,9 @@ public final class CarRetrofit {
 
         String toCommandString() {
             int area = getArea();
-            return " id:0x" + Integer.toHexString(getPropertyId())
+            return "id:0x" + Integer.toHexString(getPropertyId())
                     + (area != CarApi.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "")
-                    + " from:" + delegateTarget().key;
+                    + " from:" + key;
         }
 
         final Object invokeWithChain(Object parameter) throws Throwable {
@@ -1570,6 +1583,7 @@ public final class CarRetrofit {
         Converter<?, ?> combinator;
         int combinatorId;
         Class<?> functionClass;
+        CombineFlow combineFlow;
 
         @Override
         void addChildCommand(CommandImpl command) {
@@ -1578,8 +1592,12 @@ public final class CarRetrofit {
         }
 
         @Override
-        void init(ApiRecord<?> record, Annotation annotation, Key key) {
-            super.init(record, annotation, key);
+        boolean requireSource() {
+            return false;
+        }
+
+        @Override
+        void onInit(Annotation annotation) {
             Combine combine = (Combine) annotation;
             resolveStickyType(combine.sticky());
             if (stickyType == StickyType.NO_SET || stickyType == StickyType.OFF) {
@@ -1592,15 +1610,6 @@ public final class CarRetrofit {
                 CommandImpl childCommand = childrenCommand.get(i);
                 childCommand.overrideFromDelegate(this);
                 if (childCommand instanceof CommandFlow) {
-                    CommandFlow flowChild = (CommandFlow) childCommand;
-                    flowChild.registerTrack = false;
-                    flowChild.mapFlowSuppressed = true;
-                    if (this.stickyType == StickyType.NO_SET
-                            || this.stickyType == StickyType.OFF) {
-                        flowChild.stickyType = StickyType.ON;
-                    } else {
-                        flowChild.stickyType = this.stickyType;
-                    }
                     if (flowChildren == null) {
                         flowChildren = new ArrayList<>();
                     }
@@ -1728,16 +1737,18 @@ public final class CarRetrofit {
 
         @Override
         Object doInvoke() throws Throwable {
-            final int size = childrenCommand.size();
-            Object[] elementResult = new Object[size];
-            for (int i = 0; i < size; i++) {
-                CommandImpl childCommand = childrenCommand.get(i);
-                elementResult[i] = childCommand.invokeWithChain(null);
+            if (combineFlow == null) {
+                final int size = childrenCommand.size();
+                Object[] elementResult = new Object[size];
+                for (int i = 0; i < size; i++) {
+                    CommandImpl childCommand = childrenCommand.get(i);
+                    elementResult[i] = childCommand.invokeWithChain(null);
+                }
+                combineFlow = new CombineFlow(elementResult);
             }
             Object result;
             if (isReturnFlow()) {
                 Flow<Object> flow;
-                CombineFlow combineFlow = new CombineFlow(elementResult);
                 if (mapConverter != null) {
                     flow = new MediatorFlow<>(combineFlow,
                             data -> mapConverter.convert(
@@ -1748,10 +1759,7 @@ public final class CarRetrofit {
                 }
                 if (stickyType == StickyType.ON || stickyType == StickyType.ON_NO_CACHE) {
                     flow = new StickyFlowImpl<>(flow, stickyType == StickyType.ON,
-                            () -> {
-                                    CombineData data = combineFlow.get();
-                                    return processResult(-1, data.trackingObj);
-                                });
+                            getCommandStickyGet());
                     ((StickyFlowImpl<?>)flow).addCommandReceiver(createCommandReceive());
                 } else {
                     flow = new FlowWrapper<>(flow, createCommandReceive());
@@ -1761,9 +1769,18 @@ public final class CarRetrofit {
                 }
                 result = flow;
             } else {
-                result = processResult(-1, elementResult);
+                result = loadInitialData();
             }
             return resultConverter != null ? resultConverter.convert(result) : result;
+        }
+
+        @Override
+        Object loadInitialData() {
+            if (combineFlow == null) {
+                return null;
+            }
+            CombineData data = combineFlow.get();
+            return processResult(-1, data.trackingObj);
         }
 
         @Override
@@ -1890,8 +1907,7 @@ public final class CarRetrofit {
         Converter<Object, ?> argConverter;
 
         @Override
-        void init(ApiRecord<?> record, Annotation annotation, Key key) {
-            super.init(record, annotation, key);
+        void onInit(Annotation annotation) {
             Set set = (Set) annotation;
             this.propertyId = set.id();
             buildInValue = BuildInValue.build(set.value());
@@ -1959,11 +1975,9 @@ public final class CarRetrofit {
 
         Converter<Object, ?> resultConverter;
         CarType type;
-        boolean stickyGet;
 
         @Override
-        void init(ApiRecord<?> record, Annotation annotation, Key key) {
-            super.init(record, annotation, key);
+        void onInit(Annotation annotation) {
             Get get = (Get) annotation;
             propertyId = get.id();
             type = get.type();
@@ -1972,17 +1986,6 @@ public final class CarRetrofit {
             }
             resolveArea(get.area());
             resolveResultConverter(key.getGetClass());
-        }
-
-        @Override
-        void init(CommandImpl owner) {
-            super.init(owner);
-            if (owner instanceof CommandTrack) {
-                CommandTrack commandTrack = (CommandTrack) owner;
-                type = commandTrack.type;
-                stickyGet = true;
-                resolveResultConverter(key.getUserConcernClass());
-            }
         }
 
         private void resolveResultConverter(Class<?> userReturnClass) {
@@ -2001,21 +2004,13 @@ public final class CarRetrofit {
 
         @Override
         public Object invoke(Object parameter) throws Throwable {
-            Object obj;
-            if (stickyGet && type == CarType.ALL) {
-                obj = source.get(propertyId, area, CarType.VALUE);
-                obj = new CarPropertyValue<>(propertyId, area,
-                        resultConverter != null ? resultConverter.convert(obj) : obj);
-                return obj;
-            } else {
-                obj = source.get(propertyId, area, type);
-                return resultConverter != null ? resultConverter.convert(obj) : obj;
-            }
+            Object obj = source.get(propertyId, area, type);
+            return resultConverter != null ? resultConverter.convert(obj) : obj;
         }
 
         @Override
         public CommandType type() {
-            return stickyGet ? CommandType.STICKY_GET : CommandType.GET;
+            return CommandType.GET;
         }
 
         @Override
@@ -2026,9 +2021,6 @@ public final class CarRetrofit {
         @Override
         String toCommandString() {
             String stable = super.toCommandString();
-            if (stickyGet) {
-                stable += " stickyGet";
-            }
             if (type != CarType.VALUE) {
                 stable += " valueType:" + type;
             }
@@ -2052,6 +2044,7 @@ public final class CarRetrofit {
         CommandImpl restoreCommand;
 
         // runtime variable
+        CommandStickyGet commandStickyGet;
         Flow<Object> trackingFlow;
         TimerTask task;
         ArrayList<WeakReference<CommandReceive>> receiveCommandList;
@@ -2103,7 +2096,6 @@ public final class CarRetrofit {
 
         CommandReceive createCommandReceive() {
             CommandReceive receive = new CommandReceive(this);
-            receive.init(this);
             if (restoreCommand != null) {
                 if (receiveCommandList == null) {
                     receiveCommandList = new ArrayList<>();
@@ -2123,6 +2115,13 @@ public final class CarRetrofit {
                 }
             }
             return receive;
+        }
+
+        CommandStickyGet getCommandStickyGet() {
+            if (commandStickyGet == null) {
+                commandStickyGet = new CommandStickyGet(this);
+            }
+            return commandStickyGet;
         }
 
         void restoreDispatch() {
@@ -2173,11 +2172,16 @@ public final class CarRetrofit {
         @Override
         CommandFlow shallowCopy() {
             CommandFlow commandFlow = (CommandFlow) super.shallowCopy();
+            commandFlow.commandStickyGet = null;
             commandFlow.trackingFlow = null;
             commandFlow.task = null;
             commandFlow.receiveCommandList = null;
             commandFlow.monitorSetResponseRegistered = new AtomicBoolean();
             return commandFlow;
+        }
+
+        Object loadInitialData() throws Throwable {
+            throw new IllegalStateException("impossible");
         }
 
         @Override
@@ -2201,8 +2205,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        void init(ApiRecord<?> record, Annotation annotation, Key key) {
-            super.init(record, annotation, key);
+        void onInit(Annotation annotation) {
             if (key.method != null && key.method.getReturnType() == void.class) {
                 Class<?>[] classArray = key.method.getParameterTypes();
                 if (classArray.length == 1) {
@@ -2272,7 +2275,6 @@ public final class CarRetrofit {
 
     private static class CommandTrack extends CommandFlow {
         CarType type;
-        CommandGet stickyGet;
         Annotation annotation;
 
         @Override
@@ -2282,8 +2284,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        void init(ApiRecord<?> record, Annotation annotation, Key key) {
-            super.init(record, annotation, key);
+        void onInit(Annotation annotation) {
             Track track = (Track) annotation;
             propertyId = track.id();
             type = track.type();
@@ -2296,13 +2297,6 @@ public final class CarRetrofit {
             resolveStickyType(track.sticky());
 
             resolveConverter();
-        }
-
-        @Override
-        CommandTrack shallowCopy() {
-            CommandTrack commandTrack = (CommandTrack) super.shallowCopy();
-            commandTrack.stickyGet = null;
-            return commandTrack;
         }
 
         @Override
@@ -2371,18 +2365,8 @@ public final class CarRetrofit {
                     break;
             }
             if (stickyType == StickyType.ON || stickyType == StickyType.ON_NO_CACHE) {
-                if (stickyGet == null) {
-                    stickyGet = new CommandGet();
-                    stickyGet.init(this);
-                }
                 result = new StickyFlowImpl<>(result, stickyType == StickyType.ON,
-                        () -> {
-                    try {
-                        return stickyGet.invokeWithChain(null);
-                    } catch (Throwable throwable) {
-                        throw new CarRetrofitException(throwable);
-                    }
-                });
+                        getCommandStickyGet());
                 ((StickyFlowImpl<?>)result).addCommandReceiver(createCommandReceive());
             } else {
                 result = new FlowWrapper<>(result, createCommandReceive());
@@ -2393,6 +2377,19 @@ public final class CarRetrofit {
             return resultConverter != null ? resultConverter.convert(result) : result;
 //            return !valueMapped && mapConverter != null && resultConverter != null ?
 //                    ((ConverterMapper<Object, Object>)resultConverter).map(obj, mapConverter) : obj;
+        }
+
+        @Override
+        Object loadInitialData() throws Throwable {
+            Object obj;
+            if (type == CarType.ALL) {
+                obj = source.get(propertyId, area, CarType.VALUE);
+                return new CarPropertyValue<>(propertyId, area,
+                        mapConverter != null ? mapConverter.convert(obj) : obj);
+            } else {
+                obj = source.get(propertyId, area, type);
+                return mapConverter != null ? mapConverter.convert(obj) : obj;
+            }
         }
 
         @Override
@@ -2414,8 +2411,7 @@ public final class CarRetrofit {
         CommandFlow trackCommand;
 
         @Override
-        void init(ApiRecord<?> record, Annotation annotation, Key key) {
-            super.init(record, annotation, key);
+        void onInit(Annotation annotation) {
             if (key.method != null && key.method.getReturnType() == void.class) {
                 Class<?>[] classArray = key.method.getParameterTypes();
                 if (classArray.length == 1) {
@@ -2457,6 +2453,7 @@ public final class CarRetrofit {
 
         CommandReceive(CommandFlow commandFlow) {
             this.commandFlow = commandFlow;
+            copyFrom(commandFlow);
         }
 
         @Override
@@ -2474,6 +2471,50 @@ public final class CarRetrofit {
         public CommandType type() {
             return CommandType.RECEIVE;
         }
+
+        @Override
+        String toCommandString() {
+            return commandFlow.toCommandString();
+        }
+    }
+
+    private static class CommandStickyGet extends CommandImpl {
+        CommandFlow commandFlow;
+        Converter<Object, ?> converter;
+        CarType carType = CarType.VALUE;
+        CommandStickyGet nextGetCommand;
+
+        CommandStickyGet(CommandFlow commandFlow) {
+            this.commandFlow = commandFlow;
+            this.converter = commandFlow.mapConverter;
+            if (commandFlow instanceof CommandTrack) {
+                this.carType = ((CommandTrack) commandFlow).type;
+            }
+            copyFrom(commandFlow);
+        }
+
+        @Override
+        public Object invoke(Object parameter) throws Throwable {
+            if (nextGetCommand != null) {
+                return nextGetCommand.invokeWithChain(parameter);
+            }
+            return commandFlow.loadInitialData();
+        }
+
+        @Override
+        CommandImpl delegateTarget() {
+            return commandFlow;
+        }
+
+        @Override
+        public CommandType type() {
+            return CommandType.STICKY_GET;
+        }
+
+        @Override
+        String toCommandString() {
+            return commandFlow.toCommandString();
+        }
     }
 
     private static class CommandDelegate extends CommandFlow {
@@ -2483,8 +2524,7 @@ public final class CarRetrofit {
         boolean commandSet;
 
         @Override
-        void init(ApiRecord<?> record, Annotation annotation, Key key) {
-            super.init(record, annotation, key);
+        void onInit(Annotation annotation) {
             Delegate delegate = (Delegate) annotation;
             resolveStickyType(delegate.sticky());
             carType = delegate.type();
@@ -2493,6 +2533,11 @@ public final class CarRetrofit {
             targetCommand.overrideFromDelegate(this);
 
             resolveConverter();
+        }
+
+        @Override
+        boolean requireSource() {
+            return false;
         }
 
         @Override
@@ -2550,6 +2595,11 @@ public final class CarRetrofit {
                 }
                 flowWrapper.addCommandReceiver(createCommandReceive());
                 result = flowWrapper;
+
+                if (flowWrapper instanceof StickyFlowImpl) {
+                    StickyFlowImpl<Object> stickyFlow = (StickyFlowImpl<Object>) flowWrapper;
+                    stickyFlow.addCommandStickyGet(getCommandStickyGet());
+                }
             } else {
                 result = obj;
             }
@@ -2580,6 +2630,11 @@ public final class CarRetrofit {
         @Override
         CommandImpl delegateTarget() {
             return targetCommand.delegateTarget();
+        }
+
+        @Override
+        String toCommandString() {
+            return key + " Delegate{" + targetCommand.toCommandString() + "}";
         }
     }
 
@@ -2694,12 +2749,12 @@ public final class CarRetrofit {
         private T lastValue;
         private boolean valueReceived;
         private boolean stickyUseCache;
-        private Supplier<Object> stickyGet;
+        private CommandStickyGet headStickyGetCommand;
 
-        private StickyFlowImpl(Flow<T> base, boolean stickyUseCache, Supplier<Object> stickyGet) {
+        private StickyFlowImpl(Flow<T> base, boolean stickyUseCache, CommandStickyGet stickyGet) {
             super(base, null);
             this.stickyUseCache = stickyUseCache;
-            this.stickyGet = stickyGet;
+            this.headStickyGetCommand = stickyGet;
         }
 
         @Override
@@ -2719,6 +2774,19 @@ public final class CarRetrofit {
             super.handleResult(value);
         }
 
+        void addCommandStickyGet(CommandStickyGet commandStickyGet) {
+            commandStickyGet.nextGetCommand = headStickyGetCommand;
+            headStickyGetCommand = commandStickyGet;
+        }
+
+        private T loadInitialStickyData() {
+            try {
+                return (T) headStickyGetCommand.invokeWithChain(null);
+            } catch (Throwable throwable) {
+                throw new RuntimeException(throwable);
+            }
+        }
+
         @Override
         public T get() {
             T result = null;
@@ -2731,7 +2799,7 @@ public final class CarRetrofit {
                 }
             }
             if (fetchFirstData) {
-                T t = (T) stickyGet.get();
+                T t = loadInitialStickyData();
                 result = mediator != null ? mediator.apply(t) : t;
             }
             synchronized (this) {

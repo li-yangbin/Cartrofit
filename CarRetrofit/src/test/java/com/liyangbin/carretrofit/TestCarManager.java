@@ -95,20 +95,23 @@ public class TestCarManager extends CarManager2 {
                         return command.invoke(parameter);
                     }
                 });
+                break;
+            case trackIntAndBoolean:
+                System.out.println("onCommandCreate trackIntAndBoolean " + command);
                 command.addInterceptorToTop(new Interceptor() {
                     @Override
                     public Object process(Command command, Object parameter) throws Throwable {
-                        System.out.println("interceptor22 trackIntReactiveAlias " + command);
-                        if (command.type() == CommandType.RECEIVE) {
-                            return null;
-                        }
+                        System.out.println("interceptor22 trackIntAndBoolean " + command);
                         return command.invoke(parameter);
                     }
                 });
+                break;
+            case trackStringSignal:
+                System.out.println("onCommandCreate trackStringSignal " + command);
                 command.addInterceptorToTop(new Interceptor() {
                     @Override
                     public Object process(Command command, Object parameter) throws Throwable {
-                        System.out.println("interceptor33 trackIntReactiveAlias " + command);
+                        System.out.println("interceptor33 trackStringSignal " + command);
                         return command.invoke(parameter);
                     }
                 });
