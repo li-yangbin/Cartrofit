@@ -2,6 +2,7 @@ package com.liyangbin.carretrofit;
 
 import com.liyangbin.carretrofit.annotation.Apply;
 import com.liyangbin.carretrofit.annotation.CarApi;
+import com.liyangbin.carretrofit.annotation.Delegate;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
 import com.liyangbin.carretrofit.annotation.Set;
@@ -441,16 +442,16 @@ public class ExampleUnitTest {
 
     @Test
     public void injectAndApply() {
-        CarData data = new CarData();
-        api.injectComboData(data);
-////        CarData data = api.getComboData();
-//        print("before extract data:" + data);
+//        CarData data = new CarData();
+//        api.injectComboData(data);
+        CarData data = api.getComboData();
+        print("before extract data:" + data);
 
 //        api.applyComboValues(new CarData());
-
+//
 //        data = new CarData();
 //        api.injectComboData(data);
-        print("after apply data:" + data);
+//        print("after apply data:" + data);
     }
 
     @Test
@@ -678,22 +679,17 @@ public class ExampleUnitTest {
         }
     }
 
-    @CarApi(scope = TestCarManager.class)
     public static class CarData {
-        @Set(id = 6)
-        @Get(id = 6)
+        @Delegate(TestCarApiId.get6IntValue)
         private int abc = 151;
 
-        @Set(id = 7)
-        @Get(id = 7)
+        @Delegate(TestCarApiId.get7IntValue)
         int[] abcd = {1, 2, 3, 4, 100000000};
 
-        @Set(id = 8)
-        @Get(id = 8)
+        @Delegate(TestCarApiId.get8StringValue)
         String cvb = "hello bird";
 
-        @Set(id = 9)
-        @Get(id = 9)
+        @Delegate(TestCarApiId.get9StringArrayValue)
         String[] vbns = {"hello", "another", "flying", "bird"};
 
         @Override
@@ -704,15 +700,15 @@ public class ExampleUnitTest {
                     ", cvb='" + cvb + '\'' +
                     ", vbns=" + Arrays.toString(vbns) +
                     ", firstOb=" + firstOb +
-                    ", data=" + data +
+//                    ", data=" + data +
                     '}';
         }
 
-        @Track(id = 0)
+        @Delegate(TestCarApiId.trackIntReactive)
         Observable<Integer> firstOb;
 
-        @Inject
-        @Apply
-        InnerData data = new InnerData();
+//        @Inject
+//        @Apply
+//        InnerData data = new InnerData();
     }
 }
