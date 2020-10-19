@@ -444,8 +444,10 @@ public class ExampleUnitTest {
     public void injectAndApply() {
 //        CarData data = new CarData();
 //        api.injectComboData(data);
-        CarData data = api.getComboData();
-        print("before extract data:" + data);
+        print("old array:" + Arrays.toString(api.get9StringArrayValue()));
+//        CarData data = api.getComboData();
+        api.applyComboValues(new CarData());
+        print(/*"before extract data:" + data +*/ " array:" + Arrays.toString(api.get9StringArrayValue()));
 
 //        api.applyComboValues(new CarData());
 //
@@ -689,7 +691,7 @@ public class ExampleUnitTest {
         @Delegate(TestCarApiId.get8StringValue)
         String cvb = "hello bird";
 
-        @Delegate(TestCarApiId.get9StringArrayValue)
+        @Delegate(TestCarApiId.setStringArraySignal)
         String[] vbns = {"hello", "another", "flying", "bird"};
 
         @Override

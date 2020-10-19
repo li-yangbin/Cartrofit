@@ -44,7 +44,7 @@ public interface TestCarApi {
     @Get(id = 3)
     String[] getStringArraySignal();
 
-    @Set(id = 3)
+    @Set(id = 9)
     void setStringArraySignal(String[] value);
 
     @Get(id = 4)

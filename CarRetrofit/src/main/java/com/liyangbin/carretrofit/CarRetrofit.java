@@ -1185,7 +1185,6 @@ public final class CarRetrofit {
             CommandImpl command = getOrCreateCommandIfChecked(record, childKey, flag);
             if (command != null) {
                 commandReceiver.accept(command);
-                return false;
             }
         }
         ArrayList<ApiRecord<?>> parentRecordList = record.getParentApi();
@@ -1250,7 +1249,9 @@ public final class CarRetrofit {
             this.chain = record.getInterceptorByKey(key, type(), delegateTarget() == this);
             this.store = record.getConverterByKey(key, type());
             this.id = record.loadId(this);
-
+            if (key.field != null) {
+                key.field.setAccessible(true);
+            }
             onInit(annotation);
 
             record.onCommandCreate(this);
@@ -1302,12 +1303,12 @@ public final class CarRetrofit {
 
         @Override
         public Method getMethod() {
-            return delegateTarget().key.method;
+            return key.method;
         }
 
         @Override
         public Field getField() {
-            return delegateTarget().key.field;
+            return key.field;
         }
 
         @Override
@@ -1442,17 +1443,13 @@ public final class CarRetrofit {
             for (int i = 0; i < count; i++) {
                 CommandImpl command = childrenCommand.get(i);
                 Field field = command.getField();
-                if (command instanceof CommandApply) {
-                    try {
-                        Object applyFrom = field.get(target);
-                        if (applyFrom != null) {
-                            command.invokeWithChain(applyFrom);
-                        }
-                    } catch (IllegalAccessException ie) {
-                        throw new CarRetrofitException("Apply failed", ie);
+                Object applyFrom = field.get(target);
+                if (command.type() == CommandType.APPLY) {
+                    if (applyFrom != null) {
+                        command.invokeWithChain(applyFrom);
                     }
                 } else {
-                    command.invokeWithChain(target);
+                    command.invokeWithChain(applyFrom);
                 }
             }
 
@@ -1520,19 +1517,15 @@ public final class CarRetrofit {
             for (int i = 0; i < count; i++) {
                 CommandImpl command = childrenCommand.get(i);
                 Field field = command.getField();
-                try {
-                    if (command.type() == CommandType.INJECT) {
-                        Object injectTarget = field.get(target);
-                        if (injectTarget != null) {
-                            command.invokeWithChain(injectTarget);
-                        } else {
-                            field.set(target, command.invokeWithChain(null));
-                        }
+                if (command.type() == CommandType.INJECT) {
+                    Object injectTarget = field.get(target);
+                    if (injectTarget != null) {
+                        command.invokeWithChain(injectTarget);
                     } else {
                         field.set(target, command.invokeWithChain(null));
                     }
-                } catch (IllegalAccessException e) {
-                    throw new CarRetrofitException("Inject failed", e);
+                } else {
+                    field.set(target, command.invokeWithChain(null));
                 }
             }
 
@@ -1540,7 +1533,7 @@ public final class CarRetrofit {
                 ((InjectReceiver) target).onAfterInjected();
             }
 
-            return !doReturn ? SKIP : target;
+            return doReturn ? target : SKIP;
         }
 
         @Override
@@ -1562,13 +1555,6 @@ public final class CarRetrofit {
 
         void addChildCommand(CommandImpl command) {
             childrenCommand.add(command);
-        }
-
-        @Override
-        void onInit(Annotation annotation) {
-            for (int i = 0; i < childrenCommand.size(); i++) {
-                childrenCommand.get(i).getField().setAccessible(true);
-            }
         }
 
         @Override
