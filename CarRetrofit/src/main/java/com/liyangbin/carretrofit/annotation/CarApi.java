@@ -1,6 +1,5 @@
 package com.liyangbin.carretrofit.annotation;
 
-import com.liyangbin.carretrofit.DataSource;
 import com.liyangbin.carretrofit.StickyType;
 
 import java.lang.annotation.Documented;
@@ -17,7 +16,7 @@ public @interface CarApi {
     int GLOBAL_AREA_ID = 0;
     int DEFAULT_AREA_ID = 0xFFFFFFFF;
 
-    Class<? extends DataSource> scope() default DataSource.class;
+    String scope() default "";
 
     int area() default DEFAULT_AREA_ID;
 

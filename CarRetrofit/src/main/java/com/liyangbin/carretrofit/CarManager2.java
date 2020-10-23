@@ -13,7 +13,7 @@ import java.util.function.Consumer;
 
 import androidx.annotation.Nullable;
 
-public class CarManager2 implements DataSource {
+public abstract class CarManager2 implements DataSource {
 
     private CarPropertyManager mManager;
     private CarVendorExtensionManager mExtManager;
@@ -173,9 +173,5 @@ public class CarManager2 implements DataSource {
     @Override
     public Class<?> extractValueType(int key) throws Exception {
         return ((CarPropertyConfig<?>)get(key, 0, CarType.CONFIG)).getPropertyType();
-    }
-
-    @Override
-    public void onCommandCreate(Command command) {
     }
 }

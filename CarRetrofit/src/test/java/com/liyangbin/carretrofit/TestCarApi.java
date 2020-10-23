@@ -17,7 +17,7 @@ import io.reactivex.Single;
 
 import static com.liyangbin.carretrofit.TestCarApiId.*;
 
-@CarApi(scope = TestCarManager.class)
+@CarApi(scope = "test")
 public interface TestCarApi {
 
     @Get(id = 0)
@@ -77,10 +77,10 @@ public interface TestCarApi {
     @Track(id = 0, sticky = StickyType.ON)
     Observable<Boolean> trackBooleanReactive();
 
-    @Combine(elements = {trackStringSignal, trackBooleanReactive}, combinator = combinator_aa)
+    @Combine(elements = {trackStringSignal, trackBooleanReactive})
     Observable<String> trackIntAndBoolean();
 
-    @Combine(elements = {trackStringSignal, trackIntAndBoolean}, combinator = combinator_bb)
+    @Combine(elements = {trackStringSignal, trackIntAndBoolean})
     Observable<String> trackStringAndCombine();
 
     @Track(id = 0)

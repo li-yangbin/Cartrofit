@@ -5,153 +5,129 @@ import java.lang.reflect.Method;
 
 public interface Interceptor {
     Object process(Command command, Object parameter) throws Throwable;
-
-    default Interceptor after(Interceptor interceptor) {
-        return (command, parameter) -> new InterceptorChain(
-                new InterceptorChain(null, Interceptor.this), interceptor)
-                .doProcess(command, parameter);
-    }
 }
 
-class InterceptorChain implements Command {
-    private InterceptorChain parent;
-    private Interceptor interceptor;
-    private Command command;
+class InterceptorChain {
+    private ChainNode top;
 
-    InterceptorChain(InterceptorChain parent, Interceptor interceptor) {
-        this.parent = parent;
-        this.interceptor = interceptor;
+    InterceptorChain() {
     }
 
-    InterceptorChain copy() {
-        InterceptorChain copy = new InterceptorChain(this.parent, this.interceptor);
-        InterceptorChain copyParent = copy.parent;
-        while (copyParent != null) {
-            copyParent = new InterceptorChain(copyParent.parent, copyParent.interceptor);
-            copyParent = copyParent.parent;
-        }
-        return copy;
+    InterceptorChain(Interceptor firstInterceptor) {
+        addInterceptor(firstInterceptor);
     }
 
-    InterceptorChain attach(InterceptorChain node) {
-        if (node != null) {
-            InterceptorChain loopNode = node;
-            while (loopNode.parent != null) {
-                loopNode = loopNode.parent;
+    void addInterceptor(Interceptor interceptor) {
+        ChainNode newTop = new ChainNode(interceptor);
+        newTop.previous = top;
+        top = newTop;
+    }
+
+    void addInterceptorToBottom(Interceptor interceptor) {
+        addNodeToBottom(new ChainNode(interceptor));
+    }
+
+    void addInterceptorChainToBottom(InterceptorChain chain) {
+        addNodeToBottom(chain.top);
+    }
+
+    private void addNodeToBottom(ChainNode node) {
+        if (top != null) {
+            ChainNode loopNode = top;
+            while (loopNode.previous != null) {
+                loopNode = loopNode.previous;
             }
-            loopNode.parent = this;
-            return node;
+            loopNode.previous = node;
         } else {
-            return this;
+            top = node;
         }
-    }
-
-    void addToBottom(Interceptor interceptor) {
-        InterceptorChain loopNode = this;
-        while (loopNode.parent != null) {
-            loopNode = loopNode.parent;
-        }
-        loopNode.parent = new InterceptorChain(null, interceptor);
     }
 
     Object doProcess(Command command, Object parameter) throws Throwable {
-        this.command = command;
-        return interceptor.process(this, parameter);
+        return top != null ? top.doProcess(command, parameter) : command.invoke(parameter);
     }
 
-    @Override
-    public Object invoke(Object parameter) throws Throwable {
-        return parent != null ? parent.doProcess(this.command, parameter)
-                : this.command.invoke(parameter);
-    }
+    private static class ChainNode implements Command {
+        private final Interceptor interceptor;
+        private ChainNode previous;
+        private Command command;
 
-    @Override
-    public CommandType type() {
-        return command.type();
-    }
+        ChainNode(Interceptor interceptor) {
+            this.interceptor = interceptor;
+        }
 
-    @Override
-    public boolean fromApply() {
-        return command.fromApply();
-    }
+        Object doProcess(Command command, Object parameter) throws Throwable {
+            this.command = command;
+            return interceptor.process(this, parameter);
+        }
 
-    @Override
-    public boolean fromInject() {
-        return command.fromInject();
-    }
+        @Override
+        public Object invoke(Object parameter) throws Throwable {
+            return previous != null ? previous.doProcess(this.command, parameter)
+                    : this.command.invoke(parameter);
+        }
 
-    @Override
-    public Method getMethod() {
-        return command.getMethod();
-    }
+        @Override
+        public int getId() {
+            return command.getId();
+        }
 
-    @Override
-    public Field getField() {
-        return command.getField();
-    }
+        @Override
+        public void setPropertyId(int propertyId) {
+        }
 
-    @Override
-    public String getName() {
-        return command.getName();
-    }
+        @Override
+        public int getPropertyId() {
+            return previous.getPropertyId();
+        }
 
-    @Override
-    public void setPropertyId(int propertyId) {
-        command.setPropertyId(propertyId);
-    }
+        @Override
+        public void setArea(int area) {
+        }
 
-    @Override
-    public int getPropertyId() {
-        return command.getPropertyId();
-    }
+        @Override
+        public int getArea() {
+            return previous.getArea();
+        }
 
-    @Override
-    public void setArea(int area) {
-        command.setArea(area);
-    }
+        @Override
+        public DataSource getSource() {
+            return previous.getSource();
+        }
 
-    @Override
-    public int getArea() {
-        return command.getArea();
-    }
+        @Override
+        public CommandType type() {
+            return previous.type();
+        }
 
-    @Override
-    public void setSource(DataSource source) {
-        command.setSource(source);
-    }
+        @Override
+        public String getCategory() {
+            return previous.getCategory();
+        }
 
-    @Override
-    public DataSource getSource() {
-        return command.getSource();
-    }
+        @Override
+        public boolean fromApply() {
+            return previous.fromApply();
+        }
 
-    @Override
-    public String toString() {
-        return command.toString();
-    }
+        @Override
+        public boolean fromInject() {
+            return previous.fromInject();
+        }
 
-    @Override
-    public int getId() {
-        return command.getId();
-    }
+        @Override
+        public Method getMethod() {
+            return previous.getMethod();
+        }
 
-    @Override
-    public void addInterceptorToTop(Interceptor interceptor) {
-        command.addInterceptorToTop(interceptor);
-    }
+        @Override
+        public Field getField() {
+            return previous.getField();
+        }
 
-    @Override
-    public void addInterceptorToBottom(Interceptor interceptor) {
-        command.addInterceptorToBottom(interceptor);
-    }
-
-    @Override
-    public void setConverter(Converter<?, ?> converter) {
-        command.setConverter(converter);
-    }
-
-    @Override
-    public int hashCode() {
-        return command.hashCode();
+        @Override
+        public String getName() {
+            return previous.getName();
+        }
     }
 }

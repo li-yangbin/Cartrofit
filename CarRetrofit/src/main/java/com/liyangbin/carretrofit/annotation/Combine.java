@@ -14,7 +14,6 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Retention(RUNTIME)
 public @interface Combine {
     int[] elements();
-    int combinator();
     StickyType sticky() default StickyType.ON;
     int restoreSet() default 0;
 }

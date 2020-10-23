@@ -9,25 +9,19 @@ public interface Command {
 
     void setPropertyId(int propertyId);
 
-    void addInterceptorToTop(Interceptor interceptor);
-
-    void addInterceptorToBottom(Interceptor interceptor);
-
-    void setConverter(Converter<?, ?> converter);
-
     int getPropertyId();
 
     void setArea(int area);
 
     int getArea();
 
-    void setSource(DataSource source);
-
     DataSource getSource();
 
     Object invoke(Object parameter) throws Throwable;
 
     CommandType type();
+
+    String getCategory();
 
     boolean fromApply();
 

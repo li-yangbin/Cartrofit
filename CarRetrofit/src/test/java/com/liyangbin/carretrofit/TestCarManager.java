@@ -4,13 +4,10 @@ import android.car.hardware.CarPropertyValue;
 
 import androidx.annotation.Nullable;
 
-import com.liyangbin.carretrofit.annotation.Convert;
 import com.liyangbin.carretrofit.funtion.Function2;
 
 import java.util.HashMap;
 import java.util.Random;
-
-import static com.liyangbin.carretrofit.TestCarApiId.*;
 
 public class TestCarManager extends CarManager2 {
 
@@ -73,53 +70,56 @@ public class TestCarManager extends CarManager2 {
         tester.start();
     }
 
+//    @Override
+//    public void onCommandCreate(Command command) {
+//        switch (command.getId()) {
+//            case trackIntReactive:
+//                System.out.println("onCommandCreate trackIntReactive " + command);
+//                command.addInterceptorToTop(new Interceptor() {
+//                    @Override
+//                    public Object process(Command command, Object parameter) throws Throwable {
+//                        System.out.println("interceptor trackIntReactive " + command);
+//                        return command.invoke(parameter);
+//                    }
+//                });
+//                break;
+//            case trackIntReactiveAlias:
+//                System.out.println("onCommandCreate trackIntReactiveAlias " + command);
+//                command.addInterceptorToTop(new Interceptor() {
+//                    @Override
+//                    public Object process(Command command, Object parameter) throws Throwable {
+//                        System.out.println("interceptor11 trackIntReactiveAlias " + command);
+//                        return command.invoke(parameter);
+//                    }
+//                });
+//                break;
+//            case trackIntAndBoolean:
+//                System.out.println("onCommandCreate trackIntAndBoolean " + command);
+//                command.addInterceptorToTop(new Interceptor() {
+//                    @Override
+//                    public Object process(Command command, Object parameter) throws Throwable {
+//                        System.out.println("interceptor22 trackIntAndBoolean " + command);
+//                        return command.invoke(parameter);
+//                    }
+//                });
+//                break;
+//            case trackStringSignal:
+//                System.out.println("onCommandCreate trackStringSignal " + command);
+//                command.addInterceptorToTop(new Interceptor() {
+//                    @Override
+//                    public Object process(Command command, Object parameter) throws Throwable {
+//                        System.out.println("interceptor33 trackStringSignal " + command);
+//                        return command.invoke(parameter);
+//                    }
+//                });
+//                break;
+//        }
+//    }
+
     @Override
-    public void onCommandCreate(Command command) {
-        switch (command.getId()) {
-            case trackIntReactive:
-                System.out.println("onCommandCreate trackIntReactive " + command);
-                command.addInterceptorToTop(new Interceptor() {
-                    @Override
-                    public Object process(Command command, Object parameter) throws Throwable {
-                        System.out.println("interceptor trackIntReactive " + command);
-                        return command.invoke(parameter);
-                    }
-                });
-                break;
-            case trackIntReactiveAlias:
-                System.out.println("onCommandCreate trackIntReactiveAlias " + command);
-                command.addInterceptorToTop(new Interceptor() {
-                    @Override
-                    public Object process(Command command, Object parameter) throws Throwable {
-                        System.out.println("interceptor11 trackIntReactiveAlias " + command);
-                        return command.invoke(parameter);
-                    }
-                });
-                break;
-            case trackIntAndBoolean:
-                System.out.println("onCommandCreate trackIntAndBoolean " + command);
-                command.addInterceptorToTop(new Interceptor() {
-                    @Override
-                    public Object process(Command command, Object parameter) throws Throwable {
-                        System.out.println("interceptor22 trackIntAndBoolean " + command);
-                        return command.invoke(parameter);
-                    }
-                });
-                break;
-            case trackStringSignal:
-                System.out.println("onCommandCreate trackStringSignal " + command);
-                command.addInterceptorToTop(new Interceptor() {
-                    @Override
-                    public Object process(Command command, Object parameter) throws Throwable {
-                        System.out.println("interceptor33 trackStringSignal " + command);
-                        return command.invoke(parameter);
-                    }
-                });
-                break;
-        }
+    public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
     }
 
-    @Convert
     Function2<String, Boolean, String> combinator_aa = new Function2<String, Boolean, String>() {
 
         @Override
@@ -128,7 +128,6 @@ public class TestCarManager extends CarManager2 {
         }
     };
 
-    @Convert
     Function2<String, String, String> combinator_bb = new Function2<String, String, String>() {
 
         @Override
@@ -193,5 +192,10 @@ public class TestCarManager extends CarManager2 {
     @Override
     public synchronized Class<?> extractValueType(int key) {
         return typeMockMap.get(key).clazz;
+    }
+
+    @Override
+    public String getScopeId() {
+        return "test";
     }
 }

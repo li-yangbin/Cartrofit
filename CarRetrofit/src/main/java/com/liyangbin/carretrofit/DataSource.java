@@ -2,7 +2,7 @@ package com.liyangbin.carretrofit;
 
 import android.car.hardware.CarPropertyValue;
 
-public interface DataSource {
+public interface DataSource extends ApiCallback {
     Object get(int key, int area, CarType type) throws Exception;
 
     <TYPE> void set(int key, int area, TYPE value) throws Exception;
@@ -11,5 +11,5 @@ public interface DataSource {
 
     Class<?> extractValueType(int key) throws Exception;
 
-    void onCommandCreate(Command command);
+    String getScopeId();
 }

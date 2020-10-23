@@ -5,14 +5,12 @@ import com.liyangbin.carretrofit.annotation.Delegate;
 
 import io.reactivex.Observable;
 
-import static com.liyangbin.carretrofit.TestCarApiId.*;
-
 @CarApi
 public interface TestChildCarApi {
 
-    @Delegate(getIntSignal)
+//    @Delegate(getIntSignal)
     int getIntValueAlias();
 
-    @Delegate(trackIntReactive)
+//    @Delegate(trackIntReactive)
     Observable<Integer> trackIntReactiveAlias();
 }

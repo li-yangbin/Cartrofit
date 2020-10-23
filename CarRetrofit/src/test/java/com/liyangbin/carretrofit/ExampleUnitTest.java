@@ -321,20 +321,19 @@ public class ExampleUnitTest {
     public static void start() {
         CarRetrofit.setDefault(new CarRetrofit.Builder()
                 .addDataSource(new TestCarManager())
-                .addConverter(new CalendarConverter())
-                .addConverter(new ConverterImpl())
-                .addConverter(new TwoWayConverter<Integer, MappedData>() {
-                    @Override
-                    public MappedData fromCar2App(Integer value) {
-                        return new MappedData(value);
-                    }
-
-                    @Override
-                    public Integer fromApp2Car(MappedData mappedData) {
-                        return mappedData.rawData;
-                    }
-                })
-                .addConverter(new Integer2Boolean())
+//                .addConverter(new ConverterImpl())
+//                .addConverter(new TwoWayConverter<Integer, MappedData>() {
+//                    @Override
+//                    public MappedData fromCar2App(Integer value) {
+//                        return new MappedData(value);
+//                    }
+//
+//                    @Override
+//                    public Integer fromApp2Car(MappedData mappedData) {
+//                        return mappedData.rawData;
+//                    }
+//                })
+//                .addConverter(new Integer2Boolean())
                 .build());
         api = CarRetrofit.fromDefault(TestCarApi.class);
 
@@ -651,7 +650,7 @@ public class ExampleUnitTest {
         int baseAbc = 4321;
     }
 
-    @CarApi(scope = TestCarManager.class)
+    @CarApi(scope = "test")
     public static class InnerData extends BaseData {
         @Get(id = 1)
         @Set(id = 1)

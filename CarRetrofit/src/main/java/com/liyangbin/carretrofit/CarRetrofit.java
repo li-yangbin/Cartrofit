@@ -7,21 +7,14 @@ import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.CarValue;
 import com.liyangbin.carretrofit.annotation.Combine;
 import com.liyangbin.carretrofit.annotation.ConsiderSuper;
-import com.liyangbin.carretrofit.annotation.Convert;
-import com.liyangbin.carretrofit.annotation.Custom;
 import com.liyangbin.carretrofit.annotation.Delegate;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
-import com.liyangbin.carretrofit.annotation.Intercept;
 import com.liyangbin.carretrofit.annotation.Set;
 import com.liyangbin.carretrofit.annotation.Track;
 import com.liyangbin.carretrofit.annotation.UnTrack;
 import com.liyangbin.carretrofit.annotation.WrappedData;
-import com.liyangbin.carretrofit.funtion.Function2;
-import com.liyangbin.carretrofit.funtion.Function3;
-import com.liyangbin.carretrofit.funtion.Function4;
-import com.liyangbin.carretrofit.funtion.Function5;
-import com.liyangbin.carretrofit.funtion.Function6;
+import com.liyangbin.carretrofit.funtion.FunctionalCombinator;
 
 import java.lang.annotation.Annotation;
 import java.lang.ref.WeakReference;
@@ -37,7 +30,6 @@ import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -46,7 +38,6 @@ import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Predicate;
 
 @SuppressWarnings("unchecked")
 public final class CarRetrofit {
@@ -70,10 +61,10 @@ public final class CarRetrofit {
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
     private static Method sRouterFinderMethod;
 
-    private HashMap<Class<?>, DataSource> mDataMap;
-    private ConverterStore mConverterStore;
+    private final HashMap<String, DataSource> mDataMap;
     private InterceptorChain mChainHead;
-    private StickyType mDefaultStickyType;
+    private final StickyType mDefaultStickyType;
+    private final ArrayList<ApiCallback> mApiCallback = new ArrayList<>();
 
     private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
     private final HashMap<Key, CommandImpl> mCommandCache = new HashMap<>();
@@ -85,20 +76,19 @@ public final class CarRetrofit {
     }
 
     private CarRetrofit(Builder builder) {
-        mConverterStore = new ConverterStore();
-        mConverterStore.addParentToEnd(GLOBAL_CONVERTER);
         mDataMap = builder.dataMap;
         mDefaultStickyType = builder.stickyType;
         if (mDataMap.isEmpty()) {
             throw new IllegalArgumentException("CarRetrofit must be setup with data source");
         }
-        mDataMap.put(DataSource.class, new DummyDataSource());
-        for (int i = 0; i < builder.converters.size(); i++) {
-            mConverterStore.addConverter(builder.converters.get(i));
-        }
+        mDataMap.put("", new DummyDataSource());
         for (int i = 0; i < builder.interceptors.size(); i++) {
-            mChainHead = new InterceptorChain(mChainHead, builder.interceptors.get(i));
+            if (mChainHead == null) {
+                mChainHead = new InterceptorChain();
+            }
+            mChainHead.addInterceptor(builder.interceptors.get(i));
         }
+        mApiCallback.addAll(builder.apiCallbacks);
     }
 
     private static class DummyDataSource implements DataSource {
@@ -119,7 +109,11 @@ public final class CarRetrofit {
             throw new IllegalStateException("impossible");
         }
         @Override
-        public void onCommandCreate(Command command) {
+        public String getScopeId() {
+            return "";
+        }
+        @Override
+        public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
         }
     }
 
@@ -159,11 +153,11 @@ public final class CarRetrofit {
         return null;
     }
 
-    private class ApiRecord<T> {
+    private class ApiRecord<T> implements ApiBuilder {
         private static final String ID_SUFFIX = "Id";
 
         Class<T> clazz;
-        Class<?> dataScope;
+        String dataScope;
         int apiArea;
         T apiObj;
         StickyType stickyType;
@@ -175,8 +169,12 @@ public final class CarRetrofit {
         ArrayList<ApiRecord<?>> parentApi;
 
         HashMap<Integer, Method> selfDependency = new HashMap<>();
+        HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
         ConverterManager converterManager = new ConverterManager();
         InterceptorManager interceptorManager = new InterceptorManager();
+
+        Interceptor tempInterceptor;
+        Converter<?, ?> tempConverter;
 
         ApiRecord(Class<T> clazz) {
             this.clazz = clazz;
@@ -199,6 +197,10 @@ public final class CarRetrofit {
                         importDependency(selfScopeClass);
                     } catch (ClassNotFoundException ignore) {
                     }
+                    this.source.onApiCreate(clazz, this);
+                    for (int i = 0; i < mApiCallback.size(); i++) {
+                        mApiCallback.get(i).onApiCreate(clazz, this);
+                    }
                 }
             }
         }
@@ -207,224 +209,160 @@ public final class CarRetrofit {
             if (command.key.method == null) {
                 return 0;
             }
-            for (Map.Entry<Integer, Method> entry : selfDependency.entrySet()){
-                if (command.key.method.equals(entry.getValue())) {
-                    return entry.getKey();
-                }
-            }
-            throw new IllegalStateException(command + " can not find id in:" + this);
+            return selfDependencyReverse.getOrDefault(command.key.method, 0);
         }
 
-        void onCommandCreate(CommandImpl command) {
-            if (source != null) {
-                source.onCommandCreate(command);
+        @Override
+        public ApiBuilder apply(Interceptor interceptor, int priority) {
+            if (tempInterceptor != null) {
+                throw new CarRetrofitException("Call apply(Interceptor) only once before commit");
             }
+            tempInterceptor = interceptor;
+            return this;
         }
 
-        private class InterceptorRecord {
-            Interceptor interceptor;
-            int priority;
-
-            InterceptorRecord(Interceptor interceptor, int priority) {
-                this.interceptor = interceptor;
-                this.priority = priority;
+        @Override
+        public ApiBuilder apply(Converter<?, ?> converter) {
+            if (tempConverter != null) {
+                throw new CarRetrofitException("Call apply(Converter) only once before commit");
             }
+            tempConverter = converter;
+            return this;
         }
 
-        private abstract class AbstractManager<RECORD, OBJ, A extends Annotation> {
-            HashMap<String, ArrayList<RECORD>> recordListByCategory = new HashMap<>();
-            HashMap<CommandType, ArrayList<RECORD>> recordListByType = new HashMap<>();
-            HashMap<Integer, RECORD> recordByIndex = new HashMap<>();
-            ArrayList<RECORD> concernAll = new ArrayList<>();
-
-            void add(int index, Field field, Class<A> annotationClass) {
-                A annotation = field.getDeclaredAnnotation(annotationClass);
-                if (annotation == null) {
-                    throw new IllegalStateException("impossible");
-                }
-                OBJ obj;
-                try {
-                    field.setAccessible(true);
-                    obj = (OBJ) field.get(source);
-                } catch (ReflectiveOperationException illegal) {
-                    throw new CarRetrofitException(illegal);
-                }
-                RECORD record = onCreate(obj, annotation);
-
-                if (isAll(annotation)) {
-                    concernAll.add(record);
-                } else {
-                    recordByIndex.put(index, record);
-
-                    CommandType[] concernType = concernType(annotation);
-                    String[] categoryArray = concernCategory(annotation);
-                    if (concernType.length > 0) {
-                        if (categoryArray.length > 0) {
-                            throw new CarRetrofitException(annotationClass.getSimpleName()
-                                    + " can not declare both type and category attribute");
-                        }
-                        for (CommandType type : concernType) {
-                            ArrayList<RECORD> recordByType = recordListByType.get(type);
-                            if (recordByType == null) {
-                                recordByType = new ArrayList<>();
-                                recordListByType.put(type, recordByType);
-                            }
-                            recordByType.add(record);
-                        }
-                    } else {
-                        for (String category : categoryArray) {
-                            ArrayList<RECORD> recordByCategory = recordListByCategory.get(category);
-                            if (recordByCategory == null) {
-                                recordByCategory = new ArrayList<>();
-                                recordListByCategory.put(category, recordByCategory);
-                            }
-                            recordByCategory.add(record);
-                        }
-                    }
-                }
+        @Override
+        public void to(Constraint... constraints) {
+            if (constraints == null || constraints.length == 0) {
+                return;
             }
-
-            abstract boolean isAll(A a);
-
-            abstract String[] concernCategory(A a);
-
-            abstract CommandType[] concernType(A a);
-
-            abstract RECORD onCreate(OBJ obj, A a);
-
-            abstract ArrayList<OBJ> extract(ArrayList<RECORD> recordList);
-
-            ArrayList<OBJ> find(int index, String[] category, CommandType type) {
-                ArrayList<RECORD> result = new ArrayList<>();
-                RECORD fromIndex = recordByIndex.get(index);
-                if (fromIndex != null) {
-                    result.add(fromIndex);
+            if (tempInterceptor != null) {
+                for (Constraint constraint : constraints) {
+                    interceptorManager.add(constraint, tempInterceptor);
                 }
-                if (category != null) {
-                    for (String string : category) {
-                        ArrayList<RECORD> fromCategory = recordListByCategory.get(string);
-                        if (fromCategory != null) {
-                            result.addAll(fromCategory);
-                        }
-                    }
+                tempInterceptor = null;
+            }
+            if (tempConverter != null) {
+                for (Constraint constraint : constraints) {
+                    converterManager.add(constraint, tempConverter);
                 }
-                ArrayList<RECORD> fromType = recordListByType.get(type);
-                if (fromType != null) {
-                    result.addAll(fromType);
-                }
-                result.addAll(concernAll);
-                return extract(result);
+                tempConverter = null;
             }
         }
 
-        private final class InterceptorManager extends
-                AbstractManager<InterceptorRecord, Interceptor, Intercept> {
-            @Override
-            boolean isAll(Intercept intercept) {
-                return intercept.all();
-            }
-            @Override
-            String[] concernCategory(Intercept intercept) {
-                return intercept.category();
-            }
-            @Override
-            CommandType[] concernType(Intercept intercept) {
-                return intercept.concernType();
-            }
-            @Override
-            InterceptorRecord onCreate(Interceptor interceptor, Intercept intercept) {
-                return new InterceptorRecord(interceptor, intercept.priority());
-            }
-            @Override
-            ArrayList<Interceptor> extract(ArrayList<InterceptorRecord> recordList) {
-                boolean needShuffle = false;
-                for (int i = 0; i < recordList.size(); i++) {
-                    if (recordList.get(i).priority != 0) {
-                        needShuffle = true;
+        private abstract class AbstractManager<ELEMENT, GROUP> {
+            ArrayList<Constraint> constraintList = new ArrayList<>();
+            void addConstraint(Constraint constraint) {
+                boolean inserted = false;
+                for (int i = 0; i < constraintList.size(); i++) {
+                    if (constraintList.get(i).priority > constraint.priority) {
+                        constraintList.add(i, constraint);
+                        inserted = true;
                         break;
                     }
                 }
-                if (needShuffle) {
-                    Collections.sort(recordList, (o1, o2) -> o1.priority - o2.priority);
+                if (!inserted) {
+                    constraintList.add(constraint);
                 }
-                ArrayList<Interceptor> result = new ArrayList<>();
-                for (int i = 0; i < recordList.size(); i++) {
-                    result.add(recordList.get(i).interceptor);
+            }
+            abstract void add(Constraint constraint, ELEMENT element);
+            abstract GROUP get(CommandImpl command);
+        }
+
+        private final class InterceptorManager extends AbstractManager<Interceptor, InterceptorChain> {
+            HashMap<Constraint, ArrayList<Interceptor>> constraintMapper = new HashMap<>();
+
+            @Override
+            public void add(Constraint constraint, Interceptor element) {
+                ArrayList<Interceptor> list = constraintMapper.get(constraint);
+                if (list == null) {
+                    list = new ArrayList<>();
+                    constraintMapper.put(constraint, list);
                 }
-                return result;
+                list.add(element);
+                addConstraint(constraint);
+            }
+
+            @Override
+            InterceptorChain get(CommandImpl command) {
+                InterceptorChain group = null;
+                for (int i = 0; i < constraintList.size(); i++) {
+                    Constraint constraint = constraintList.get(i);
+                    if (constraint.check(command)) {
+                        ArrayList<Interceptor> elements = constraintMapper.get(constraint);
+                        final int size = elements.size();
+                        if (size > 0) {
+                            if (group == null) {
+                                group = new InterceptorChain();
+                            }
+                            for (int j = 0; j < size; j++) {
+                                group.addInterceptor(elements.get(j));
+                            }
+                        }
+                    }
+                }
+                return group;
             }
         }
 
-        private final class ConverterManager extends
-                AbstractManager<Converter<?, ?>, Converter<?, ?>, Convert> {
+        private final class ConverterManager extends AbstractManager<Converter<?, ?>, ConverterStore> {
+            HashMap<Constraint, ConverterStore> constraintMapper = new HashMap<>();
+
             @Override
-            boolean isAll(Convert convert) {
-                return convert.all();
+            void add(Constraint constraint, Converter<?, ?> converter) {
+                ConverterStore store = constraintMapper.get(constraint);
+                if (store == null) {
+                    store = new ConverterStore();
+                    constraintMapper.put(constraint, store);
+                }
+                store.addConverter(converter);
+                addConstraint(constraint);
             }
+
             @Override
-            String[] concernCategory(Convert convert) {
-                return convert.category();
-            }
-            @Override
-            CommandType[] concernType(Convert convert) {
-                return convert.concernType();
-            }
-            @Override
-            Converter<?, ?> onCreate(Converter<?, ?> converter, Convert convert) {
-                return converter;
-            }
-            @Override
-            ArrayList<Converter<?, ?>> extract(ArrayList<Converter<?, ?>> recordList) {
-                return recordList;
+            ConverterStore get(CommandImpl command) {
+                ConverterStore current = null;
+                for (int i = constraintList.size() - 1; i >= 0; i--) {
+                    Constraint constraint = constraintList.get(i);
+                    if (constraint.check(command)) {
+                        ConverterStore node = constraintMapper.get(constraint);
+                        if (node != null) {
+                            node = node.copy();
+                            if (current != null) {
+                                current.addParentToEnd(node);
+                            }
+                            current = node;
+                        }
+                    }
+                }
+                return current;
             }
         }
 
-        InterceptorChain getInterceptorByKey(Key key, CommandType type, boolean includingParent) {
-            Custom custom = key.getAnnotation(Custom.class);
-            int explicitlyIndex = custom != null ? custom.interceptBy() : 0;
-            String[] explicitlyCategory = custom != null ? custom.category() : null;
-            ArrayList<Interceptor> interceptorList =
-                    interceptorManager.find(explicitlyIndex, explicitlyCategory, type);
-            InterceptorChain head = includingParent && mChainHead != null ? mChainHead.copy() : null;
-            for (int i = 0; i < interceptorList.size(); i++) {
-                head = new InterceptorChain(head, interceptorList.get(i));
+        InterceptorChain getInterceptorByKey(CommandImpl command) {
+            InterceptorChain chain = interceptorManager.get(command);
+            if (command.delegateTarget() != command && mChainHead != null) {
+                if (chain != null) {
+                    chain.addInterceptorChainToBottom(mChainHead);
+                } else {
+                    chain = mChainHead;
+                }
             }
-            return head;
+            return chain;
         }
 
-        ConverterStore getConverterByKey(Key key, CommandType type) {
-            Custom custom = key.getAnnotation(Custom.class);
-            int explicitlyIndex = custom != null ? custom.convertBy() : 0;
-            String[] explicitlyCategory = custom != null ? custom.category() : null;
-            ArrayList<Converter<?, ?>> converterList =
-                    converterManager.find(explicitlyIndex, explicitlyCategory, type);
-            ConverterStore converterStore = new ConverterStore();
-            for (int i = 0; i < converterList.size(); i++) {
-                converterStore.addConverter(converterList.get(i));
-            }
-            converterStore.addParentToEnd(mConverterStore);
-            return converterStore;
-        }
-
-        Converter<?, ?> getConverterById(int id) {
-            return converterManager.recordByIndex.get(id);
+        ConverterStore getConverterByKey(CommandImpl command) {
+            return converterManager.get(command);
         }
 
         void importDependency(Class<?> target) {
-            HashMap<Integer, Field> interceptorDependency = new HashMap<>();
-            HashMap<Integer, Field> converterDependency = new HashMap<>();
             try {
-                Method method = target.getDeclaredMethod("init", HashMap.class, HashMap.class,
-                        HashMap.class);
-                method.invoke(null, selfDependency, interceptorDependency, converterDependency);
+                Method method = target.getDeclaredMethod("init", HashMap.class);
+                method.invoke(null, selfDependency);
             } catch (ReflectiveOperationException impossible) {
                 throw new IllegalStateException(impossible);
             }
-            for (Map.Entry<Integer, Field> entry : interceptorDependency.entrySet()) {
-                interceptorManager.add(entry.getKey(), entry.getValue(), Intercept.class);
-            }
-            for (Map.Entry<Integer, Field> entry : converterDependency.entrySet()) {
-                converterManager.add(entry.getKey(), entry.getValue(), Convert.class);
+            for (Map.Entry<Integer, Method> entry : selfDependency.entrySet()) {
+                selfDependencyReverse.put(entry.getValue(), entry.getKey());
             }
         }
 
@@ -474,22 +412,12 @@ public final class CarRetrofit {
                 return parentApi;
             }
             ArrayList<ApiRecord<?>> result = new ArrayList<>();
-            if (clazz.isInterface()) {
-                Class<?>[] classSuperArray = clazz.getInterfaces();
-                for (Class<?> clazz : classSuperArray) {
-                    ApiRecord<?> record = getApi(clazz);
-                    if (record != null) {
-                        result.add(record);
-                    }
-                }
-            } else {
+            if (!clazz.isInterface()) {
                 if (clazz.isAnnotationPresent(ConsiderSuper.class)) {
                     Class<?> superClass = clazz.getSuperclass();
                     if (superClass != null && superClass != Object.class) {
                         ApiRecord<?> record = getApi(clazz);
-                        if (record != null) {
-                            result.add(record);
-                        }
+                        result.add(record);
                     }
                 }
             }
@@ -542,13 +470,23 @@ public final class CarRetrofit {
         }
     }
 
-    public static class ConverterStore {
+    public static class ConverterStore implements Cloneable {
         final ArrayList<ConverterWrapper<?, ?>> converterWrapperList = new ArrayList<>();
         final ArrayList<ConverterWrapper<?, ?>> commandPredictorList = new ArrayList<>();
         final ArrayList<Converter<?, ?>> allConverters = new ArrayList<>();
         ConverterStore parentStore;
 
         ConverterStore() {
+        }
+
+        ConverterStore copy() {
+            try {
+                ConverterStore copy = (ConverterStore) clone();
+                copy.parentStore = null;
+                return copy;
+            } catch (CloneNotSupportedException e) {
+                throw new RuntimeException("impossible", e);
+            }
         }
 
         void addParentToEnd(ConverterStore parent) {
@@ -701,37 +639,26 @@ public final class CarRetrofit {
     }
 
     public static final class Builder {
-        private ArrayList<Converter<?, ?>> converters = new ArrayList<>();
-        private HashMap<Class<?>, DataSource> dataMap = new HashMap<>();
-        private ArrayList<Interceptor> interceptors = new ArrayList<>();
+        private final HashMap<String, DataSource> dataMap = new HashMap<>();
+        private final ArrayList<Interceptor> interceptors = new ArrayList<>();
+        private final ArrayList<ApiCallback> apiCallbacks = new ArrayList<>();
         private StickyType stickyType = DEFAULT_STICKY_TYPE;
 
         public Builder addDataSource(DataSource source) {
-            DataSource existedSource = dataMap.put(source.getClass(), source);
+            DataSource existedSource = dataMap.put(source.getScopeId(), source);
             if (existedSource != null) {
                 throw new CarRetrofitException("Duplicate data source:" + existedSource);
             }
             return this;
         }
 
-        public Builder addDataSource(CarRetrofit retrofit) {
-            dataMap.clear();
-            dataMap.putAll(retrofit.mDataMap);
-            return this;
-        }
-
-        public Builder addConverter(Converter<?, ?> converter) {
-            converters.add(converter);
-            return this;
-        }
-
-        public Builder addConverter(CarRetrofit retrofit) {
-            converters.addAll(retrofit.mConverterStore.allConverters);
-            return this;
-        }
-
         public Builder addInterceptor(Interceptor interceptor) {
             interceptors.add(interceptor);
+            return this;
+        }
+
+        public Builder addApiCallback(ApiCallback callback) {
+            apiCallbacks.add(callback);
             return this;
         }
 
@@ -1234,6 +1161,7 @@ public final class CarRetrofit {
         DataSource source;
         Class<?> userDataClass;
         Converter<?, ?> explicitConverter;
+        String category;
         Key key;
         int id;
 
@@ -1246,15 +1174,13 @@ public final class CarRetrofit {
             }
             this.key = key;
 
-            this.chain = record.getInterceptorByKey(key, type(), delegateTarget() == this);
-            this.store = record.getConverterByKey(key, type());
+            this.chain = record.getInterceptorByKey(this);
+            this.store = record.getConverterByKey(this);
             this.id = record.loadId(this);
             if (key.field != null) {
                 key.field.setAccessible(true);
             }
             onInit(annotation);
-
-            record.onCommandCreate(this);
         }
 
         boolean requireSource() {
@@ -1347,13 +1273,13 @@ public final class CarRetrofit {
         }
 
         @Override
-        public void setSource(DataSource source) {
-            delegateTarget().source = source;
+        public DataSource getSource() {
+            return delegateTarget().source;
         }
 
         @Override
-        public DataSource getSource() {
-            return delegateTarget().source;
+        public String getCategory() {
+            return category;
         }
 
         @Override
@@ -1362,23 +1288,16 @@ public final class CarRetrofit {
                     + " [" + type() + " " + toCommandString() + "]";
         }
 
-        @Override
-        public void addInterceptorToTop(Interceptor interceptor) {
-            chain = new InterceptorChain(chain, interceptor);
-        }
-
-        @Override
-        public void addInterceptorToBottom(Interceptor interceptor) {
+        void addInterceptor(Interceptor interceptor, boolean toBottom) {
             if (chain != null) {
-                chain.addToBottom(interceptor);
+                if (toBottom) {
+                    chain.addInterceptorToBottom(interceptor);
+                } else {
+                    chain.addInterceptor(interceptor);
+                }
             } else {
-                chain = new InterceptorChain(null, interceptor);
+                chain = new InterceptorChain(interceptor);
             }
-        }
-
-        @Override
-        public void setConverter(Converter<?, ?> converter) {
-            explicitConverter = converter;
         }
 
         CommandImpl delegateTarget() {
@@ -1573,9 +1492,6 @@ public final class CarRetrofit {
 
     private static class CommandCombine extends CommandFlow {
 
-        Converter<?, ?> combinator;
-        int combinatorId;
-        Class<?> functionClass;
         CombineFlow combineFlow;
 
         @Override
@@ -1624,24 +1540,24 @@ public final class CarRetrofit {
                 }
             }
 
-            combinatorId = combine.combinator();
-            try {
-                Object operatorObj = record.getConverterById(combinatorId);
-                String operatorFullName = Function2.class.getName();
-                String prefix = operatorFullName.substring(0, operatorFullName.lastIndexOf("."));
-                int childElementCount = childrenCommand.size();
-                String targetFunctionFullName = prefix + ".Function" + childElementCount;
-                functionClass = Class.forName(targetFunctionFullName);
-                if (functionClass.isInstance(operatorObj)) {
-                    this.combinator = (Converter<?, ?>) Objects.requireNonNull(operatorObj,
-                            "Failed to resolve id:" + combinatorId);
-                } else {
-                    throw new CarRetrofitException("Converter:" + combinatorId
-                            + " doesn't match element count:" + childElementCount);
-                }
-            } catch (ReflectiveOperationException e) {
-                throw new CarRetrofitException(e);
-            }
+//            combinatorId = combine.combinator();
+//            try {
+//                Object operatorObj = record.getConverterById(combinatorId);
+//                String operatorFullName = Function2.class.getName();
+//                String prefix = operatorFullName.substring(0, operatorFullName.lastIndexOf("."));
+//                int childElementCount = childrenCommand.size();
+//                String targetFunctionFullName = prefix + ".Function" + childElementCount;
+//                functionClass = Class.forName(targetFunctionFullName);
+//                if (functionClass.isInstance(operatorObj)) {
+//                    this.combinator = (Converter<?, ?>) Objects.requireNonNull(operatorObj,
+//                            "Failed to resolve id:" + combinatorId);
+//                } else {
+//                    throw new CarRetrofitException("Converter:" + combinatorId
+//                            + " doesn't match element count:" + childElementCount);
+//                }
+//            } catch (ReflectiveOperationException e) {
+//                throw new CarRetrofitException(e);
+//            }
 
             resolveConverter();
         }
@@ -1657,74 +1573,21 @@ public final class CarRetrofit {
         }
 
         private void resolveConverter() {
-            Class<?> originalType = null;
-            if (combinator.getClass().isSynthetic()) {
-                throw new CarRetrofitException("Can not declare combinator in lambda expression:"
-                        + combinator.getClass());
-            }
-            Class<?> implementByClass = lookUp(combinator.getClass(), functionClass);
-            if (implementByClass != null) {
-                Type[] ifTypeArray = implementByClass.getGenericInterfaces();
-                for (Type ifType : ifTypeArray) {
-                    if (ifType instanceof ParameterizedType) {
-                        ParameterizedType parameterizedType = (ParameterizedType) ifType;
-                        if (parameterizedType.getRawType() == functionClass) {
-                            Type[] functionType = parameterizedType.getActualTypeArguments();
-                            originalType = getClassFromType(functionType[functionType.length - 1]);
-                            break;
-                        }
-                    }
-                }
-            }
-            if (originalType == null) {
-                throw new CarRetrofitException("Failed to resolve result type from:"
-                        + combinator + " functionClass:" + functionClass.getSimpleName());
-            }
-
             if (isReturnFlow()) {
                 Converter<?, ?> converter = ConverterStore.find(this, Flow.class,
                         key.getTrackClass(), store);
                 resultConverter = (Converter<Object, ?>) converter;
 
-                try {
-                    mapConverter = findMapConverter(originalType);
-                } catch (Exception e) {
-                    throw new CarRetrofitException(e);
+                mapConverter = findMapConverter(Object[].class);
+                if (mapConverter == null) {
+                    throw new CarRetrofitException("Must indicate a converter with Object[] type input");
                 }
             } else {
-                Converter<?, ?> converter = ConverterStore.find(this, originalType,
+                resultConverter = (Converter<Object, ?>) ConverterStore.find(this, Object[].class,
                         key.getTrackClass(), store);
-                resultConverter = (Converter<Object, ?>) converter;
-            }
-        }
-
-        private Object processResult(int effectIndex, Object[] elements) {
-            try {
-                switch (elements.length) {
-                    case 2:
-                        return ((Function2<Object, Object, Object>)combinator).apply(effectIndex,
-                                elements[0], elements[1]);
-                    case 3:
-                        return ((Function3<Object, Object, Object, Object>)combinator)
-                                .apply(effectIndex, elements[0], elements[1], elements[2]);
-                    case 4:
-                        return ((Function4<Object, Object, Object, Object, Object>)combinator)
-                                .apply(effectIndex, elements[0], elements[1], elements[2],
-                                        elements[3]);
-                    case 5:
-                        return ((Function5<Object, Object, Object, Object, Object, Object>)combinator)
-                                .apply(effectIndex, elements[0], elements[1], elements[2],
-                                        elements[3], elements[4]);
-                    case 6:
-                        return ((Function6<Object, Object, Object, Object, Object, Object, Object>)combinator)
-                                .apply(effectIndex, elements[0], elements[1], elements[2],
-                                        elements[3], elements[4], elements[5]);
-                    default:
-                        throw new IllegalStateException("impossible length:" + elements.length);
+                if (resultConverter == null) {
+                    throw new CarRetrofitException("Must indicate a converter with Object[] type input");
                 }
-            } catch (ClassCastException castError) {
-                throw new CarRetrofitException("Value:" + Arrays.toString(elements)
-                        + " can not apply tp combinator:" + combinatorId, castError);
             }
         }
 
@@ -1742,13 +1605,13 @@ public final class CarRetrofit {
             Object result;
             if (isReturnFlow()) {
                 Flow<Object> flow;
-                if (mapConverter != null) {
+                if (mapConverter instanceof FunctionalCombinator) {
                     flow = new MediatorFlow<>(combineFlow,
-                            data -> mapConverter.convert(
-                                    processResult(data.effectIndex, data.trackingObj)));
+                            data -> ((FunctionalCombinator<?>) mapConverter)
+                                    .apply(data.effectIndex, data.trackingObj));
                 } else {
                     flow = new MediatorFlow<>(combineFlow,
-                            data -> processResult(data.effectIndex, data.trackingObj));
+                            data -> mapConverter.convert(data.trackingObj));
                 }
                 if (stickyType == StickyType.ON || stickyType == StickyType.ON_NO_CACHE) {
                     flow = new StickyFlowImpl<>(flow, stickyType == StickyType.ON,
@@ -1773,7 +1636,7 @@ public final class CarRetrofit {
                 return null;
             }
             CombineData data = combineFlow.get();
-            return processResult(-1, data.trackingObj);
+            return mapConverter.convert(data.trackingObj);
         }
 
         @Override
@@ -1781,10 +1644,10 @@ public final class CarRetrofit {
             return CommandType.COMBINE;
         }
 
-        @Override
-        String toCommandString() {
-            return super.toCommandString() + " combinator:" + combinatorId;
-        }
+//        @Override
+//        String toCommandString() {
+//            return super.toCommandString() + " combinator:" + combinatorId;
+//        }
 
         private static class CombineData {
             int effectIndex;
@@ -2067,7 +1930,7 @@ public final class CarRetrofit {
                 throw new CarRetrofitException("Sticky type must be ON if restore command is set");
             }
             System.out.println("setRestoreCommand :" + restoreCommand);
-            restoreCommand.addInterceptorToBottom((command, parameter) -> {
+            restoreCommand.addInterceptor((command, parameter) -> {
                 if (monitorSetResponseRegistered.get()) {
                     System.out.println("commandSet addInterceptorToBottom:" + parameter);
                     synchronized (sTimeOutTimer) {
@@ -2084,7 +1947,7 @@ public final class CarRetrofit {
                     }
                 }
                 return command.invoke(parameter);
-            });
+            }, true);
         }
 
         CommandReceive createCommandReceive() {
@@ -2095,7 +1958,7 @@ public final class CarRetrofit {
                 }
                 receiveCommandList.add(new WeakReference<>(receive));
                 if (monitorSetResponseRegistered.compareAndSet(false, true)) {
-                    receive.addInterceptorToTop((command, parameter) -> {
+                    receive.addInterceptor((command, parameter) -> {
                         synchronized (sTimeOutTimer) {
                             if (task != null) {
                                 System.out.println("commandSet restore command unscheduled");
@@ -2104,7 +1967,7 @@ public final class CarRetrofit {
                             }
                         }
                         return command.invoke(parameter);
-                    });
+                    }, false);
                 }
             }
             return receive;
@@ -2925,7 +2788,7 @@ public final class CarRetrofit {
     }
 
     public static class CarRetrofitException extends RuntimeException {
-        CarRetrofitException(String msg) {
+        public CarRetrofitException(String msg) {
             super(msg);
         }
 
