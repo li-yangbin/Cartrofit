@@ -5,6 +5,7 @@ import android.car.hardware.CarPropertyValue;
 import com.liyangbin.carretrofit.annotation.Apply;
 import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.CarValue;
+import com.liyangbin.carretrofit.annotation.Category;
 import com.liyangbin.carretrofit.annotation.Combine;
 import com.liyangbin.carretrofit.annotation.ConsiderSuper;
 import com.liyangbin.carretrofit.annotation.Delegate;
@@ -535,17 +536,12 @@ public final class CarRetrofit {
             }
 
             if (convertFrom != null && convertTo != null) {
-                if (converter instanceof CommandPredictor) {
-                    commandPredictorList.add(new ConverterWrapper<>(convertFrom, convertTo,
-                            converter));
-                } else {
-                    if (checkConverter(convertFrom, convertTo)) {
-                        throw new CarRetrofitException("Can not add duplicate converter from:" +
-                                toClassString(convertFrom) + " to:" + toClassString(convertTo));
-                    }
-                    converterWrapperList.add(new ConverterWrapper<>(convertFrom, convertTo,
-                            converter));
+                if (checkConverter(convertFrom, convertTo)) {
+                    throw new CarRetrofitException("Can not add duplicate converter from:" +
+                            toClassString(convertFrom) + " to:" + toClassString(convertTo));
                 }
+                converterWrapperList.add(new ConverterWrapper<>(convertFrom, convertTo,
+                        converter));
                 WrappedData wrappedData = converter.getClass()
                         .getDeclaredAnnotation(WrappedData.class);
                 if (wrappedData != null) {
@@ -566,24 +562,6 @@ public final class CarRetrofit {
             Converter<?, ?> converter = findWithoutCommand(from, to);
             this.parentStore = parent;
             return converter != null;
-        }
-
-        private Converter<?, ?> findWithCommand(Command command, Class<?> from, Class<?> to) {
-            if (command == null) {
-                return null;
-            }
-            if (commandPredictorList.size() > 0) {
-                for (int i = 0; i < commandPredictorList.size(); i++) {
-                    ConverterWrapper<?, ?> converterWrapper = commandPredictorList.get(i);
-                    if (converterWrapper.checkCommand(command)) {
-                        Converter<?, ?> converter = converterWrapper.asConverter(from, to);
-                        if (converter != null) {
-                            return converter;
-                        }
-                    }
-                }
-            }
-            return parentStore != null ? parentStore.findWithCommand(command, from, to) : null;
         }
 
         private Converter<?, ?> findWithoutCommand(Class<?> from, Class<?> to) {
@@ -615,16 +593,9 @@ public final class CarRetrofit {
 
         static Converter<?, ?> find(CommandImpl command, Class<?> from, Class<?> to,
                                     ConverterStore store) {
-            if (command.explicitConverter != null) {
-                return command.explicitConverter;
-            }
             from = from.isPrimitive() ? boxTypeOf(from) : from;
             to = to.isPrimitive() ? boxTypeOf(to) : to;
-            Converter<?, ?> converter = store.findWithCommand(command, from, to);
-            if (converter != null) {
-                return converter;
-            }
-            converter = store.findWithoutCommand(from, to);
+            Converter<?, ?> converter = store.findWithoutCommand(from, to);
             if (from == to || converter != null) {
                 return converter;
             }
@@ -765,20 +736,14 @@ public final class CarRetrofit {
         if (command != null) {
             return command;
         }
-        if (command == null) {
-            key.doQualifyCheck();
-            if (key.isInvalid()) {
-                throw new CarRetrofitException("Invalid key:" + key);
+        key.doQualifyCheck();
+        command = createCommand(record, key, flag);
+        if (command != null) {
+            synchronized (mCommandCache) {
+                mCommandCache.put(key, command);
             }
-            command = createCommand(record, key, flag);
-            if (command != null) {
-                synchronized (mCommandCache) {
-                    mCommandCache.put(key, command);
-                }
-            }
-            return command;
         }
-        return null;
+        return command;
     }
 
     private static class Key {
@@ -834,6 +799,9 @@ public final class CarRetrofit {
             if (injectOrApply && Modifier.isFinal(field.getModifiers())) {
                 throw new CarRetrofitException("Invalid key:" + this
                         + " in command Inject");
+            }
+            if (isInvalid()) {
+                throw new CarRetrofitException("Invalid key:" + this);
             }
         }
 
@@ -1160,8 +1128,7 @@ public final class CarRetrofit {
         InterceptorChain chain;
         DataSource source;
         Class<?> userDataClass;
-        Converter<?, ?> explicitConverter;
-        String category;
+        String[] category;
         Key key;
         int id;
 
@@ -1177,6 +1144,10 @@ public final class CarRetrofit {
             this.chain = record.getInterceptorByKey(this);
             this.store = record.getConverterByKey(this);
             this.id = record.loadId(this);
+            Category category = key.getAnnotation(Category.class);
+            if (category != null) {
+                this.category = category.value();
+            }
             if (key.field != null) {
                 key.field.setAccessible(true);
             }
@@ -1196,6 +1167,7 @@ public final class CarRetrofit {
             this.key = owner.key;
             this.propertyId = owner.propertyId;
             this.area = owner.area;
+            this.category = owner.category;
 
             this.chain = owner.chain;
             this.store = owner.store;
@@ -1278,7 +1250,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public String getCategory() {
+        public String[] getCategory() {
             return category;
         }
 
@@ -2696,11 +2668,6 @@ public final class CarRetrofit {
                 return this;
             }
             return null;
-        }
-
-        boolean checkCommand(Command command) {
-            return oneWayConverter instanceof CommandPredictor
-                    && ((CommandPredictor) oneWayConverter).checkCommand(command);
         }
 
         @Override

@@ -1,5 +1,6 @@
 package com.liyangbin.carretrofit;
 
+import java.util.Arrays;
 import java.util.Objects;
 
 public interface ApiBuilder {
@@ -80,10 +81,18 @@ public interface ApiBuilder {
             if (apiId != 0 && command.getId() != apiId) {
                 return false;
             }
-            if (category != null && !category.equals(command.getCategory())) {
+            if (type != null && type != thatType) {
                 return false;
             }
-            if (type != null && type != thatType) {
+            if (category != null) {
+                String[] commandCategory = command.getCategory();
+                if (commandCategory != null) {
+                    for (String category : commandCategory) {
+                        if (this.category.equals(category)) {
+                            return true;
+                        }
+                    }
+                }
                 return false;
             }
             return true;

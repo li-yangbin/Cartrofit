@@ -101,7 +101,7 @@ class InterceptorChain {
         }
 
         @Override
-        public String getCategory() {
+        public String[] getCategory() {
             return previous.getCategory();
         }
 

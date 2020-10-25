@@ -21,7 +21,7 @@ public interface Command {
 
     CommandType type();
 
-    String getCategory();
+    String[] getCategory();
 
     boolean fromApply();
 
