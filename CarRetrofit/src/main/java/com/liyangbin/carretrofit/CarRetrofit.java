@@ -4,6 +4,7 @@ import android.car.hardware.CarPropertyValue;
 
 import com.liyangbin.carretrofit.annotation.Apply;
 import com.liyangbin.carretrofit.annotation.CarApi;
+import com.liyangbin.carretrofit.annotation.CarCallback;
 import com.liyangbin.carretrofit.annotation.CarValue;
 import com.liyangbin.carretrofit.annotation.Category;
 import com.liyangbin.carretrofit.annotation.Combine;
@@ -57,8 +58,10 @@ public final class CarRetrofit {
     private static final int FLAG_PARSE_INJECT = FLAG_FIRST_BIT << 4;
     private static final int FLAG_PARSE_APPLY = FLAG_FIRST_BIT << 5;
     private static final int FLAG_PARSE_COMBINE = FLAG_FIRST_BIT << 6;
+    private static final int FLAG_PARSE_CALLBACK = FLAG_FIRST_BIT << 7;
     private static final int FLAG_PARSE_ALL = FLAG_PARSE_SET | FLAG_PARSE_GET | FLAG_PARSE_TRACK
-            | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE;
+            | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_APPLY | FLAG_PARSE_COMBINE
+            | FLAG_PARSE_CALLBACK;
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
     private static Method sRouterFinderMethod;
 
@@ -389,25 +392,6 @@ public final class CarRetrofit {
                     result.add(childKey);
                 }
             }
-            Class<?> loopClass = clazz;
-            while (loopClass.isAnnotationPresent(ConsiderSuper.class)) {
-                Class<?> superClass = loopClass.getSuperclass();
-                if (superClass != null && superClass != Object.class) {
-                    ApiRecord<?> record = getApi(loopClass);
-                    if (record == null) {
-                        fields = superClass.getDeclaredFields();
-                        for (Field field : fields) {
-                            Key childKey = new Key(field, injectOrApply);
-                            if (!childKey.isInvalid()) {
-                                result.add(childKey);
-                            }
-                        }
-                        loopClass = superClass;
-                        continue;
-                    }
-                }
-                break;
-            }
             if (injectOrApply) {
                 childrenInjectKey = result;
             } else {
@@ -479,10 +463,8 @@ public final class CarRetrofit {
         }
     }
 
-    public static class ConverterStore implements Cloneable {
+    static class ConverterStore implements Cloneable {
         ArrayList<ConverterWrapper<?, ?>> converterWrapperList = new ArrayList<>();
-//        final ArrayList<ConverterWrapper<?, ?>> commandPredictorList = new ArrayList<>();
-//        final ArrayList<Converter<?, ?>> allConverters = new ArrayList<>();
         ConverterStore parentStore;
 
         ConverterStore() {
@@ -1068,6 +1050,22 @@ public final class CarRetrofit {
                 command.addChildCommand(childCommand);
             }
             command.init(record, combine, key);
+            return command;
+        }
+
+        CarCallback callback = (flag & FLAG_PARSE_CALLBACK) != 0
+                ? key.getAnnotation(CarCallback.class) : null;
+        if (callback != null) {
+            Class<?> targetClass = key.getSetClass();
+            if (!targetClass.isInterface()) {
+                throw new CarRetrofitException("Declare CarCallback parameter as an interface:" + targetClass);
+            }
+            if (!targetClass.isAnnotationPresent(CarCallback.class)) {
+                throw new CarRetrofitException("Declare CarCallback on interface type:" + targetClass);
+            }
+            CommandCallback command = new CommandCallback();
+            searchAndCreateChildCommand(getApi(targetClass), false,
+                    command::addChildCommand, FLAG_PARSE_TRACK);
             return command;
         }
 
@@ -2163,17 +2161,19 @@ public final class CarRetrofit {
                 resultConverter = (Converter<Object, ?>) converter;
             }
 
-            Class<?> carType;
-            if (type == CarType.AVAILABILITY) {
-                carType = boolean.class;
-            } else {
-                try {
-                    carType = source.extractValueType(propertyId);
-                } catch (Exception e) {
-                    throw new CarRetrofitException(e);
+            if (type != CarType.NONE) {
+                Class<?> carType;
+                if (type == CarType.AVAILABILITY) {
+                    carType = boolean.class;
+                } else {
+                    try {
+                        carType = source.extractValueType(propertyId);
+                    } catch (Exception e) {
+                        throw new CarRetrofitException(e);
+                    }
                 }
+                mapConverter = findMapConverter(carType);
             }
-            mapConverter = findMapConverter(carType);
         }
 
         @Override
@@ -2211,10 +2211,13 @@ public final class CarRetrofit {
                     }
                     break;
             }
-            if (stickyType == StickyType.ON || stickyType == StickyType.ON_NO_CACHE) {
+            if (type != CarType.NONE
+                    && (stickyType == StickyType.ON || stickyType == StickyType.ON_NO_CACHE)) {
                 result = new StickyFlowImpl<>(result, stickyType == StickyType.ON,
                         getCommandStickyGet());
-                ((StickyFlowImpl<?>)result).addCommandReceiver(createCommandReceive());
+                ((StickyFlowImpl<?>) result).addCommandReceiver(createCommandReceive());
+            } else if (type == CarType.NONE) {
+                result = new EmptyFlowWrapper((Flow<Void>) result, createCommandReceive());
             } else {
                 result = new FlowWrapper<>(result, createCommandReceive());
             }
@@ -2222,8 +2225,6 @@ public final class CarRetrofit {
                 return result;
             }
             return resultConverter != null ? resultConverter.convert(result) : result;
-//            return !valueMapped && mapConverter != null && resultConverter != null ?
-//                    ((ConverterMapper<Object, Object>)resultConverter).map(obj, mapConverter) : obj;
         }
 
         @Override
@@ -2251,6 +2252,24 @@ public final class CarRetrofit {
                 stable += " valueType:" + type;
             }
             return stable;
+        }
+    }
+
+    private static class CommandCallback extends CommandGroup {
+
+        @Override
+        void onInit(Annotation annotation) {
+            super.onInit(annotation);
+        }
+
+        @Override
+        public Object invoke(Object parameter) throws Throwable {
+            return null;
+        }
+
+        @Override
+        public CommandType type() {
+            return null;
         }
     }
 
@@ -2532,6 +2551,47 @@ public final class CarRetrofit {
             synchronized (this) {
                 for (int i = 0; i < consumers.size(); i++) {
                     consumers.get(i).accept(to);
+                }
+            }
+        }
+    }
+
+    private static class EmptyFlowWrapper extends FlowWrapper<Void> implements EmptyFlow {
+
+        private HashMap<Runnable, InnerObserver> mObserverMap = new HashMap<>();
+
+        private EmptyFlowWrapper(Flow<Void> base, CommandReceive command) {
+            super(base, command);
+        }
+
+        @Override
+        public void addEmptyObserver(Runnable runnable) {
+            if (runnable != null && !mObserverMap.containsKey(runnable)) {
+                InnerObserver observer = new InnerObserver(runnable);
+                mObserverMap.put(runnable, observer);
+                addObserver(observer);
+            }
+        }
+
+        @Override
+        public void removeEmptyObserver(Runnable runnable) {
+            InnerObserver observer = mObserverMap.remove(runnable);
+            if (observer != null) {
+                removeObserver(observer);
+            }
+        }
+
+        private static class InnerObserver implements Consumer<Void> {
+            private Runnable mAction;
+
+            InnerObserver(Runnable action) {
+                this.mAction = action;
+            }
+
+            @Override
+            public void accept(Void aVoid) {
+                if (mAction != null) {
+                    mAction.run();
                 }
             }
         }
