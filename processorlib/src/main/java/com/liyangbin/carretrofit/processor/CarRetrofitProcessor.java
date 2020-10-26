@@ -11,11 +11,9 @@ import com.squareup.javapoet.WildcardTypeName;
 
 import java.io.IOException;
 import java.io.Writer;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -60,7 +58,6 @@ public class CarRetrofitProcessor extends AbstractProcessor {
             + " Do not modify this file directly";
 
     static final String TARGET_CAR_API = PACKAGE_NAME + ".annotation.CarApi";
-    static final String TARGET_CAR_API_SCOPE = "scope";
 
     private final HashMap<Integer, ClassName> mScopeMap = new HashMap<>();
 
@@ -172,68 +169,6 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                     .build());
         }
 
-        List<? extends AnnotationMirror> annotationList = element.getAnnotationMirrors();
-        ArrayList<VariableElement> apiField = new ArrayList<>();
-        TypeElement fieldScopeElement = null;
-
-        anchor:for (int i = 0; i < annotationList.size(); i++) {
-            AnnotationMirror annotation = annotationList.get(i);
-            TypeElement annotatedElement = (TypeElement) annotation.getAnnotationType().asElement();
-            if (TARGET_CAR_API.equals(annotatedElement.getQualifiedName().toString())) {
-                for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry
-                        : annotation.getElementValues().entrySet()) {
-                    ExecutableElement method = entry.getKey();
-                    AnnotationValue value = entry.getValue();
-                    String methodName = method.getSimpleName().toString();
-                    if (TARGET_CAR_API_SCOPE.equals(methodName)) {
-                        DeclaredType type = (DeclaredType) value.getValue();
-                        fieldScopeElement = (TypeElement) type.asElement();
-                        resolveVariableElement(fieldScopeElement, apiField);
-                        break anchor;
-                    }
-                }
-            }
-        }
-
-        HashMap<String, String> interceptorIndexMap = new HashMap<>();
-        HashMap<String, String> converterIndexMap = new HashMap<>();
-        for (int i = 0; i < apiField.size(); i++) {
-            VariableElement variableElement = apiField.get(i);
-            int index = baseScopeId + apiInterface.size() + i;
-            List<? extends AnnotationMirror> list = variableElement.getAnnotationMirrors();
-            boolean isInterceptor = false;
-            boolean isConverter = false;
-            for (int j = 0; j < list.size(); j++) {
-                AnnotationMirror annotation = list.get(j);
-                TypeElement annotatedElement = (TypeElement) annotation.getAnnotationType().asElement();
-                String name = annotatedElement.getSimpleName().toString();
-                if ("Intercept".equals(name)) {
-                    isInterceptor = true;
-                    break;
-                } else if ("Convert".equals(name)) {
-                    isConverter = true;
-                    break;
-                }
-            }
-            if (isInterceptor) {
-                String name = variableElement.getSimpleName().toString();
-                interceptorIndexMap.put(name, idClassName.simpleName() + "." + name);
-                indexClassBuilder.addField(FieldSpec
-                        .builder(TypeName.INT, name, STATIC, FINAL)
-                        .addJavadoc("{@link $T#" + name + "}", ClassName.get(fieldScopeElement))
-                        .initializer("" + index)
-                        .build());
-            } else if (isConverter) {
-                String name = variableElement.getSimpleName().toString();
-                converterIndexMap.put(name, idClassName.simpleName() + "." + name);
-                indexClassBuilder.addField(FieldSpec
-                        .builder(TypeName.INT, name, STATIC, FINAL)
-                        .addJavadoc("{@link $T#" + name + "}", ClassName.get(fieldScopeElement))
-                        .initializer("" + index)
-                        .build());
-            }
-        }
-
         MethodSpec.Builder importBuilder = MethodSpec.methodBuilder("init");
         importBuilder.addModifiers(STATIC, PUBLIC);
         importBuilder.addParameter(
@@ -242,18 +177,6 @@ public class CarRetrofitProcessor extends AbstractProcessor {
                         ClassName.get(Integer.class),
                         ClassName.get(Method.class)),
                 "apiMap");
-        importBuilder.addParameter(
-                ParameterizedTypeName.get(
-                        ClassName.get(HashMap.class),
-                        ClassName.get(Integer.class),
-                        ClassName.get(Field.class)),
-                "interceptorMap");
-        importBuilder.addParameter(
-                ParameterizedTypeName.get(
-                        ClassName.get(HashMap.class),
-                        ClassName.get(Integer.class),
-                        ClassName.get(Field.class)),
-                "converterMap");
         importBuilder.addStatement("final $T[] methods = $T.class.getDeclaredMethods()",
                 ClassName.get(Method.class), ClassName.get(element))
                 .beginControlFlow("for (Method method : methods)")
@@ -275,57 +198,6 @@ public class CarRetrofitProcessor extends AbstractProcessor {
         }
         importBuilder.endControlFlow();
 
-        if (interceptorIndexMap.size() > 0) {
-            importBuilder.addCode("\n");
-            importBuilder.beginControlFlow("if (interceptorMap != null)");
-            importBuilder.addStatement("final $T[] fields = $T.class.getDeclaredFields()",
-                    ClassName.get(Field.class), ClassName.get(fieldScopeElement))
-                    .beginControlFlow("for (Field field : fields)")
-                    .addStatement("String fieldName = field.getName()");
-            firstTime = true;
-            for (Map.Entry<String, String> entry : interceptorIndexMap.entrySet()) {
-                String judgement = "if (fieldName.equals($S))";
-                String name = entry.getKey();
-                if (firstTime) {
-                    importBuilder.beginControlFlow(judgement, name);
-                } else {
-                    importBuilder.nextControlFlow("else " + judgement, name);
-                }
-                firstTime = false;
-                importBuilder.addStatement("interceptorMap.put($L, field)", entry.getValue());
-            }
-            if (!firstTime) {
-                importBuilder.endControlFlow();
-            }
-            importBuilder.endControlFlow();
-            importBuilder.endControlFlow();
-        }
-
-        if (converterIndexMap.size() > 0) {
-            importBuilder.addCode("\n");
-            importBuilder.beginControlFlow("if (converterMap != null)");
-            importBuilder.addStatement("final $T[] fields = $T.class.getDeclaredFields()",
-                    ClassName.get(Field.class), ClassName.get(fieldScopeElement))
-                    .beginControlFlow("for (Field field : fields)")
-                    .addStatement("String fieldName = field.getName()");
-            firstTime = true;
-            for (Map.Entry<String, String> entry : converterIndexMap.entrySet()) {
-                String judgement = "if (fieldName.equals($S))";
-                String name = entry.getKey();
-                if (firstTime) {
-                    importBuilder.beginControlFlow(judgement, name);
-                } else {
-                    importBuilder.nextControlFlow("else " + judgement, name);
-                }
-                firstTime = false;
-                importBuilder.addStatement("converterMap.put($L, field)", entry.getValue());
-            }
-            if (!firstTime) {
-                importBuilder.endControlFlow();
-            }
-            importBuilder.endControlFlow();
-            importBuilder.endControlFlow();
-        }
         indexClassBuilder.addMethod(importBuilder.build());
 
         try (Writer writer = processingEnv.getFiler()

@@ -154,7 +154,7 @@ public final class CarRetrofit {
         return null;
     }
 
-    private class ApiRecord<T> implements ApiBuilder {
+    private class ApiRecord<T> extends ApiBuilder {
         private static final String ID_SUFFIX = "Id";
 
         Class<T> clazz;
@@ -175,7 +175,8 @@ public final class CarRetrofit {
         InterceptorManager interceptorManager = new InterceptorManager();
 
         Interceptor tempInterceptor;
-        Converter<?, ?> tempConverter;
+        AbsConverterBuilder converterBuilder;
+//        Converter<?, ?> tempConverter;
 
         ApiRecord(Class<T> clazz) {
             this.clazz = clazz;
@@ -214,25 +215,25 @@ public final class CarRetrofit {
         }
 
         @Override
-        public ApiBuilder apply(Interceptor interceptor, int priority) {
+        public ApiBuilder intercept(Interceptor interceptor) {
             if (tempInterceptor != null) {
-                throw new CarRetrofitException("Call apply(Interceptor) only once before commit");
+                throw new CarRetrofitException("Call apply(Interceptor) only once before inject");
             }
             tempInterceptor = interceptor;
             return this;
         }
 
         @Override
-        public ApiBuilder apply(Converter<?, ?> converter) {
-            if (tempConverter != null) {
-                throw new CarRetrofitException("Call apply(Converter) only once before commit");
+        ApiBuilder convert(AbsConverterBuilder builder) {
+            if (converterBuilder != null) {
+                throw new CarRetrofitException("Call convert(Converter) only once before inject");
             }
-            tempConverter = converter;
+            converterBuilder = builder;
             return this;
         }
 
         @Override
-        public void to(Constraint... constraints) {
+        public void apply(Constraint... constraints) {
             if (constraints == null || constraints.length == 0) {
                 return;
             }
@@ -242,11 +243,11 @@ public final class CarRetrofit {
                 }
                 tempInterceptor = null;
             }
-            if (tempConverter != null) {
+            if (converterBuilder != null) {
                 for (Constraint constraint : constraints) {
-                    converterManager.add(constraint, tempConverter);
+                    converterManager.add(constraint, converterBuilder);
                 }
-                tempConverter = null;
+                converterBuilder = null;
             }
         }
 
@@ -305,17 +306,17 @@ public final class CarRetrofit {
             }
         }
 
-        private final class ConverterManager extends AbstractManager<Converter<?, ?>, ConverterStore> {
+        private final class ConverterManager extends AbstractManager<AbsConverterBuilder, ConverterStore> {
             HashMap<Constraint, ConverterStore> constraintMapper = new HashMap<>();
 
             @Override
-            void add(Constraint constraint, Converter<?, ?> converter) {
+            void add(Constraint constraint, AbsConverterBuilder builder) {
                 ConverterStore store = constraintMapper.get(constraint);
                 if (store == null) {
                     store = new ConverterStore();
                     constraintMapper.put(constraint, store);
                 }
-                store.addConverter(converter);
+                builder.apply(store);
                 addConstraint(constraint);
             }
 
@@ -330,8 +331,9 @@ public final class CarRetrofit {
                             node = node.copy();
                             if (current != null) {
                                 current.addParentToEnd(node);
+                            } else {
+                                current = node;
                             }
-                            current = node;
                         }
                     }
                 }
@@ -352,7 +354,13 @@ public final class CarRetrofit {
         }
 
         ConverterStore getConverterByKey(CommandImpl command) {
-            return converterManager.get(command);
+            ConverterStore store = converterManager.get(command);
+            if (store != null) {
+                store.addParentToEnd(GLOBAL_CONVERTER);
+                return store;
+            } else {
+                return GLOBAL_CONVERTER;
+            }
         }
 
         void importDependency(Class<?> target) {
@@ -472,9 +480,9 @@ public final class CarRetrofit {
     }
 
     public static class ConverterStore implements Cloneable {
-        final ArrayList<ConverterWrapper<?, ?>> converterWrapperList = new ArrayList<>();
-        final ArrayList<ConverterWrapper<?, ?>> commandPredictorList = new ArrayList<>();
-        final ArrayList<Converter<?, ?>> allConverters = new ArrayList<>();
+        ArrayList<ConverterWrapper<?, ?>> converterWrapperList = new ArrayList<>();
+//        final ArrayList<ConverterWrapper<?, ?>> commandPredictorList = new ArrayList<>();
+//        final ArrayList<Converter<?, ?>> allConverters = new ArrayList<>();
         ConverterStore parentStore;
 
         ConverterStore() {
@@ -484,6 +492,7 @@ public final class CarRetrofit {
             try {
                 ConverterStore copy = (ConverterStore) clone();
                 copy.parentStore = null;
+                copy.converterWrapperList = new ArrayList<>(this.converterWrapperList);
                 return copy;
             } catch (CloneNotSupportedException e) {
                 throw new RuntimeException("impossible", e);
@@ -506,7 +515,11 @@ public final class CarRetrofit {
             } else if (converter instanceof FlowConverter) {
                 lookingFor = FlowConverter.class;
             } else {
-                lookingFor = Converter.class;
+                if (converter instanceof FunctionalCombinator) {
+                    lookingFor = converter.getClass().getInterfaces()[0];
+                } else {
+                    lookingFor = Converter.class;
+                }
             }
             Class<?> implementsBy = lookUp(converter.getClass(), lookingFor);
             if (implementsBy == null) {
@@ -526,6 +539,9 @@ public final class CarRetrofit {
                         if (lookingFor == FlowConverter.class) {
                             convertFrom = Flow.class;
                             convertTo = getClassFromType(converterDeclaredType[0]);
+                        } else if (FunctionalCombinator.class.isAssignableFrom(lookingFor)) {
+                            convertFrom = Object[].class;
+                            convertTo = getClassFromType(converterDeclaredType[converterDeclaredType.length - 1]);
                         } else {
                             convertFrom = getClassFromType(converterDeclaredType[0]);
                             convertTo = getClassFromType(converterDeclaredType[1]);
@@ -536,23 +552,26 @@ public final class CarRetrofit {
             }
 
             if (convertFrom != null && convertTo != null) {
-                if (checkConverter(convertFrom, convertTo)) {
-                    throw new CarRetrofitException("Can not add duplicate converter from:" +
-                            toClassString(convertFrom) + " to:" + toClassString(convertTo));
-                }
-                converterWrapperList.add(new ConverterWrapper<>(convertFrom, convertTo,
-                        converter));
-                WrappedData wrappedData = converter.getClass()
-                        .getDeclaredAnnotation(WrappedData.class);
-                if (wrappedData != null) {
-                    synchronized (WRAPPER_CLASS_MAP) {
-                        WRAPPER_CLASS_MAP.put(convertTo, wrappedData.type());
-                    }
-                }
-                allConverters.add(converter);
+                addConverter(convertFrom, convertTo, converter);
             } else {
                 throw new CarRetrofitException("invalid converter class:" + implementsBy
                         + " type:" + Arrays.toString(ifTypes));
+            }
+        }
+
+        void addConverter(Class<?> convertFrom, Class<?> convertTo, Converter<?, ?> converter) {
+            if (checkConverter(convertFrom, convertTo)) {
+                throw new CarRetrofitException("Can not add duplicate converter from:" +
+                        toClassString(convertFrom) + " to:" + toClassString(convertTo));
+            }
+            converterWrapperList.add(new ConverterWrapper<>(convertFrom, convertTo,
+                    converter));
+            WrappedData wrappedData = converter.getClass()
+                    .getDeclaredAnnotation(WrappedData.class);
+            if (wrappedData != null) {
+                synchronized (WRAPPER_CLASS_MAP) {
+                    WRAPPER_CLASS_MAP.put(convertTo, wrappedData.type());
+                }
             }
         }
 
@@ -601,7 +620,7 @@ public final class CarRetrofit {
             }
             throw new CarRetrofitException("Can not resolve converter from:"
                     + toClassString(from) + " to:" + toClassString(to)
-                    + " with command:" + command);
+                    + " with:" + command);
         }
 
         private static String toClassString(Class<?> clazz) {
@@ -1141,13 +1160,13 @@ public final class CarRetrofit {
             }
             this.key = key;
 
-            this.chain = record.getInterceptorByKey(this);
-            this.store = record.getConverterByKey(this);
             this.id = record.loadId(this);
             Category category = key.getAnnotation(Category.class);
             if (category != null) {
                 this.category = category.value();
             }
+            this.chain = record.getInterceptorByKey(this);
+            this.store = record.getConverterByKey(this);
             if (key.field != null) {
                 key.field.setAccessible(true);
             }
@@ -1579,7 +1598,7 @@ public final class CarRetrofit {
                 Flow<Object> flow;
                 if (mapConverter instanceof FunctionalCombinator) {
                     flow = new MediatorFlow<>(combineFlow,
-                            data -> ((FunctionalCombinator<?>) mapConverter)
+                            data -> ((FunctionalCombinator) mapConverter)
                                     .apply(data.effectIndex, data.trackingObj));
                 } else {
                     flow = new MediatorFlow<>(combineFlow,

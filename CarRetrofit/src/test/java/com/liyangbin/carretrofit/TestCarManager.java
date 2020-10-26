@@ -118,6 +118,14 @@ public class TestCarManager extends CarManager2 {
 
     @Override
     public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
+        builder.convert(Integer.class)
+                .to(Boolean.class)
+                .by(value -> value > 0)
+                .apply(ApiBuilder.Constraint.ALL);
+        builder.combine(String.class, Boolean.class)
+                .to(String.class)
+                .by((string, bool) -> "string:" + string + " together:" + bool)
+                .apply(ApiBuilder.Constraint.of(TestCarApiId.trackIntAndBoolean));
     }
 
     Function2<String, Boolean, String> combinator_aa = new Function2<String, Boolean, String>() {

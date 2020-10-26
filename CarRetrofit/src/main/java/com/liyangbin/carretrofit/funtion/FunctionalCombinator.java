@@ -1,5 +1,7 @@
 package com.liyangbin.carretrofit.funtion;
 
-public interface FunctionalCombinator<T> {
-    T apply(int effectIndex, Object[] objects);
+import com.liyangbin.carretrofit.Converter;
+
+public interface FunctionalCombinator<R> extends Converter<Object[], R> {
+    R apply(int effectIndex, Object[] objects);
 }

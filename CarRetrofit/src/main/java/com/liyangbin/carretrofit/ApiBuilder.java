@@ -1,21 +1,163 @@
 package com.liyangbin.carretrofit;
 
-import java.util.Arrays;
+import com.liyangbin.carretrofit.funtion.Function2;
+import com.liyangbin.carretrofit.funtion.Function3;
+import com.liyangbin.carretrofit.funtion.Function4;
+import com.liyangbin.carretrofit.funtion.Function5;
+
 import java.util.Objects;
 
-public interface ApiBuilder {
+public abstract class ApiBuilder {
 
-    default ApiBuilder apply(Interceptor interceptor) {
-        return apply(interceptor, 0);
+    public abstract ApiBuilder intercept(Interceptor interceptor);
+
+    abstract ApiBuilder convert(AbsConverterBuilder builder);
+
+    public final <FROM> ConverterBuilder<FROM> convert(Class<FROM> clazz) {
+        return new ConverterBuilder<>(clazz);
     }
 
-    ApiBuilder apply(Interceptor interceptor, int priority);
+    public final <FROM1, FROM2> ConverterBuilder2<FROM1, FROM2> combine(Class<FROM1> clazz1, Class<FROM2> clazz2) {
+        return new ConverterBuilder2<>(clazz1, clazz2);
+    }
 
-    ApiBuilder apply(Converter<?, ?> converter);
+    public final <FROM1, FROM2, FROM3> ConverterBuilder3<FROM1, FROM2, FROM3>
+            combine(Class<FROM1> clazz1, Class<FROM2> clazz2, Class<FROM3> clazz3) {
+        return new ConverterBuilder3<>(clazz1, clazz2, clazz3);
+    }
 
-    void to(Constraint... constraints);
+    public final <FROM1, FROM2, FROM3, FROM4> ConverterBuilder4<FROM1, FROM2, FROM3, FROM4>
+            combine(Class<FROM1> clazz1, Class<FROM2> clazz2, Class<FROM3> clazz3, Class<FROM4> clazz4) {
+        return new ConverterBuilder4<>(clazz1, clazz2, clazz3, clazz4);
+    }
 
-    final class Constraint {
+    public final <FROM1, FROM2, FROM3, FROM4, FROM5> ConverterBuilder5<FROM1, FROM2, FROM3, FROM4, FROM5>
+            combine(Class<FROM1> clazz1, Class<FROM2> clazz2, Class<FROM3> clazz3, Class<FROM4> clazz4, Class<FROM5> clazz5) {
+        return new ConverterBuilder5<>(clazz1, clazz2, clazz3, clazz4, clazz5);
+    }
+
+    public abstract void apply(Constraint... constraints);
+
+    abstract static class AbsConverterBuilder {
+        Class<?> classFrom;
+        Class<?>[] combineFromArray;
+        Class<?> classTo;
+        Converter<?, ?> converter;
+
+        private AbsConverterBuilder(Class<?>... clazzArray) {
+            if (clazzArray.length > 1) {
+                this.combineFromArray = clazzArray;
+            } else {
+                this.classFrom = clazzArray[0];
+            }
+        }
+
+        void apply(CarRetrofit.ConverterStore store) {
+            if (combineFromArray != null) {
+                store.addConverter(Object[].class, classTo, converter);
+            } else {
+                store.addConverter(classFrom, classTo, converter);
+            }
+        }
+    }
+
+    public final class ConverterBuilder<FROM> extends AbsConverterBuilder  {
+
+        private ConverterBuilder(Class<FROM> fromClazz) {
+            super(fromClazz);
+        }
+
+        public <TO> ConverterBuilderTo<TO> to(Class<TO> clazz) {
+            classTo = clazz;
+            return new ConverterBuilderTo<>();
+        }
+
+        public final class ConverterBuilderTo<TO> {
+            public ApiBuilder by(Converter<FROM, TO> converter) {
+                ConverterBuilder.this.converter = converter;
+                return ApiBuilder.this.convert(ConverterBuilder.this);
+            }
+        }
+    }
+
+    public final class ConverterBuilder2<FROM1, FROM2> extends AbsConverterBuilder {
+
+        private ConverterBuilder2(Class<FROM1> fromClazz1, Class<FROM2> fromClazz2) {
+            super(fromClazz1, fromClazz2);
+        }
+
+        public <TO> ConverterBuilderTo<TO> to(Class<TO> clazz) {
+            classTo = clazz;
+            return new ConverterBuilderTo<>();
+        }
+
+        public final class ConverterBuilderTo<TO> {
+            public ApiBuilder by(Function2<FROM1, FROM2, TO> function2) {
+                ConverterBuilder2.this.converter = function2;
+                return ApiBuilder.this.convert(ConverterBuilder2.this);
+            }
+        }
+    }
+
+    public final class ConverterBuilder3<FROM1, FROM2, FROM3> extends AbsConverterBuilder {
+
+        private ConverterBuilder3(Class<FROM1> fromClazz1, Class<FROM2> fromClazz2, Class<FROM3> fromClazz3) {
+            super(fromClazz1, fromClazz2, fromClazz3);
+        }
+
+        public <TO> ConverterBuilderTo<TO> to(Class<TO> clazz) {
+            classTo = clazz;
+            return new ConverterBuilderTo<>();
+        }
+
+        public final class ConverterBuilderTo<TO> {
+            public ApiBuilder by(Function3<FROM1, FROM2, FROM3, TO> function3) {
+                ConverterBuilder3.this.converter = function3;
+                return ApiBuilder.this.convert(ConverterBuilder3.this);
+            }
+        }
+    }
+
+    public final class ConverterBuilder4<FROM1, FROM2, FROM3, FROM4> extends AbsConverterBuilder {
+
+        private ConverterBuilder4(Class<FROM1> fromClazz1, Class<FROM2> fromClazz2, Class<FROM3> fromClazz3, Class<FROM4> fromClazz4) {
+            super(fromClazz1, fromClazz2, fromClazz3, fromClazz4);
+        }
+
+        public <TO> ConverterBuilderTo<TO> to(Class<TO> clazz) {
+            classTo = clazz;
+            return new ConverterBuilderTo<>();
+        }
+
+        public final class ConverterBuilderTo<TO> {
+            public ApiBuilder by(Function4<FROM1, FROM2, FROM3, FROM4, TO> function4) {
+                ConverterBuilder4.this.converter = function4;
+                return ApiBuilder.this.convert(ConverterBuilder4.this);
+            }
+        }
+    }
+
+    public final class ConverterBuilder5<FROM1, FROM2, FROM3, FROM4, FROM5> extends AbsConverterBuilder {
+
+        private ConverterBuilder5(Class<FROM1> fromClazz1, Class<FROM2> fromClazz2,
+                                  Class<FROM3> fromClazz3, Class<FROM4> fromClazz4, Class<FROM5> fromClazz5) {
+            super(fromClazz1, fromClazz2, fromClazz3, fromClazz4, fromClazz5);
+        }
+
+        public <TO> ConverterBuilderTo<TO> to(Class<TO> clazz) {
+            classTo = clazz;
+            return new ConverterBuilderTo<>();
+        }
+
+        public final class ConverterBuilderTo<TO> {
+            public ApiBuilder by(Function5<FROM1, FROM2, FROM3, FROM4, FROM5, TO> function5) {
+                ConverterBuilder5.this.converter = function5;
+                return ApiBuilder.this.convert(ConverterBuilder5.this);
+            }
+        }
+    }
+
+    public static final class Constraint {
         public static final Constraint ALL = new Constraint();
         int priority;
         int apiId;
