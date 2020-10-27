@@ -384,12 +384,22 @@ public final class CarRetrofit {
             } else if (!injectOrApply && childrenApplyKey != null) {
                 return childrenApplyKey;
             }
-            Field[] fields = clazz.getDeclaredFields();
             ArrayList<Key> result = new ArrayList<>();
-            for (Field field : fields) {
-                Key childKey = new Key(field, injectOrApply);
-                if (!childKey.isInvalid()) {
-                    result.add(childKey);
+            if (clazz.isInterface()) {
+                Method[] methods = clazz.getDeclaredMethods();
+                for (Method method : methods) {
+                    Key childKey = new Key(method, true);
+                    if (!childKey.isInvalid()) {
+                        result.add(childKey);
+                    }
+                }
+            } else {
+                Field[] fields = clazz.getDeclaredFields();
+                for (Field field : fields) {
+                    Key childKey = new Key(field, injectOrApply);
+                    if (!childKey.isInvalid()) {
+                        result.add(childKey);
+                    }
                 }
             }
             if (injectOrApply) {
@@ -673,7 +683,7 @@ public final class CarRetrofit {
                             throw new UnsupportedOperationException(
                                     "Do not declare any method with multiple parameters");
                         }
-                        return getOrCreateCommand(record, new Key(method))
+                        return getOrCreateCommand(record, new Key(method, false))
                                 .invokeWithChain(args != null ? args[0] : null);
                     });
         }
@@ -718,7 +728,7 @@ public final class CarRetrofit {
             return getOrCreateCommandById(getApi(apiClass, true), id, flag, throwIfNotFound);
         }
         CommandImpl command = getOrCreateCommandIfChecked(getApi(method.getDeclaringClass()),
-                new Key(method), flag);
+                new Key(method, false), flag);
         if (throwIfNotFound && command == null) {
             throw new CarRetrofitException("Can not resolve target Id:" + id
                     + " in specific type from:" + this);
@@ -759,18 +769,21 @@ public final class CarRetrofit {
                 new Class[]{Set.class, Delegate.class, Apply.class};
 
         Method method;
+        final boolean isCallbackEntry;
 
         Field field;
         final boolean injectOrApply;
 
-        Key(Method method) {
+        Key(Method method, boolean isCallbackEntry) {
             this.method = method;
+            this.isCallbackEntry = isCallbackEntry;
             this.injectOrApply = false;
         }
 
         Key(Field field, boolean injectOrApply) {
             this.field = field;
             this.injectOrApply = injectOrApply;
+            this.isCallbackEntry = false;
         }
 
         boolean isInvalid() {
@@ -936,6 +949,7 @@ public final class CarRetrofit {
             Key key = (Key) o;
 
             if (injectOrApply != key.injectOrApply) return false;
+            if (isCallbackEntry != key.isCallbackEntry) return false;
             if (!Objects.equals(method, key.method)) return false;
             return Objects.equals(field, key.field);
         }
@@ -945,6 +959,7 @@ public final class CarRetrofit {
             int result = method != null ? method.hashCode() : 0;
             result = 31 * result + (field != null ? field.hashCode() : 0);
             result = 31 * result + (injectOrApply ? 1 : 0);
+            result = 31 * result + (isCallbackEntry ? 1 : 0);
             return result;
         }
 
@@ -981,9 +996,11 @@ public final class CarRetrofit {
         Track track = (flag & FLAG_PARSE_TRACK) != 0 ? key.getAnnotation(Track.class) : null;
         if (track != null) {
             CommandTrack command = new CommandTrack();
-            if (track.restoreSet() != 0) {
+            if (!key.isCallbackEntry && track.restoreSet() != 0) {
                 command.setRestoreCommand(getOrCreateCommandById(record, track.restoreSet(),
                         FLAG_PARSE_SET));
+            } else {
+                setupCallbackEntryCommand(record, command, key);
             }
             command.init(record, track, key);
             return command;
@@ -1076,11 +1093,12 @@ public final class CarRetrofit {
             if (delegateTarget != null) {
                 CommandDelegate command = new CommandDelegate();
                 command.setTargetCommand(delegateTarget);
-                if (delegate.restoreId() != 0) {
+                if (!key.isCallbackEntry && delegate.restoreId() != 0) {
                     command.restoreCommand = getOrCreateCommandById(record,
                             delegate.restoreId(), FLAG_PARSE_SET | FLAG_PARSE_TRACK);
                 } else if (delegateTarget instanceof CommandFlow) {
                     command.restoreCommand = ((CommandFlow) delegateTarget).restoreCommand;
+                    setupCallbackEntryCommand(record, command, key);
                 }
                 command.init(record, delegate, key);
                 return command;
@@ -1089,8 +1107,30 @@ public final class CarRetrofit {
         return null;
     }
 
-    private boolean searchAndCreateChildCommand(ApiRecord<?> record, boolean injectOrApply,
-                                                Consumer<CommandImpl> commandReceiver, int flag) {
+    private void setupCallbackEntryCommand(ApiRecord<?> record, CommandFlow entryCommand, Key key) {
+        if (key.isCallbackEntry) {
+            CommandImpl returnCommand = null;
+            Set set = key.getAnnotation(Set.class);
+            if (set != null) {
+                returnCommand = new CommandSet();
+                returnCommand.init(record, set, key);
+            }
+            Delegate returnDelegate = returnCommand == null ? key.getAnnotation(Delegate.class) : null;
+            if (returnDelegate != null && returnDelegate._return() != 0) {
+                CommandImpl delegateTarget = getOrCreateCommandById(record,
+                        returnDelegate._return(), FLAG_PARSE_SET);
+                CommandDelegate returnDelegateCommand = new CommandDelegate();
+                returnDelegateCommand.setTargetCommand(delegateTarget);
+                returnCommand = returnDelegateCommand;
+            }
+            if (returnCommand != null) {
+                entryCommand.setReturnCommand(returnCommand);
+            }
+        }
+    }
+
+    private void searchAndCreateChildCommand(ApiRecord<?> record, boolean injectOrApply,
+                                             Consumer<CommandImpl> commandReceiver, int flag) {
         ArrayList<Key> childKeys = record.getChildKey(injectOrApply);
         for (int i = 0; i < childKeys.size(); i++) {
             Key childKey = childKeys.get(i);
@@ -1101,13 +1141,9 @@ public final class CarRetrofit {
         }
         ArrayList<ApiRecord<?>> parentRecordList = record.getParentApi();
         for (int i = 0; i < parentRecordList.size(); i++) {
-            boolean more = searchAndCreateChildCommand(parentRecordList.get(i), injectOrApply,
+            searchAndCreateChildCommand(parentRecordList.get(i), injectOrApply,
                     commandReceiver, flag);
-            if (!more) {
-                return false;
-            }
         }
-        return true;
     }
 
     private static boolean hasUnresolvableType(Type type) {
@@ -1887,6 +1923,7 @@ public final class CarRetrofit {
         ArrayList<CommandImpl> childrenCommand = new ArrayList<>();
 
         CommandImpl restoreCommand;
+        CommandImpl returnCommand;
 
         // runtime variable
         CommandStickyGet commandStickyGet;
@@ -2010,8 +2047,13 @@ public final class CarRetrofit {
             }
         }
 
+        // used for CommandCombine
         void addChildCommand(CommandImpl command) {
             childrenCommand.add(command);
+        }
+
+        void setReturnCommand(CommandImpl command) {
+            returnCommand = command;
         }
 
         @Override
@@ -2051,7 +2093,10 @@ public final class CarRetrofit {
 
         @Override
         void onInit(Annotation annotation) {
-            if (key.method != null && key.method.getReturnType() == void.class) {
+            if (key.isCallbackEntry) {
+                registerTrack = true;
+                mapFlowSuppressed = true;
+            } else if (key.method != null && key.method.getReturnType() == void.class) {
                 Class<?>[] classArray = key.method.getParameterTypes();
                 if (classArray.length == 1) {
                     Class<?> parameterClass = classArray[0];
@@ -2259,7 +2304,6 @@ public final class CarRetrofit {
 
         @Override
         void onInit(Annotation annotation) {
-            super.onInit(annotation);
         }
 
         @Override
@@ -2269,7 +2313,21 @@ public final class CarRetrofit {
 
         @Override
         public CommandType type() {
-            return null;
+            return CommandType.CALLBACK;
+        }
+
+        private class InnerObserver implements Consumer<Object> {
+
+            CommandFlow commandFlow;
+
+            InnerObserver(CommandFlow commandFlow) {
+                this.commandFlow = commandFlow;
+            }
+
+            @Override
+            public void accept(Object o) {
+
+            }
         }
     }
 

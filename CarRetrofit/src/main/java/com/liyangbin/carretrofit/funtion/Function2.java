@@ -4,10 +4,6 @@ import com.liyangbin.carretrofit.CarRetrofit;
 import com.liyangbin.carretrofit.Converter;
 
 public interface Function2<T1, T2, R> extends FunctionalCombinator<R> {
-    default R apply(int effectIndex, T1 t1, T2 t2) {
-        return apply(t1, t2);
-    }
-
     @Override
     default R apply(int effectIndex, Object[] objects) {
         if (objects.length != 2) {
@@ -17,9 +13,8 @@ public interface Function2<T1, T2, R> extends FunctionalCombinator<R> {
         return apply(effectIndex, (T1) objects[0], (T2) objects[1]);
     }
 
-    @Override
-    default R convert(Object[] objects) {
-        return apply(-1, objects);
+    default R apply(int effectIndex, T1 t1, T2 t2) {
+        return apply(t1, t2);
     }
 
     R apply(T1 t1, T2 t2);

@@ -16,6 +16,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Retention(RUNTIME)
 public @interface Delegate {
     int value();
+    int _return() default 0;// used in CarCallback
     StickyType sticky() default StickyType.NO_SET;
     int restoreId() default 0;
     CarType type() default CarType.NO_SET;
