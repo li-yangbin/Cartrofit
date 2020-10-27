@@ -762,6 +762,9 @@ public final class CarRetrofit {
                 new Class[]{Get.class, Set.class, Delegate.class,
                         Combine.class, Apply.class, Inject.class};
 
+        private static final Class<? extends Annotation>[] QUALIFY_CALLBACK_CHECK =
+                new Class[]{Delegate.class, Track.class, Combine.class};
+
         private static final Class<? extends Annotation>[] QUALIFY_INJECT_CHECK =
                 new Class[]{Get.class, Delegate.class, Combine.class, Inject.class};
 
@@ -800,7 +803,8 @@ public final class CarRetrofit {
         void doQualifyCheck() {
             boolean qualified = false;
             int checkIndex = 0;
-            Class<? extends Annotation>[] checkMap = method != null ? QUALIFY_CHECK
+            Class<? extends Annotation>[] checkMap = method != null ?
+                    (isCallbackEntry ? QUALIFY_CALLBACK_CHECK : QUALIFY_CHECK)
                     : (injectOrApply ? QUALIFY_INJECT_CHECK : QUALIFY_APPLY_CHECK);
             while (checkIndex < checkMap.length) {
                 if (isAnnotationPresent(checkMap[checkIndex++])) {
@@ -808,6 +812,22 @@ public final class CarRetrofit {
                         throw new CarRetrofitException("More than one annotation presented by:" + this);
                     }
                     qualified = true;
+                }
+            }
+            if (isCallbackEntry) {
+                boolean setPresent = isAnnotationPresent(Set.class);
+                if (!setPresent) {
+                    Delegate delegate = getAnnotation(Delegate.class);
+                    if (delegate != null) {
+                        setPresent = delegate._return() != 0;
+                    }
+                }
+                boolean declareReturn = method.getReturnType() != void.class;
+                if (setPresent != declareReturn) {
+                    throw new CarRetrofitException("Invalid declaration:" + method);
+                }
+                if (method.getParameterCount() > 1) {
+                    throw new CarRetrofitException("Invalid parameter count:" + method);
                 }
             }
             if (injectOrApply && Modifier.isFinal(field.getModifiers())) {
@@ -900,6 +920,10 @@ public final class CarRetrofit {
         }
 
         Class<?> getUserConcernClass() {
+            if (isCallbackEntry) {
+                Class<?>[] parameterClassArray = method.getParameterTypes();
+                return parameterClassArray.length > 0 ? parameterClassArray[0] : null;
+            }
             Type originalType = getTrackType();
             if (hasUnresolvableType(originalType)) {
                 throw new CarRetrofitException("Can not parse type:" + originalType + " from:" + this);
@@ -2302,13 +2326,23 @@ public final class CarRetrofit {
 
     private static class CommandCallback extends CommandGroup {
 
+        private HashMap<Object, RegisterCallbackWrapper> callbackWrapperMapper = new HashMap<>();
+
         @Override
         void onInit(Annotation annotation) {
+            // ignore
         }
 
         @Override
         public Object invoke(Object parameter) throws Throwable {
-            return null;
+            if (callbackWrapperMapper.containsKey(
+                    Objects.requireNonNull(parameter, "callback can not be null"))) {
+                throw new CarRetrofitException("callback:" + parameter + " is already registered");
+            }
+            RegisterCallbackWrapper wrapper = new RegisterCallbackWrapper(parameter);
+            callbackWrapperMapper.put(parameter, wrapper);
+            wrapper.register();
+            return SKIP;
         }
 
         @Override
@@ -2316,17 +2350,71 @@ public final class CarRetrofit {
             return CommandType.CALLBACK;
         }
 
-        private class InnerObserver implements Consumer<Object> {
+        private class RegisterCallbackWrapper {
+            Object callbackObj;
+            ArrayList<InnerObserver> commandObserverList = new ArrayList<>();
+
+            RegisterCallbackWrapper(Object callbackObj) {
+                this.callbackObj = callbackObj;
+            }
+
+            void register() throws Throwable {
+                if (commandObserverList.size() > 0) {
+                    throw new CarRetrofitException("impossible situation");
+                }
+                for (int i = 0; i < childrenCommand.size(); i++) {
+                    CommandFlow entry = (CommandFlow) childrenCommand.get(i);
+                    InnerObserver observer = new InnerObserver(entry, callbackObj);
+                    commandObserverList.add(observer);
+                    entry.invokeWithChain(observer);
+                }
+            }
+
+            void unregister() {
+                for (int i = 0; i < commandObserverList.size(); i++) {
+                    CommandFlow entry = (CommandFlow) childrenCommand.get(i);
+                    InnerObserver observer = commandObserverList.get(i);
+                    if (observer != null) {
+                        entry.trackingFlow.removeObserver(observer);
+                    }
+                }
+                commandObserverList.clear();
+            }
+        }
+
+        private static class InnerObserver implements Consumer<Object> {
 
             CommandFlow commandFlow;
+            Object callbackObj;
+            Method method;
+            boolean dispatchReceiveValue;
 
-            InnerObserver(CommandFlow commandFlow) {
+            InnerObserver(CommandFlow commandFlow, Object callbackObj) {
                 this.commandFlow = commandFlow;
+                this.callbackObj = callbackObj;
+                this.method = commandFlow.key.method;
+                this.dispatchReceiveValue = method.getParameterCount() == 1;
             }
 
             @Override
             public void accept(Object o) {
-
+                Object result;
+                try {
+                    if (dispatchReceiveValue) {
+                        result = method.invoke(callbackObj, o);
+                    } else {
+                        result = method.invoke(callbackObj);
+                    }
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException(e);
+                }
+                if (commandFlow.returnCommand != null) {
+                    try {
+                        commandFlow.returnCommand.invokeWithChain(result);
+                    } catch (Throwable throwable) {
+                        throw new RuntimeException(throwable);
+                    }
+                }
             }
         }
     }
