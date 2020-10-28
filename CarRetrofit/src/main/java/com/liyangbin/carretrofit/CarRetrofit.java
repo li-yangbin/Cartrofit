@@ -815,15 +815,17 @@ public final class CarRetrofit {
                 }
             }
             if (isCallbackEntry) {
-                boolean setPresent = isAnnotationPresent(Set.class);
-                if (!setPresent) {
+                Set set = getAnnotation(Set.class);
+                boolean setWithReturn;
+                if (set != null) {
+                    CarValue value = set.value();
+                    setWithReturn = CarValue.EMPTY_VALUE.equals(value.string());
+                } else {
                     Delegate delegate = getAnnotation(Delegate.class);
-                    if (delegate != null) {
-                        setPresent = delegate._return() != 0;
-                    }
+                    setWithReturn = delegate != null && delegate._return() != 0;
                 }
                 boolean declareReturn = method.getReturnType() != void.class;
-                if (setPresent != declareReturn) {
+                if (setWithReturn != declareReturn) {
                     throw new CarRetrofitException("Invalid declaration:" + method);
                 }
                 if (method.getParameterCount() > 1) {
@@ -874,6 +876,8 @@ public final class CarRetrofit {
         Class<?> getSetClass() {
             if (field != null) {
                 return field.getType();
+            } else if (isCallbackEntry) {
+                return method.getReturnType();
             } else {
                 Class<?>[] classArray = method.getParameterTypes();
                 if (classArray.length != 1) {
@@ -891,6 +895,8 @@ public final class CarRetrofit {
         Class<?> getTrackClass() {
             if (field != null) {
                 return field.getType();
+            } else if (isCallbackEntry) {
+                return method.getParameterTypes()[0];
             } else {
                 Class<?> returnType = method.getReturnType();
                 if (returnType == void.class) {
@@ -1035,7 +1041,7 @@ public final class CarRetrofit {
             CommandUnTrack command = new CommandUnTrack();
             final int targetTrack = unTrack.track();
             command.setTrackCommand((CommandFlow) getOrCreateCommandById(record, targetTrack,
-                    FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE));
+                    FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE | FLAG_PARSE_CALLBACK));
             command.init(record, unTrack, key);
             return command;
         }
@@ -1101,12 +1107,12 @@ public final class CarRetrofit {
             if (!targetClass.isInterface()) {
                 throw new CarRetrofitException("Declare CarCallback parameter as an interface:" + targetClass);
             }
-            if (!targetClass.isAnnotationPresent(CarCallback.class)) {
-                throw new CarRetrofitException("Declare CarCallback on interface type:" + targetClass);
-            }
             CommandCallback command = new CommandCallback();
             searchAndCreateChildCommand(getApi(targetClass), false,
                     command::addChildCommand, FLAG_PARSE_TRACK);
+            if (command.childrenCommand.size() == 0) {
+                throw new CarRetrofitException("Failed to resolve callback entry point in " + targetClass);
+            }
             return command;
         }
 
@@ -1556,6 +1562,7 @@ public final class CarRetrofit {
 
         @Override
         void onInit(Annotation annotation) {
+            super.onInit(annotation);
             Combine combine = (Combine) annotation;
             resolveStickyType(combine.sticky());
             if (stickyType == StickyType.NO_SET || stickyType == StickyType.OFF) {
@@ -1933,7 +1940,11 @@ public final class CarRetrofit {
         }
     }
 
-    private static abstract class CommandFlow extends CommandImpl {
+    private interface UnTrackable extends Command {
+        void untrack(Object obj);
+    }
+
+    private static abstract class CommandFlow extends CommandImpl implements UnTrackable {
         private static final Timer sTimeOutTimer = new Timer("timeout-tracker");
         private static final long TIMEOUT_DELAY = 1500;
 
@@ -2175,6 +2186,13 @@ public final class CarRetrofit {
             }
         }
 
+        @Override
+        public void untrack(Object callback) {
+            if (trackingFlow != null) {
+                trackingFlow.removeObserver((Consumer<Object>) callback);
+            }
+        }
+
         abstract Object doInvoke() throws Throwable;
 
         @Override
@@ -2199,6 +2217,7 @@ public final class CarRetrofit {
 
         @Override
         void onInit(Annotation annotation) {
+            super.onInit(annotation);
             Track track = (Track) annotation;
             propertyId = track.id();
             type = track.type();
@@ -2324,9 +2343,9 @@ public final class CarRetrofit {
         }
     }
 
-    private static class CommandCallback extends CommandGroup {
+    private static class CommandCallback extends CommandGroup implements UnTrackable {
 
-        private HashMap<Object, RegisterCallbackWrapper> callbackWrapperMapper = new HashMap<>();
+        private final HashMap<Object, RegisterCallbackWrapper> callbackWrapperMapper = new HashMap<>();
 
         @Override
         void onInit(Annotation annotation) {
@@ -2334,13 +2353,13 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
+        public Object invoke(Object callback) throws Throwable {
             if (callbackWrapperMapper.containsKey(
-                    Objects.requireNonNull(parameter, "callback can not be null"))) {
-                throw new CarRetrofitException("callback:" + parameter + " is already registered");
+                    Objects.requireNonNull(callback, "callback can not be null"))) {
+                throw new CarRetrofitException("callback:" + callback + " is already registered");
             }
-            RegisterCallbackWrapper wrapper = new RegisterCallbackWrapper(parameter);
-            callbackWrapperMapper.put(parameter, wrapper);
+            RegisterCallbackWrapper wrapper = new RegisterCallbackWrapper(callback);
+            callbackWrapperMapper.put(callback, wrapper);
             wrapper.register();
             return SKIP;
         }
@@ -2348,6 +2367,14 @@ public final class CarRetrofit {
         @Override
         public CommandType type() {
             return CommandType.CALLBACK;
+        }
+
+        @Override
+        public void untrack(Object callback) {
+            RegisterCallbackWrapper wrapper = callbackWrapperMapper.get(callback);
+            if (wrapper != null) {
+                wrapper.unregister();
+            }
         }
 
         private class RegisterCallbackWrapper {
@@ -2420,15 +2447,14 @@ public final class CarRetrofit {
     }
 
     private static class CommandUnTrack extends CommandImpl {
-        CommandFlow trackCommand;
+        UnTrackable trackCommand;
 
         @Override
         void onInit(Annotation annotation) {
             if (key.method != null && key.method.getReturnType() == void.class) {
                 Class<?>[] classArray = key.method.getParameterTypes();
                 if (classArray.length == 1) {
-                    Class<?> parameterClass = classArray[0];
-                    if (Consumer.class.isAssignableFrom(parameterClass)) {
+                    if (classArray[0] == trackCommand.getMethod().getParameterTypes()[0]) {
                         return;
                     }
                 }
@@ -2436,15 +2462,13 @@ public final class CarRetrofit {
             throw new CarRetrofitException("invalid unTrack:" + this);
         }
 
-        void setTrackCommand(CommandFlow trackCommand) {
+        void setTrackCommand(UnTrackable trackCommand) {
             this.trackCommand = trackCommand;
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
-            if (trackCommand.trackingFlow != null) {
-                trackCommand.trackingFlow.removeObserver((Consumer<Object>) parameter);
-            }
+        public Object invoke(Object callback) throws Throwable {
+            trackCommand.untrack(callback);
             return null;
         }
 
@@ -2537,6 +2561,7 @@ public final class CarRetrofit {
 
         @Override
         void onInit(Annotation annotation) {
+            super.onInit(annotation);
             Delegate delegate = (Delegate) annotation;
             resolveStickyType(delegate.sticky());
             carType = delegate.type();
@@ -2565,7 +2590,8 @@ public final class CarRetrofit {
                 }
             } else if (isReturnFlow()) {
                 resultConverter = (Converter<Object, ?>) ConverterStore.find(this,
-                        Flow.class, key.getTrackClass(), store);
+                        key.isCallbackEntry ? targetCommand.userDataClass : Flow.class,
+                        key.getTrackClass(), store);
                 mapConverter = findMapConverter(targetCommand.userDataClass);
             } else {
                 resultConverter = findMapConverter(targetCommand.userDataClass);

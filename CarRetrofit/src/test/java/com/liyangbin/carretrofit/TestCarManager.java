@@ -59,7 +59,7 @@ public class TestCarManager extends CarManager2 {
 //                        if (obj.getClass().isArray()) {
 //                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + Arrays.toString((Object[])obj));
 //                        } else {
-//                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + obj);
+                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + obj);
 //                        }
                         notifyChange(new CarPropertyValue<>(key, 0, obj));
                     }

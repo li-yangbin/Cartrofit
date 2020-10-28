@@ -566,6 +566,17 @@ public class ExampleUnitTest {
     }
 
     @Test
+    public void testRegisterCallback() {
+        api.register2Callback(new MyCallback() {
+            @Override
+            public void onStringChange(String aa) {
+                print("callback goes off:" + aa);
+                Thread.dumpStack();
+            }
+        });
+    }
+
+    @Test
     public void combineDelegate() {
         api.trackIntAndBoolean().subscribe(new Consumer<String>() {
             @Override

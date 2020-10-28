@@ -4,6 +4,7 @@ import androidx.databinding.ObservableBoolean;
 
 import com.liyangbin.carretrofit.annotation.Apply;
 import com.liyangbin.carretrofit.annotation.CarApi;
+import com.liyangbin.carretrofit.annotation.CarCallback;
 import com.liyangbin.carretrofit.annotation.CarValue;
 import com.liyangbin.carretrofit.annotation.Combine;
 import com.liyangbin.carretrofit.annotation.Delegate;
@@ -11,6 +12,7 @@ import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
 import com.liyangbin.carretrofit.annotation.Set;
 import com.liyangbin.carretrofit.annotation.Track;
+import com.liyangbin.carretrofit.annotation.UnTrack;
 
 import io.reactivex.Observable;
 import io.reactivex.Single;
@@ -121,4 +123,10 @@ public interface TestCarApi {
 
     @Inject
     void injectComboData(ExampleUnitTest.CarData data);
+
+    @CarCallback
+    void register2Callback(MyCallback callback);
+
+    @UnTrack(track = register2Callback)
+    void unregisterCallback(MyCallback callback);
 }
