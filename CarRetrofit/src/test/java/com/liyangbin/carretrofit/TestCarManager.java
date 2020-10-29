@@ -59,7 +59,7 @@ public class TestCarManager extends CarManager2 {
 //                        if (obj.getClass().isArray()) {
 //                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + Arrays.toString((Object[])obj));
 //                        } else {
-                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + obj);
+                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + obj + "============================");
 //                        }
                         notifyChange(new CarPropertyValue<>(key, 0, obj));
                     }
@@ -118,11 +118,11 @@ public class TestCarManager extends CarManager2 {
 
     @Override
     public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
-        builder.convert(Integer.class)
-                .to(Boolean.class)
+        builder.convert(int.class)
+                .to(boolean.class)
                 .by(value -> value > 0)
                 .apply(ApiBuilder.Constraint.ALL);
-        builder.combine(String.class, Boolean.class)
+        builder.combine(String.class, boolean.class)
                 .to(String.class)
                 .by((string, bool) -> "string:" + string + " together:" + bool)
                 .apply(ApiBuilder.Constraint.of(TestCarApiId.trackIntAndBoolean));
@@ -148,7 +148,7 @@ public class TestCarManager extends CarManager2 {
     public void notifyChange(CarPropertyValue<?> value) {
         super.notifyChange(value);
         Combo combo = typeMockMap.get(value.getPropertyId());
-        combo.value = value;
+        combo.value = value.getValue();
     }
 
     static Object generateRandomValue(Random random, Class<?> clazz) {
@@ -193,7 +193,8 @@ public class TestCarManager extends CarManager2 {
     public synchronized void set(int key, int area, Object value) {
         Combo combo = typeMockMap.get(key);
         combo.value = value;
-//        notifyChange(new CarPropertyValue<>(key, area, value));
+        System.out.println("set key:" + key + " value:" + value);
+        notifyChange(new CarPropertyValue<>(key, area, value));
     }
 
     @Nullable

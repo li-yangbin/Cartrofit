@@ -5,6 +5,10 @@ import java.lang.reflect.Method;
 
 public interface Interceptor {
     Object process(Command command, Object parameter) throws Throwable;
+
+    default boolean checkCommand(Command command) {
+        return true;
+    }
 }
 
 class InterceptorChain {
@@ -128,6 +132,16 @@ class InterceptorChain {
         @Override
         public String getName() {
             return previous.getName();
+        }
+
+        @Override
+        public Class<?> getOutputType() {
+            return previous.getOutputType();
+        }
+
+        @Override
+        public Class<?> getInputType() {
+            return previous.getInputType();
         }
     }
 }

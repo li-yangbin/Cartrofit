@@ -132,7 +132,7 @@ public abstract class CarManager2 implements DataSource {
 
     private class SimpleFlow implements Flow<CarPropertyValue<?>> {
 
-        private ArrayList<Consumer<CarPropertyValue<?>>> consumerList = new ArrayList<>();
+        private ArrayList<ThrowableConsumer<CarPropertyValue<?>>> consumerList = new ArrayList<>();
         CarPropertyValue<?> value;
         private int propertyId;
         private int areaId;
@@ -143,7 +143,7 @@ public abstract class CarManager2 implements DataSource {
         }
 
         @Override
-        public void addObserver(Consumer<CarPropertyValue<?>> consumer) {
+        public void addObserver(ThrowableConsumer<CarPropertyValue<?>> consumer) {
             if (consumerList.size() == 0) {
                 CarManager2.this.onObserverActive(propertyId);
             }
@@ -151,7 +151,7 @@ public abstract class CarManager2 implements DataSource {
         }
 
         @Override
-        public void removeObserver(Consumer<CarPropertyValue<?>> consumer) {
+        public void removeObserver(ThrowableConsumer<CarPropertyValue<?>> consumer) {
             if (consumerList.remove(Objects.requireNonNull(consumer)) && consumerList.size() == 0) {
                 CarManager2.this.onObserverInActive(propertyId);
             }

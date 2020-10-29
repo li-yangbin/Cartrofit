@@ -32,4 +32,8 @@ public interface Command {
     Field getField();
 
     String getName();
+
+    Class<?> getOutputType();
+
+    Class<?> getInputType();
 }

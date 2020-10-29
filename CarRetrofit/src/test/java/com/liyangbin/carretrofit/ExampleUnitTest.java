@@ -369,7 +369,7 @@ public class ExampleUnitTest {
     @AfterClass
     public static void end() {
         try {
-            Thread.sleep(10 * 1000);
+            Thread.sleep(100 * 1000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -570,8 +570,26 @@ public class ExampleUnitTest {
         api.register2Callback(new MyCallback() {
             @Override
             public void onStringChange(String aa) {
-                print("callback goes off:" + aa);
-                Thread.dumpStack();
+                print("onStringChange goes aa:" + aa);
+            }
+
+            @Override
+            public void onStringSignalChange(String bb) {
+                print("onStringSignalChange goes bb:" + bb);
+            }
+
+            boolean toggle;
+
+            @Override
+            public int onIntSignalChange(int cc) {
+                print("onIntSignalChange goes cc:" + cc);
+//                toggle = !toggle;
+                return (int) (Math.random() * 100);
+            }
+
+            @Override
+            public void onIntSignalChangeDele(int dd) {
+                print("onIntSignalChangeDele goes dd:" + dd);
             }
         });
     }

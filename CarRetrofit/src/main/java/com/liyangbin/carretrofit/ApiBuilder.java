@@ -6,10 +6,41 @@ import com.liyangbin.carretrofit.funtion.Function4;
 import com.liyangbin.carretrofit.funtion.Function5;
 
 import java.util.Objects;
+import java.util.function.Predicate;
 
 public abstract class ApiBuilder {
 
     public abstract ApiBuilder intercept(Interceptor interceptor);
+
+    public final <T> PredicateBuilder<T> checkInput(Class<T> target) {
+        return new PredicateBuilder<>(target, true);
+    }
+
+    public final class PredicateBuilder<T> {
+        private final Class<T> targetClass;
+        private final boolean checkInput;
+
+        private PredicateBuilder(Class<T> clazz, boolean checkInput) {
+            targetClass = clazz;
+            this.checkInput = checkInput;
+        }
+
+        public ApiBuilder filter(Predicate<T> predicate) {
+            return intercept(new Interceptor() {
+                @SuppressWarnings("unchecked")
+                @Override
+                public Object process(Command command, Object parameter) throws Throwable {
+                    return predicate.test((T) parameter) ? command.invoke(parameter) : null;
+                }
+
+                @Override
+                public boolean checkCommand(Command command) {
+                    Class<?> classToBeChecked = checkInput ? command.getInputType() : command.getOutputType();
+                    return classToBeChecked == targetClass;
+                }
+            });
+        }
+    }
 
     abstract ApiBuilder convert(AbsConverterBuilder builder);
 
