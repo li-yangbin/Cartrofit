@@ -3,13 +3,13 @@ package com.liyangbin.carretrofit;
 import android.car.hardware.CarPropertyValue;
 
 public interface DataSource extends ApiCallback {
-    Object get(int key, int area, CarType type) throws Exception;
+    Object get(int key, int area, CarType type);
 
-    <TYPE> void set(int key, int area, TYPE value) throws Exception;
+    <TYPE> void set(int key, int area, TYPE value);
 
-    Flow<CarPropertyValue<?>> track(int key, int area) throws Exception;
+    Flow<CarPropertyValue<?>> track(int key, int area);
 
-    Class<?> extractValueType(int key) throws Exception;
+    Class<?> extractValueType(int key);
 
     String getScopeId();
 }

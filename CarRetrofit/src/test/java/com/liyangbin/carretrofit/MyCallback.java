@@ -15,7 +15,7 @@ public interface MyCallback {
     void onStringSignalChange(String bb);
 
     @Track(id = 0)
-    @Set(id = 0)int onIntSignalChange(int cc);
+    @Set(id = 2)String onIntSignalChange(int cc);
 
     @Delegate(TestCarApiId.trackIntReactive)
     void onIntSignalChangeDele(int d);

@@ -11,6 +11,7 @@ import com.liyangbin.carretrofit.annotation.ConsiderSuper;
 import com.liyangbin.carretrofit.annotation.Delegate;
 import com.liyangbin.carretrofit.annotation.Get;
 import com.liyangbin.carretrofit.annotation.Inject;
+import com.liyangbin.carretrofit.annotation.Out;
 import com.liyangbin.carretrofit.annotation.Register;
 import com.liyangbin.carretrofit.annotation.Set;
 import com.liyangbin.carretrofit.annotation.Track;
@@ -23,6 +24,7 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -179,7 +181,6 @@ public final class CarRetrofit {
 
         Interceptor tempInterceptor;
         AbsConverterBuilder converterBuilder;
-//        Converter<?, ?> tempConverter;
 
         ApiRecord(Class<T> clazz) {
             this.clazz = clazz;
@@ -220,7 +221,7 @@ public final class CarRetrofit {
         @Override
         public ApiBuilder intercept(Interceptor interceptor) {
             if (tempInterceptor != null) {
-                throw new CarRetrofitException("Call apply(Interceptor) only once before inject");
+                throw new CarRetrofitException("Call intercept(Interceptor) only once before inject");
             }
             tempInterceptor = interceptor;
             return this;
@@ -589,6 +590,23 @@ public final class CarRetrofit {
             return parentStore != null ? parentStore.findWithoutCommand(from, to) : null;
         }
 
+        private static boolean classEquals(Class<?> a, Class<?> b) {
+            if (a.equals(b)) {
+                return true;
+            }
+            boolean aIsPrimitive = a.isPrimitive();
+            boolean bIsPrimitive = b.isPrimitive();
+            if (aIsPrimitive != bIsPrimitive) {
+                if (aIsPrimitive && boxTypeOf(a).equals(b)) {
+                    return true;
+                }
+                if (bIsPrimitive && boxTypeOf(b).equals(a)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private static Class<?> boxTypeOf(Class<?> primitive) {
             if (primitive == int.class) {
                 return Integer.class;
@@ -607,10 +625,8 @@ public final class CarRetrofit {
 
         static Converter<?, ?> find(CommandImpl command, Class<?> from, Class<?> to,
                                     ConverterStore store) {
-            from = from.isPrimitive() ? boxTypeOf(from) : from;
-            to = to.isPrimitive() ? boxTypeOf(to) : to;
             Converter<?, ?> converter = store.findWithoutCommand(from, to);
-            if (from == to || converter != null) {
+            if (converter != null || classEquals(from, to)) {
                 return converter;
             }
             throw new CarRetrofitException("Can not resolve converter from:"
@@ -713,7 +729,11 @@ public final class CarRetrofit {
     }
 
     private CommandImpl getOrCreateCommand(ApiRecord<?> record, Key key) {
-        return getOrCreateCommandIfChecked(record, key, FLAG_PARSE_ALL);
+        CommandImpl command = getOrCreateCommand(record, key, FLAG_PARSE_ALL);
+        if (command == null) {
+            throw new CarRetrofitException("Can not parse command from:" + key);
+        }
+        return command;
     }
 
     private CommandImpl getOrCreateCommandById(ApiRecord<?> record, int id, int flag) {
@@ -730,7 +750,7 @@ public final class CarRetrofit {
             }
             return getOrCreateCommandById(getApi(apiClass, true), id, flag, throwIfNotFound);
         }
-        CommandImpl command = getOrCreateCommandIfChecked(getApi(method.getDeclaringClass()),
+        CommandImpl command = getOrCreateCommand(getApi(method.getDeclaringClass()),
                 new Key(method, false), flag);
         if (throwIfNotFound && command == null) {
             throw new CarRetrofitException("Can not resolve target Id:" + id
@@ -739,7 +759,7 @@ public final class CarRetrofit {
         return command;
     }
 
-    private CommandImpl getOrCreateCommandIfChecked(ApiRecord<?> record, Key key, int flag) {
+    private CommandImpl getOrCreateCommand(ApiRecord<?> record, Key key, int flag) {
         if (record == null) {
             return null;
         }
@@ -831,13 +851,25 @@ public final class CarRetrofit {
                 if (setWithReturn != declareReturn) {
                     throw new CarRetrofitException("Invalid declaration:" + method);
                 }
-                if (method.getParameterCount() > 1) {
-                    throw new CarRetrofitException("Invalid parameter count:" + method);
+                int parameterCount = method.getParameterCount();
+                if (parameterCount > 0) {
+                    Annotation[][] annotationAll = method.getParameterAnnotations();
+                    int countWithOut = 0;
+                    for (Annotation[] annotationOnePara : annotationAll) {
+                        for (Annotation annotation : annotationOnePara) {
+                            if (annotation instanceof Out) {
+                                countWithOut++;
+                                break;
+                            }
+                        }
+                    }
+                    if (parameterCount - countWithOut > 1) {
+                        throw new CarRetrofitException("Invalid parameter count:" + method);
+                    }
                 }
             }
             if (injectOrApply && Modifier.isFinal(field.getModifiers())) {
-                throw new CarRetrofitException("Invalid key:" + this
-                        + " in command Inject");
+                throw new CarRetrofitException("Invalid key:" + this + " in command Inject");
             }
             if (isInvalid()) {
                 throw new CarRetrofitException("Invalid key:" + this);
@@ -1059,8 +1091,7 @@ public final class CarRetrofit {
             searchAndCreateChildCommand(getApi(targetClass), true,
                     command::addChildCommand,
                     FLAG_PARSE_INJECT | FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
-            if (command.childrenCommand.size() == 0
-                    && !InjectReceiver.class.isAssignableFrom(targetClass)) {
+            if (command.childrenCommand.size() == 0) {
                 throw new CarRetrofitException("Failed to parse Inject command from type:"
                         + targetClass);
             }
@@ -1071,19 +1102,7 @@ public final class CarRetrofit {
         Apply apply = (flag & FLAG_PARSE_APPLY) != 0 ? key.getAnnotation(Apply.class) : null;
         if (apply != null) {
             Class<?> targetClass = key.getSetClass();
-            if (targetClass.isPrimitive() || targetClass.isArray() || targetClass == String.class) {
-                throw new CarRetrofitException("Can not use Apply on class type:" + targetClass);
-            }
-            CommandApply command = new CommandApply(targetClass);
-            searchAndCreateChildCommand(getApi(targetClass), false,
-                    command::addChildCommand, FLAG_PARSE_APPLY | FLAG_PARSE_SET);
-            if (command.childrenCommand.size() == 0
-                    && !ApplyReceiver.class.isAssignableFrom(targetClass)) {
-                throw new CarRetrofitException("Failed to parse Apply command from type:"
-                        + targetClass);
-            }
-            command.init(record, apply, key);
-            return command;
+            return createApplyCommand(targetClass, record, apply, key);
         }
 
         Combine combine = (flag & FLAG_PARSE_COMBINE) != 0 ? key.getAnnotation(Combine.class) : null;
@@ -1109,13 +1128,28 @@ public final class CarRetrofit {
             if (!targetClass.isInterface()) {
                 throw new CarRetrofitException("Declare CarCallback parameter as an interface:" + targetClass);
             }
-            CommandCallback command = new CommandCallback();
+            CommandRegister commandRegister = new CommandRegister();
             searchAndCreateChildCommand(getApi(targetClass), false,
-                    command::addChildCommand, FLAG_PARSE_TRACK);
-            if (command.childrenCommand.size() == 0) {
+                    command -> {
+                        Method method = command.getMethod();
+                        Annotation[][] annotationAll = method.getParameterAnnotations();
+                        ArrayList<CommandApply> outCommandList = new ArrayList<>();
+                        anchor:for (int i = 0; i < annotationAll.length; i++) {
+                            for (Annotation annotation : annotationAll[i]) {
+                                if (annotation instanceof Out) {
+                                    outCommandList.add(createApplyCommand(
+                                            method.getParameterTypes()[i], record, annotation, null));
+                                    continue anchor;
+                                }
+                            }
+                            outCommandList.add(null);
+                        }
+                        commandRegister.addChildCommand(command, outCommandList);
+                    }, FLAG_PARSE_TRACK);
+            if (commandRegister.childrenCommand.size() == 0) {
                 throw new CarRetrofitException("Failed to resolve callback entry point in " + targetClass);
             }
-            return command;
+            return commandRegister;
         }
 
         Delegate delegate = key.getAnnotation(Delegate.class);
@@ -1137,6 +1171,22 @@ public final class CarRetrofit {
             }
         }
         return null;
+    }
+
+    private CommandApply createApplyCommand(Class<?> targetClass, ApiRecord<?> parentRecord,
+                                            Annotation annotation, Key key) {
+        if (targetClass.isPrimitive() || targetClass.isArray() || targetClass == String.class) {
+            throw new CarRetrofitException("Invalid class type:" + targetClass);
+        }
+        CommandApply command = new CommandApply(targetClass);
+        searchAndCreateChildCommand(getApi(targetClass), false,
+                command::addChildCommand, FLAG_PARSE_APPLY | FLAG_PARSE_SET);
+        if (command.childrenCommand.size() == 0) {
+            throw new CarRetrofitException("Failed to parse Apply command from type:"
+                    + targetClass);
+        }
+        command.init(parentRecord, annotation, key);
+        return command;
     }
 
     private void setupCallbackEntryCommandIfNeeded(ApiRecord<?> record, CommandFlow entryCommand, Key key) {
@@ -1166,7 +1216,7 @@ public final class CarRetrofit {
         ArrayList<Key> childKeys = record.getChildKey(injectOrApply);
         for (int i = 0; i < childKeys.size(); i++) {
             Key childKey = childKeys.get(i);
-            CommandImpl command = getOrCreateCommandIfChecked(record, childKey, flag);
+            CommandImpl command = getOrCreateCommand(record, childKey, flag);
             if (command != null) {
                 commandReceiver.accept(command);
             }
@@ -1310,18 +1360,8 @@ public final class CarRetrofit {
         }
 
         @Override
-        public void setPropertyId(int propertyId) {
-            delegateTarget().propertyId = propertyId;
-        }
-
-        @Override
         public int getPropertyId() {
             return delegateTarget().propertyId;
-        }
-
-        @Override
-        public void setArea(int area) {
-            delegateTarget().area = area;
         }
 
         @Override
@@ -1385,7 +1425,7 @@ public final class CarRetrofit {
                     + " from:" + key;
         }
 
-        final Object invokeWithChain(Object parameter) throws Throwable {
+        final Object invokeWithChain(Object parameter) {
             if (chain != null) {
                 return chain.doProcess(this, parameter);
             } else {
@@ -1408,7 +1448,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
+        public Object invoke(Object parameter) {
             Object target = null;
             if (parameter != null) {
                 if (targetClass.isInstance(parameter)) {
@@ -1425,18 +1465,22 @@ public final class CarRetrofit {
                 ((ApplyReceiver) target).onBeforeApply();
             }
 
-            final int count = childrenCommand.size();
-            for (int i = 0; i < count; i++) {
-                CommandImpl command = childrenCommand.get(i);
-                Field field = command.getField();
-                Object applyFrom = field.get(target);
-                if (command.type() == CommandType.APPLY) {
-                    if (applyFrom != null) {
+            try {
+                final int count = childrenCommand.size();
+                for (int i = 0; i < count; i++) {
+                    CommandImpl command = childrenCommand.get(i);
+                    Field field = command.getField();
+                    Object applyFrom = field.get(target);
+                    if (command.type() == CommandType.APPLY) {
+                        if (applyFrom != null) {
+                            command.invokeWithChain(applyFrom);
+                        }
+                    } else {
                         command.invokeWithChain(applyFrom);
                     }
-                } else {
-                    command.invokeWithChain(applyFrom);
                 }
+            } catch (IllegalAccessException illegalAccessException) {
+                throw new RuntimeException(illegalAccessException);
             }
 
             if (target instanceof ApplyReceiver) {
@@ -1476,7 +1520,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
+        public Object invoke(Object parameter) {
             Object target = null;
             if (targetClass.isInstance(parameter)) {
                 target = parameter;
@@ -1486,7 +1530,7 @@ public final class CarRetrofit {
                 try {
                     target = targetClass.getConstructor().newInstance();
                 } catch (ReflectiveOperationException re) {
-                    throw new CarRetrofitException("Can not create inject target", re);
+                    throw new RuntimeException("Can not create inject target", re);
                 }
             }
 
@@ -1499,20 +1543,24 @@ public final class CarRetrofit {
                 ((InjectReceiver) target).onBeforeInject();
             }
 
-            final int count = childrenCommand.size();
-            for (int i = 0; i < count; i++) {
-                CommandImpl command = childrenCommand.get(i);
-                Field field = command.getField();
-                if (command.type() == CommandType.INJECT) {
-                    Object injectTarget = field.get(target);
-                    if (injectTarget != null) {
-                        command.invokeWithChain(injectTarget);
+            try {
+                final int count = childrenCommand.size();
+                for (int i = 0; i < count; i++) {
+                    CommandImpl command = childrenCommand.get(i);
+                    Field field = command.getField();
+                    if (command.type() == CommandType.INJECT) {
+                        Object injectTarget = field.get(target);
+                        if (injectTarget != null) {
+                            command.invokeWithChain(injectTarget);
+                        } else {
+                            field.set(target, command.invokeWithChain(null));
+                        }
                     } else {
                         field.set(target, command.invokeWithChain(null));
                     }
-                } else {
-                    field.set(target, command.invokeWithChain(null));
                 }
+            } catch (IllegalAccessException illegalAccessException) {
+                throw new RuntimeException(illegalAccessException);
             }
 
             if (target instanceof InjectReceiver) {
@@ -1665,7 +1713,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        Object doInvoke() throws Throwable {
+        Object doInvoke() {
             if (combineFlow == null) {
                 final int size = childrenCommand.size();
                 Object[] elementResult = new Object[size];
@@ -1717,11 +1765,6 @@ public final class CarRetrofit {
             return CommandType.COMBINE;
         }
 
-//        @Override
-//        String toCommandString() {
-//            return super.toCommandString() + " combinator:" + combinatorId;
-//        }
-
         private static class CombineData {
             int effectIndex;
             Object[] trackingObj;
@@ -1743,7 +1786,7 @@ public final class CarRetrofit {
             CombineData trackingData;
             StickyFlow<?>[] flowArray;
             InternalObserver[] flowObservers;
-            ArrayList<ThrowableConsumer<CombineData>> consumers = new ArrayList<>();
+            ArrayList<Consumer<CombineData>> consumers = new ArrayList<>();
             boolean notifyValueSuppressed;
 
             CombineFlow(Object[] elementsArray) {
@@ -1768,7 +1811,7 @@ public final class CarRetrofit {
             }
 
             @Override
-            public void addObserver(ThrowableConsumer<CombineData> consumer) {
+            public void addObserver(Consumer<CombineData> consumer) {
                 consumers.add(consumer);
                 if (consumers.size() == 1) {
                     notifyValueSuppressed = true;
@@ -1784,7 +1827,7 @@ public final class CarRetrofit {
             }
 
             @Override
-            public void removeObserver(ThrowableConsumer<CombineData> consumer) {
+            public void removeObserver(Consumer<CombineData> consumer) {
                 if (consumers.remove(consumer) && consumers.size() == 0) {
                     for (int i = 0; i < flowArray.length; i++) {
                         StickyFlow<Object> stickyFlow = (StickyFlow<Object>) flowArray[i];
@@ -1812,7 +1855,7 @@ public final class CarRetrofit {
                 }
             }
 
-            private class InternalObserver implements ThrowableConsumer<Object> {
+            private class InternalObserver implements Consumer<Object> {
 
                 int index;
 
@@ -1821,7 +1864,7 @@ public final class CarRetrofit {
                 }
 
                 @Override
-                public void receive(Object o) {
+                public void accept(Object o) {
                     synchronized (CombineFlow.this) {
                         trackingData.update(index, o);
                         notifyChangeLocked();
@@ -1866,7 +1909,7 @@ public final class CarRetrofit {
             }
         }
 
-        Object collectArgs(Object parameter) throws Throwable {
+        Object collectArgs(Object parameter) {
             if (buildInValue != null) {
                 return buildInValue.extractValue(source.extractValueType(propertyId));
             }
@@ -1884,7 +1927,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
+        public Object invoke(Object parameter) {
             source.set(propertyId, area, collectArgs(parameter));
             return SKIP;
         }
@@ -1937,7 +1980,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
+        public Object invoke(Object parameter) {
             Object obj = source.get(propertyId, area, type);
             return resultConverter != null ? resultConverter.convert(obj) : obj;
         }
@@ -2076,11 +2119,7 @@ public final class CarRetrofit {
                     CommandReceive commandReceive = receiveRef.get();
                     if (commandReceive != null) {
                         StickyFlow<?> stickyFlow = (StickyFlow<?>) commandReceive.flowWrapper;
-                        try {
-                            commandReceive.invokeWithChain(stickyFlow.get());
-                        } catch (Throwable throwable) {
-                            throw new RuntimeException(throwable);
-                        }
+                        commandReceive.invokeWithChain(stickyFlow.get());
                     } else {
                         purgeExpired = true;
                     }
@@ -2119,7 +2158,7 @@ public final class CarRetrofit {
             return commandFlow;
         }
 
-        Object loadInitialData() throws Throwable {
+        Object loadInitialData() {
             throw new IllegalStateException("impossible");
         }
 
@@ -2190,12 +2229,12 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
+        public Object invoke(Object parameter) {
             if (isReturnFlow() && registerTrack) {
                 if (trackingFlow == null) {
                     trackingFlow = (Flow<Object>) doInvoke();
                 }
-                ThrowableConsumer<Object> consumer = (ThrowableConsumer<Object>) parameter;
+                Consumer<Object> consumer = (Consumer<Object>) parameter;
                 trackingFlow.addObserver(consumer);
                 return SKIP;
             } else {
@@ -2206,11 +2245,11 @@ public final class CarRetrofit {
         @Override
         public void untrack(Object callback) {
             if (trackingFlow != null) {
-                trackingFlow.removeObserver((ThrowableConsumer<Object>) callback);
+                trackingFlow.removeObserver((Consumer<Object>) callback);
             }
         }
 
-        abstract Object doInvoke() throws Throwable;
+        abstract Object doInvoke();
 
         @Override
         String toCommandString() {
@@ -2282,7 +2321,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        Object doInvoke() throws Throwable {
+        Object doInvoke() {
             Flow<CarPropertyValue<?>> flow = source.track(propertyId, area);
             Flow<?> result = flow;
             switch (type) {
@@ -2333,7 +2372,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        Object loadInitialData() throws Throwable {
+        Object loadInitialData() {
             Object obj;
             if (type == CarType.ALL) {
                 obj = source.get(propertyId, area, CarType.VALUE);
@@ -2360,17 +2399,23 @@ public final class CarRetrofit {
         }
     }
 
-    private static class CommandCallback extends CommandGroup implements UnTrackable {
+    private static class CommandRegister extends CommandGroup implements UnTrackable {
 
         private final HashMap<Object, RegisterCallbackWrapper> callbackWrapperMapper = new HashMap<>();
+        private final HashMap<CommandImpl, ArrayList<CommandApply>> outParameterMap = new HashMap<>();
 
         @Override
         void onInit(Annotation annotation) {
             // ignore
         }
 
+        void addChildCommand(CommandImpl command, ArrayList<CommandApply> outList) {
+            addChildCommand(command);
+            outParameterMap.put(command, outList);
+        }
+
         @Override
-        public Object invoke(Object callback) throws Throwable {
+        public Object invoke(Object callback) {
             if (callbackWrapperMapper.containsKey(
                     Objects.requireNonNull(callback, "callback can not be null"))) {
                 throw new CarRetrofitException("callback:" + callback + " is already registered");
@@ -2402,13 +2447,14 @@ public final class CarRetrofit {
                 this.callbackObj = callbackObj;
             }
 
-            void register() throws Throwable {
+            void register() {
                 if (commandObserverList.size() > 0) {
                     throw new CarRetrofitException("impossible situation");
                 }
                 for (int i = 0; i < childrenCommand.size(); i++) {
                     CommandFlow entry = (CommandFlow) childrenCommand.get(i);
-                    InnerObserver observer = new InnerObserver(entry, callbackObj);
+                    InnerObserver observer = new InnerObserver(entry, callbackObj,
+                            outParameterMap.get(entry));
                     commandObserverList.add(observer);
                     entry.invokeWithChain(observer);
                 }
@@ -2426,38 +2472,73 @@ public final class CarRetrofit {
             }
         }
 
-        private static class InnerObserver implements ThrowableConsumer<Object> {
+        private static class InnerObserver implements Consumer<Object> {
 
             CommandFlow commandFlow;
             Object callbackObj;
             Method method;
-            boolean dispatchReceiveValue;
+            ArrayList<CommandApply> outParameterList;
+            int receiveArgIndex = -1;
             boolean dispatchProcessing;
 
-            InnerObserver(CommandFlow commandFlow, Object callbackObj) {
+            InnerObserver(CommandFlow commandFlow, Object callbackObj,
+                          ArrayList<CommandApply> outParameterList) {
                 this.commandFlow = commandFlow;
                 this.callbackObj = callbackObj;
                 this.method = commandFlow.key.method;
-                this.dispatchReceiveValue = method.getParameterCount() == 1;
+                this.outParameterList = outParameterList;
+                for (int i = 0; i < outParameterList.size(); i++) {
+                    if (outParameterList.get(i) == null) {
+                        receiveArgIndex = i;
+                    }
+                }
             }
 
             @Override
-            public void receive(Object o) throws Throwable {
+            public void accept(Object o) {
                 if (dispatchProcessing) {
-                    throw new IllegalStateException("Invalid recursive invocation:" + commandFlow);
+                    throw new IllegalStateException("Recursive invocation from:" + commandFlow);
                 }
                 Object result;
                 dispatchProcessing = true;
-                if (dispatchReceiveValue) {
-                    result = method.invoke(callbackObj, o);
-                } else {
-                    result = method.invoke(callbackObj);
+                try {
+                    Object[] parameters = new Object[outParameterList.size()];
+                    for (int i = 0; i < parameters.length; i++) {
+                        CommandApply apply = outParameterList.get(i);
+                        if (apply != null) {
+                            try {
+                                parameters[i] = apply.getInputType().newInstance();
+                            } catch (InstantiationException e) {
+                                throw new RuntimeException(e);
+                            }
+                        } else {
+                            parameters[i] = o;
+                        }
+                    }
+
+                    result = method.invoke(callbackObj, parameters);
+
+                    for (int i = 0; i < parameters.length; i++) {
+                        CommandApply apply = outParameterList.get(i);
+                        if (apply != null) {
+                            apply.invokeWithChain(parameters[i]);
+                        }
+                    }
+                    if (commandFlow.returnCommand != null) {
+                        dispatchProcessing = true;
+                        commandFlow.returnCommand.invokeWithChain(result);
+                    }
+                } catch (InvocationTargetException invokeExp) {
+                    if (invokeExp.getCause() instanceof RuntimeException) {
+                        throw (RuntimeException) invokeExp.getCause();
+                    } else {
+                        throw new RuntimeException("callback invoke error", invokeExp.getCause());
+                    }
+                } catch (IllegalAccessException illegalAccessException) {
+                    throw new RuntimeException("impossible", illegalAccessException);
+                } finally {
+                    dispatchProcessing = false;
                 }
-                if (commandFlow.returnCommand != null) {
-                    dispatchProcessing = true;
-                    commandFlow.returnCommand.invokeWithChain(result);
-                }
-                dispatchProcessing = false;
             }
         }
     }
@@ -2483,7 +2564,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object callback) throws Throwable {
+        public Object invoke(Object callback) {
             trackCommand.untrack(callback);
             return null;
         }
@@ -2509,7 +2590,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
+        public Object invoke(Object parameter) {
             flowWrapper.superHandleResult(this, parameter);
             return null;
         }
@@ -2546,7 +2627,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
+        public Object invoke(Object parameter) {
             if (nextGetCommand != null) {
                 return nextGetCommand.invokeWithChain(parameter);
             }
@@ -2630,7 +2711,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public Object invoke(Object parameter) throws Throwable {
+        public Object invoke(Object parameter) {
             if (commandSet) {
                 return targetCommand.invokeWithChain(argConverter != null ?
                         argConverter.convert(parameter) : parameter);
@@ -2644,7 +2725,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        Object doInvoke() throws Throwable {
+        Object doInvoke() {
             Object obj = targetCommand.invokeWithChain(null);
             Object result;
             if (obj instanceof FlowWrapper) {
@@ -2697,11 +2778,11 @@ public final class CarRetrofit {
         }
     }
 
-    private static class MediatorFlow<FROM, TO> implements Flow<TO>, ThrowableConsumer<FROM> {
+    private static class MediatorFlow<FROM, TO> implements Flow<TO>, Consumer<FROM> {
 
         private Flow<FROM> base;
         Function<FROM, TO> mediator;
-        private ArrayList<ThrowableConsumer<TO>> consumers = new ArrayList<>();
+        private ArrayList<Consumer<TO>> consumers = new ArrayList<>();
 
         private MediatorFlow(Flow<FROM> base,
                              Function<FROM, TO> mediator) {
@@ -2710,7 +2791,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public void addObserver(ThrowableConsumer<TO> consumer) {
+        public void addObserver(Consumer<TO> consumer) {
             consumers.add(consumer);
             if (consumers.size() == 1) {
                 base.addObserver(this);
@@ -2718,7 +2799,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public void removeObserver(ThrowableConsumer<TO> consumer) {
+        public void removeObserver(Consumer<TO> consumer) {
             if (consumers.remove(consumer) && consumers.size() == 0) {
                 base.removeObserver(this);
             }
@@ -2730,7 +2811,7 @@ public final class CarRetrofit {
         }
 
         @Override
-        public void receive(FROM value) {
+        public void accept(FROM value) {
             TO obj;
             if (mediator != null) {
                 obj = mediator.apply(value);
@@ -2743,7 +2824,7 @@ public final class CarRetrofit {
         void handleResult(TO to) {
             synchronized (this) {
                 for (int i = 0; i < consumers.size(); i++) {
-                    consumers.get(i).receive(to);
+                    consumers.get(i).accept(to);
                 }
             }
         }
@@ -2751,7 +2832,7 @@ public final class CarRetrofit {
 
     private static class EmptyFlowWrapper extends FlowWrapper<Void> implements EmptyFlow {
 
-        private HashMap<Runnable, InnerObserver> mObserverMap = new HashMap<>();
+        private final HashMap<Runnable, InnerObserver> mObserverMap = new HashMap<>();
 
         private EmptyFlowWrapper(Flow<Void> base, CommandReceive command) {
             super(base, command);
@@ -2774,7 +2855,7 @@ public final class CarRetrofit {
             }
         }
 
-        private static class InnerObserver implements ThrowableConsumer<Void> {
+        private static class InnerObserver implements Consumer<Void> {
             private Runnable mAction;
 
             InnerObserver(Runnable action) {
@@ -2782,7 +2863,7 @@ public final class CarRetrofit {
             }
 
             @Override
-            public void receive(Void aVoid) {
+            public void accept(Void aVoid) {
                 if (mAction != null) {
                     mAction.run();
                 }
@@ -2815,11 +2896,7 @@ public final class CarRetrofit {
             if (receiverList.size() == 0) {
                 super.handleResult(t);
             } else {
-                try {
-                    receiverList.get(0).invokeWithChain(t);
-                } catch (Throwable throwable) {
-                    throw new RuntimeException(throwable);
-                }
+                receiverList.get(0).invokeWithChain(t);
             }
         }
 
@@ -2834,11 +2911,7 @@ public final class CarRetrofit {
                 }
             }
             if (nextReceiver != null) {
-                try {
-                    nextReceiver.invokeWithChain(t);
-                } catch (Throwable throwable) {
-                    throw new RuntimeException(throwable);
-                }
+                nextReceiver.invokeWithChain(t);
                 return;
             }
             super.handleResult(t);
@@ -2858,9 +2931,9 @@ public final class CarRetrofit {
         }
 
         @Override
-        public void addObserver(ThrowableConsumer<T> consumer) {
+        public void addObserver(Consumer<T> consumer) {
             super.addObserver(consumer);
-            consumer.receive(get());
+            consumer.accept(get());
         }
 
         @Override
@@ -2880,11 +2953,7 @@ public final class CarRetrofit {
         }
 
         private T loadInitialStickyData() {
-            try {
-                return (T) headStickyGetCommand.invokeWithChain(null);
-            } catch (Throwable throwable) {
-                throw new RuntimeException(throwable);
-            }
+            return (T) headStickyGetCommand.invokeWithChain(null);
         }
 
         @Override
@@ -2934,7 +3003,7 @@ public final class CarRetrofit {
         }
 
         Converter<?, ?> asConverter(Class<?> from, Class<?> to) {
-            if (fromClass.equals(from) && toClass.equals(to)) {
+            if (ConverterStore.classEquals(fromClass, from) && ConverterStore.classEquals(toClass, to)) {
                 return oneWayConverter;
             } else if (twoWayConverter != null && toClass.equals(from) && fromClass.equals(to)) {
                 return this;

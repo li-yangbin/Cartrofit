@@ -581,10 +581,10 @@ public class ExampleUnitTest {
             boolean toggle;
 
             @Override
-            public int onIntSignalChange(int cc) {
+            public String onIntSignalChange(int cc) {
                 print("onIntSignalChange goes cc:" + cc);
-//                toggle = !toggle;
-                return (int) (Math.random() * 100);
+                toggle = !toggle;
+                return toggle ? "toggle yes" : "toggle no";
             }
 
             @Override
@@ -596,12 +596,18 @@ public class ExampleUnitTest {
 
     @Test
     public void combineDelegate() {
-        api.trackIntAndBoolean().subscribe(new Consumer<String>() {
+        api.trackBooleanReactive().subscribe(new Consumer<Boolean>() {
             @Override
-            public void accept(String string) throws Exception {
-                print("combine accept:" + string);
+            public void accept(Boolean aBoolean) throws Exception {
+                print("trackBooleanReactive aBoolean:" + aBoolean);
             }
         });
+//        api.trackIntAndBoolean().subscribe(new Consumer<String>() {
+//            @Override
+//            public void accept(String string) throws Exception {
+//                print("combine accept:" + string);
+//            }
+//        });
 
 //        api.trackStringAndCombine().subscribe(new Consumer<String>() {
 //            @Override

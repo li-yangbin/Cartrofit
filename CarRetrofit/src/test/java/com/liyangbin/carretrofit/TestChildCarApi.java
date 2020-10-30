@@ -11,6 +11,6 @@ public interface TestChildCarApi {
 //    @Delegate(getIntSignal)
     int getIntValueAlias();
 
-//    @Delegate(trackIntReactive)
+    @Delegate(TestCarApiId.trackIntReactive)
     Observable<Integer> trackIntReactiveAlias();
 }

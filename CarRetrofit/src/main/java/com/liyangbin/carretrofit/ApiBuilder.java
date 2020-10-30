@@ -29,7 +29,7 @@ public abstract class ApiBuilder {
             return intercept(new Interceptor() {
                 @SuppressWarnings("unchecked")
                 @Override
-                public Object process(Command command, Object parameter) throws Throwable {
+                public Object process(Command command, Object parameter) {
                     return predicate.test((T) parameter) ? command.invoke(parameter) : null;
                 }
 

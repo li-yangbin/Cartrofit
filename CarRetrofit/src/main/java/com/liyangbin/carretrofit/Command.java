@@ -7,17 +7,13 @@ public interface Command {
 
     int getId();
 
-    void setPropertyId(int propertyId);
-
     int getPropertyId();
-
-    void setArea(int area);
 
     int getArea();
 
     DataSource getSource();
 
-    Object invoke(Object parameter) throws Throwable;
+    Object invoke(Object parameter);
 
     CommandType type();
 

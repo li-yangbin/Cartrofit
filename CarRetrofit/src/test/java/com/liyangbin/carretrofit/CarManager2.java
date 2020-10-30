@@ -1,17 +1,18 @@
 package com.liyangbin.carretrofit;
 
+import android.car.CarNotConnectedException;
 import android.car.hardware.CarPropertyConfig;
 import android.car.hardware.CarPropertyValue;
 import android.car.hardware.CarVendorExtensionManager;
 import android.car.hardware.property.CarPropertyManager;
+
+import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
-
-import androidx.annotation.Nullable;
 
 public abstract class CarManager2 implements DataSource {
 
@@ -22,18 +23,32 @@ public abstract class CarManager2 implements DataSource {
     private HashMap<Integer, CarPropertyConfig<?>> mConfigMap = new HashMap<>();
 
     @Override
-    public Object get(int key, int area, CarType type) throws Exception {
+    public Object get(int key, int area, CarType type) {
         switch (type) {
             case VALUE:
-                return mExtManager.getProperty(extractValueType(key), key, area);
+                try {
+                    return mExtManager.getProperty(extractValueType(key), key, area);
+                } catch (CarNotConnectedException e) {
+                    throw new RuntimeException(e);
+                }
             case AVAILABILITY:
-                boolean result = mManager.isPropertyAvailable(key, area);
-                return Boolean.valueOf(result);
+                boolean result = false;
+                try {
+                    result = mManager.isPropertyAvailable(key, area);
+                } catch (CarNotConnectedException e) {
+                    e.printStackTrace();
+                }
+                return result;
             case CONFIG:
                 if (mConfigMap.containsKey(key)) {
                     return mConfigMap.get(key);
                 }
-                List<CarPropertyConfig> list = mManager.getPropertyList();
+                List<CarPropertyConfig> list = null;
+                try {
+                    list = mManager.getPropertyList();
+                } catch (CarNotConnectedException e) {
+                    e.printStackTrace();
+                }
                 if (list != null) {
                     list.forEach(carPropertyConfig ->
                             mConfigMap.put(carPropertyConfig.getPropertyId(), carPropertyConfig));
@@ -46,19 +61,27 @@ public abstract class CarManager2 implements DataSource {
     }
 
     @Override
-    public <TYPE> void set(int key, int area, TYPE value) throws Exception {
-        mExtManager.setProperty((Class<? super TYPE>) extractValueType(key), key, area, value);
+    public <TYPE> void set(int key, int area, TYPE value) {
+        try {
+            mExtManager.setProperty((Class<? super TYPE>) extractValueType(key), key, area, value);
+        } catch (CarNotConnectedException e) {
+            e.printStackTrace();
+        }
     }
 
-    public void trackRootIfNeeded() throws Exception {
+    public void trackRootIfNeeded() {
         if (!rootTrack) {
-            mExtManager.registerCallback(new CarVendorExtensionCallbackImpl());
+            try {
+                mExtManager.registerCallback(new CarVendorExtensionCallbackImpl());
+            } catch (CarNotConnectedException e) {
+                e.printStackTrace();
+            }
             rootTrack = true;
         }
     }
 
     @Override
-    public Flow<CarPropertyValue<?>> track(int key, int area) throws Exception {
+    public Flow<CarPropertyValue<?>> track(int key, int area) {
         trackRootIfNeeded();
         synchronized (publishedFlowList) {
             AreaPool pool = publishedFlowList.get(key);
@@ -132,7 +155,7 @@ public abstract class CarManager2 implements DataSource {
 
     private class SimpleFlow implements Flow<CarPropertyValue<?>> {
 
-        private ArrayList<ThrowableConsumer<CarPropertyValue<?>>> consumerList = new ArrayList<>();
+        private ArrayList<Consumer<CarPropertyValue<?>>> consumerList = new ArrayList<>();
         CarPropertyValue<?> value;
         private int propertyId;
         private int areaId;
@@ -143,7 +166,7 @@ public abstract class CarManager2 implements DataSource {
         }
 
         @Override
-        public void addObserver(ThrowableConsumer<CarPropertyValue<?>> consumer) {
+        public void addObserver(Consumer<CarPropertyValue<?>> consumer) {
             if (consumerList.size() == 0) {
                 CarManager2.this.onObserverActive(propertyId);
             }
@@ -151,7 +174,7 @@ public abstract class CarManager2 implements DataSource {
         }
 
         @Override
-        public void removeObserver(ThrowableConsumer<CarPropertyValue<?>> consumer) {
+        public void removeObserver(Consumer<CarPropertyValue<?>> consumer) {
             if (consumerList.remove(Objects.requireNonNull(consumer)) && consumerList.size() == 0) {
                 CarManager2.this.onObserverInActive(propertyId);
             }
@@ -171,7 +194,7 @@ public abstract class CarManager2 implements DataSource {
 
     @Nullable
     @Override
-    public Class<?> extractValueType(int key) throws Exception {
+    public Class<?> extractValueType(int key) {
         return ((CarPropertyConfig<?>)get(key, 0, CarType.CONFIG)).getPropertyType();
     }
 }
