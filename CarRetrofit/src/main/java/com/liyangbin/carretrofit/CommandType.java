@@ -6,7 +6,6 @@ public enum CommandType {
     TRACK,
     UN_TRACK,
     RECEIVE,
-    APPLY,
     INJECT,
     STICKY_GET,
     COMBINE,

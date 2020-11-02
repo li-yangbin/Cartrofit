@@ -2,7 +2,6 @@ package com.liyangbin.carretrofit;
 
 import androidx.databinding.ObservableBoolean;
 
-import com.liyangbin.carretrofit.annotation.Apply;
 import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.Register;
 import com.liyangbin.carretrofit.annotation.CarValue;
@@ -94,7 +93,6 @@ public interface TestCarApi {
     @Track(id = 0)
     MyFlow trackCustomFlow();
 
-    @Apply
     void applyComboValues(ExampleUnitTest.CarData cardata);
 
     @Get(id = 6)
