@@ -580,11 +580,19 @@ public class ExampleUnitTest {
 
             boolean toggle;
 
+//            @Override
+//            public String onIntSignalChange(int cc) {
+//                print("onIntSignalChange goes cc:" + cc);
+//                toggle = !toggle;
+//                return toggle ? "toggle yes" : "toggle no";
+//            }
+
             @Override
-            public String onIntSignalChange(int cc) {
-                print("onIntSignalChange goes cc:" + cc);
+            public void loadStringArray(StringArrayRespond respond, String bbbb) {
+                respond.stringArray = new String[]{"what", "a", "pretty", toggle ? "girl" : "boy"};
+                respond.index = toggle ? 10003 : 10004;
                 toggle = !toggle;
-                return toggle ? "toggle yes" : "toggle no";
+                print("loadStringArray goes bb string bbbb:" + bbbb + " array:" + Arrays.toString(api.get9StringArrayValue()));
             }
 
             @Override

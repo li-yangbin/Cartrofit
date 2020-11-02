@@ -77,16 +77,8 @@ class InterceptorChain {
         }
 
         @Override
-        public void setPropertyId(int propertyId) {
-        }
-
-        @Override
         public int getPropertyId() {
             return previous.getPropertyId();
-        }
-
-        @Override
-        public void setArea(int area) {
         }
 
         @Override

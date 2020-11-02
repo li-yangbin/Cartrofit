@@ -796,6 +796,7 @@ public final class CarRetrofit {
 
         Method method;
         final boolean isCallbackEntry;
+        int trackReceiveArgIndex = -1;
 
         Field field;
         final boolean injectOrApply;
@@ -855,17 +856,20 @@ public final class CarRetrofit {
                 if (parameterCount > 0) {
                     Annotation[][] annotationAll = method.getParameterAnnotations();
                     int countWithOut = 0;
-                    for (Annotation[] annotationOnePara : annotationAll) {
-                        for (Annotation annotation : annotationOnePara) {
+                    anchor:for (int i = 0; i < annotationAll.length; i++) {
+                        for (Annotation annotation : annotationAll[i]) {
                             if (annotation instanceof Out) {
                                 countWithOut++;
-                                break;
+                                continue anchor;
                             }
                         }
+                        trackReceiveArgIndex = i;
                     }
                     if (parameterCount - countWithOut > 1) {
                         throw new CarRetrofitException("Invalid parameter count:" + method);
                     }
+                } else {
+                    trackReceiveArgIndex = -1;
                 }
             }
             if (injectOrApply && Modifier.isFinal(field.getModifiers())) {
@@ -963,7 +967,7 @@ public final class CarRetrofit {
         Class<?> getUserConcernClass() {
             if (isCallbackEntry) {
                 Class<?>[] parameterClassArray = method.getParameterTypes();
-                return parameterClassArray.length > 0 ? parameterClassArray[0] : null;
+                return trackReceiveArgIndex > -1 ? parameterClassArray[trackReceiveArgIndex] : null;
             }
             Type originalType = getTrackType();
             if (hasUnresolvableType(originalType)) {
@@ -1132,20 +1136,18 @@ public final class CarRetrofit {
             searchAndCreateChildCommand(getApi(targetClass), false,
                     command -> {
                         Method method = command.getMethod();
-                        Annotation[][] annotationAll = method.getParameterAnnotations();
+                        final int parameterCount = method.getParameterCount();
                         ArrayList<CommandApply> outCommandList = new ArrayList<>();
-                        anchor:for (int i = 0; i < annotationAll.length; i++) {
-                            for (Annotation annotation : annotationAll[i]) {
-                                if (annotation instanceof Out) {
-                                    outCommandList.add(createApplyCommand(
-                                            method.getParameterTypes()[i], record, annotation, null));
-                                    continue anchor;
-                                }
+                        for (int i = 0; i < parameterCount; i++) {
+                            if (i == command.key.trackReceiveArgIndex) {
+                                outCommandList.add(null);
+                            } else {
+                                outCommandList.add(createApplyCommand(
+                                        method.getParameterTypes()[i], record, null, null));
                             }
-                            outCommandList.add(null);
                         }
                         commandRegister.addChildCommand(command, outCommandList);
-                    }, FLAG_PARSE_TRACK);
+                    }, FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
             if (commandRegister.childrenCommand.size() == 0) {
                 throw new CarRetrofitException("Failed to resolve callback entry point in " + targetClass);
             }
@@ -1276,15 +1278,17 @@ public final class CarRetrofit {
             }
             this.key = key;
 
-            this.id = record.loadId(this);
-            Category category = key.getAnnotation(Category.class);
-            if (category != null) {
-                this.category = category.value();
-            }
-            this.chain = record.getInterceptorByKey(this);
-            this.store = record.getConverterByKey(this);
-            if (key.field != null) {
-                key.field.setAccessible(true);
+            if (key != null) {
+                this.id = record.loadId(this);
+                Category category = key.getAnnotation(Category.class);
+                if (category != null) {
+                    this.category = category.value();
+                }
+                this.chain = record.getInterceptorByKey(this);
+                this.store = record.getConverterByKey(this);
+                if (key.field != null) {
+                    key.field.setAccessible(true);
+                }
             }
             onInit(annotation);
         }
@@ -1448,6 +1452,11 @@ public final class CarRetrofit {
         }
 
         @Override
+        public Class<?> getInputType() {
+            return targetClass;
+        }
+
+        @Override
         public Object invoke(Object parameter) {
             Object target = null;
             if (parameter != null) {
@@ -1512,6 +1521,11 @@ public final class CarRetrofit {
         CommandInject(Class<?> injectClass, boolean doReturn) {
             this.targetClass = injectClass;
             this.doReturn = doReturn;
+        }
+
+        @Override
+        public Class<?> getOutputType() {
+            return targetClass;
         }
 
         @Override
@@ -2478,7 +2492,6 @@ public final class CarRetrofit {
             Object callbackObj;
             Method method;
             ArrayList<CommandApply> outParameterList;
-            int receiveArgIndex = -1;
             boolean dispatchProcessing;
 
             InnerObserver(CommandFlow commandFlow, Object callbackObj,
@@ -2487,11 +2500,6 @@ public final class CarRetrofit {
                 this.callbackObj = callbackObj;
                 this.method = commandFlow.key.method;
                 this.outParameterList = outParameterList;
-                for (int i = 0; i < outParameterList.size(); i++) {
-                    if (outParameterList.get(i) == null) {
-                        receiveArgIndex = i;
-                    }
-                }
             }
 
             @Override
@@ -2502,8 +2510,9 @@ public final class CarRetrofit {
                 Object result;
                 dispatchProcessing = true;
                 try {
-                    Object[] parameters = new Object[outParameterList.size()];
-                    for (int i = 0; i < parameters.length; i++) {
+                    final int parameterCount = outParameterList.size();
+                    Object[] parameters = new Object[parameterCount];
+                    for (int i = 0; i < parameterCount; i++) {
                         CommandApply apply = outParameterList.get(i);
                         if (apply != null) {
                             try {
@@ -2518,24 +2527,23 @@ public final class CarRetrofit {
 
                     result = method.invoke(callbackObj, parameters);
 
-                    for (int i = 0; i < parameters.length; i++) {
+                    for (int i = 0; i < parameterCount; i++) {
                         CommandApply apply = outParameterList.get(i);
                         if (apply != null) {
                             apply.invokeWithChain(parameters[i]);
                         }
                     }
                     if (commandFlow.returnCommand != null) {
-                        dispatchProcessing = true;
                         commandFlow.returnCommand.invokeWithChain(result);
                     }
                 } catch (InvocationTargetException invokeExp) {
                     if (invokeExp.getCause() instanceof RuntimeException) {
                         throw (RuntimeException) invokeExp.getCause();
                     } else {
-                        throw new RuntimeException("callback invoke error", invokeExp.getCause());
+                        throw new RuntimeException("Callback invoke error", invokeExp.getCause());
                     }
                 } catch (IllegalAccessException illegalAccessException) {
-                    throw new RuntimeException("impossible", illegalAccessException);
+                    throw new RuntimeException("Impossible", illegalAccessException);
                 } finally {
                     dispatchProcessing = false;
                 }
