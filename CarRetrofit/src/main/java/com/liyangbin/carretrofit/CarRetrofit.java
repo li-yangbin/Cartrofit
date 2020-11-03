@@ -47,7 +47,6 @@ import java.util.function.Function;
 public final class CarRetrofit {
 
     private static final ConverterStore GLOBAL_CONVERTER = new ConverterStore();
-    private static final Object SKIP = new Object();
     private static CarRetrofit sDefault;
     private static final StickyType DEFAULT_STICKY_TYPE = StickyType.ON;
 
@@ -166,7 +165,7 @@ public final class CarRetrofit {
         String dataScope;
         int apiArea;
         T apiObj;
-        StickyType stickyType;
+        StickyType stickyType = StickyType.NO_SET;
         DataSource source;
 
         ArrayList<Key> childrenKey;
@@ -220,7 +219,7 @@ public final class CarRetrofit {
         @Override
         public ApiBuilder intercept(Interceptor interceptor) {
             if (tempInterceptor != null) {
-                throw new CarRetrofitException("Call intercept(Interceptor) only once before inject");
+                throw new CarRetrofitException("Call intercept(Interceptor) only once before apply");
             }
             tempInterceptor = interceptor;
             return this;
@@ -229,7 +228,7 @@ public final class CarRetrofit {
         @Override
         ApiBuilder convert(AbsConverterBuilder builder) {
             if (converterBuilder != null) {
-                throw new CarRetrofitException("Call convert(Converter) only once before inject");
+                throw new CarRetrofitException("Call convert(Converter) only once before apply");
             }
             converterBuilder = builder;
             return this;
@@ -839,24 +838,41 @@ public final class CarRetrofit {
                 int parameterCount = method.getParameterCount();
                 if (parameterCount > 0) {
                     Annotation[][] annotationAll = method.getParameterAnnotations();
-                    int countWithOut = 0;
+                    int countWithInOut = 0;
                     anchor:for (int i = 0; i < annotationAll.length; i++) {
                         for (Annotation annotation : annotationAll[i]) {
-                            if (annotation instanceof Out) {
-                                countWithOut++;
+                            if (annotation instanceof Out || annotation instanceof In) {
+                                countWithInOut++;
                                 continue anchor;
                             }
                         }
                         trackReceiveArgIndex = i;
                     }
-                    if (parameterCount - countWithOut > 1) {
-                        throw new CarRetrofitException("Invalid parameter count:" + method);
+                    if (parameterCount - countWithInOut > 1) {
+                        throw new CarRetrofitException("Invalid parameter count " + this);
                     }
                 }
             } else if (isAnnotationPresent(Inject.class)) {
-                // TODO: check inject grammar
-            }
-            if (field != null && Modifier.isFinal(field.getModifiers())
+                if (method != null) {
+                    if (method.getReturnType() != void.class) {
+                        throw new CarRetrofitException("Can not return any result by using Inject");
+                    }
+                    int parameterCount = method.getParameterCount();
+                    if (parameterCount != 1) {
+                        throw new CarRetrofitException("Can not declare parameter more or less than one " + this);
+                    }
+                    Annotation[] annotationOne = method.getParameterAnnotations()[0];
+                    int countWithInOut = 0;
+                    for (Annotation annotation : annotationOne) {
+                        if (annotation instanceof Out || annotation instanceof In) {
+                            countWithInOut++;
+                        }
+                    }
+                    if (countWithInOut == 0) {
+                        throw new CarRetrofitException("Invalid parameter declaration " + this);
+                    }
+                }
+            } else if (field != null && Modifier.isFinal(field.getModifiers())
                     && isAnnotationPresent(Set.class)) {
                 throw new CarRetrofitException("Invalid key:" + this + " in command Inject");
             }
@@ -1055,6 +1071,9 @@ public final class CarRetrofit {
                 setupCallbackEntryCommandIfNeeded(record, command, key);
             }
             command.init(record, track, key);
+            if (!command.isStickyOn() && command.restoreCommand != null) {
+                throw new CarRetrofitException("Must declare sticky On if you specify restore command" + key);
+            }
             return command;
         }
 
@@ -1070,7 +1089,7 @@ public final class CarRetrofit {
 
         Inject inject = (flag & FLAG_PARSE_INJECT) != 0 ? key.getAnnotation(Inject.class) : null;
         if (inject != null) {
-            return createInjectCommand(key.getGetClass(), record, inject, key);
+            return createInjectCommand(0, record, key);
         }
 
         Combine combine = (flag & FLAG_PARSE_COMBINE) != 0 ? key.getAnnotation(Combine.class) : null;
@@ -1099,6 +1118,9 @@ public final class CarRetrofit {
             CommandRegister commandRegister = new CommandRegister();
             searchAndCreateChildCommand(getApi(targetClass),
                     command -> {
+                        if (command.type() != CommandType.TRACK) {
+                            throw new CarRetrofitException("Illegal non-track on register callback:" + command);
+                        }
                         Method method = command.getMethod();
                         final int parameterCount = method.getParameterCount();
                         ArrayList<CommandInject> outCommandList = new ArrayList<>();
@@ -1106,8 +1128,7 @@ public final class CarRetrofit {
                             if (i == command.key.trackReceiveArgIndex) {
                                 outCommandList.add(null);
                             } else {
-                                outCommandList.add(createInjectCommand(
-                                        method.getParameterTypes()[i], record, null, null));
+                                outCommandList.add(createInjectCommand(i, record, command.key));
                             }
                         }
                         commandRegister.addChildCommand(command, outCommandList);
@@ -1139,14 +1160,20 @@ public final class CarRetrofit {
         return null;
     }
 
-    private CommandInject createInjectCommand(Class<?> targetClass, ApiRecord<?> parentRecord,
-                                             Annotation annotation, Key key) {
+    private CommandInject createInjectCommand(int parameterIndex,
+                                              ApiRecord<?> parentRecord, Key key) {
+        Class<?> targetClass;
+        if (key.method != null) {
+            targetClass = key.method.getParameterTypes()[parameterIndex];
+        } else {
+            targetClass = key.field.getType();
+        }
         if (targetClass.isPrimitive() || targetClass.isArray() || targetClass == String.class) {
             throw new CarRetrofitException("Can not use Inject on class type:" + targetClass);
         }
 
         CommandReflect commandReflect = new CommandReflect();
-        CommandInject command = new CommandInject(commandReflect);
+        CommandInject command = new CommandInject(targetClass, parameterIndex, commandReflect);
         ApiRecord<?> reflectRecord = getApi(targetClass);
         searchAndCreateChildCommand(reflectRecord, commandReflect::addChildCommand,
                 FLAG_PARSE_INJECT_CHILDREN);
@@ -1155,7 +1182,7 @@ public final class CarRetrofit {
                     + targetClass);
         }
         commandReflect.init(reflectRecord, null, null);
-        command.init(parentRecord, annotation, key);
+        command.init(parentRecord, null, key);
         return command;
     }
 
@@ -1245,7 +1272,7 @@ public final class CarRetrofit {
             }
             this.key = key;
 
-            if (key != null) {
+            if (type() != CommandType.INJECT) {
                 this.id = record.loadId(this);
                 Category category = key.getAnnotation(Category.class);
                 if (category != null) {
@@ -1256,8 +1283,8 @@ public final class CarRetrofit {
                 if (key.field != null) {
                     key.field.setAccessible(true);
                 }
-                onInit(annotation);
             }
+            onInit(annotation);
         }
 
         boolean requireSource() {
@@ -1362,8 +1389,8 @@ public final class CarRetrofit {
 
         @Override
         public final String toString() {
-            return "Command 0x" + Integer.toHexString(hashCode())
-                    + " [" + type() + " " + toCommandString() + "]";
+            return "Cmd " + type() + " 0x" + Integer.toHexString(hashCode())
+                    + " [" + toCommandString() + "]";
         }
 
         void addInterceptor(Interceptor interceptor, boolean toBottom) {
@@ -1390,10 +1417,7 @@ public final class CarRetrofit {
         }
 
         String toCommandString() {
-            int area = getArea();
-            return "id:0x" + Integer.toHexString(getPropertyId())
-                    + (area != CarApi.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "")
-                    + " from:" + key;
+            return key.toString();
         }
 
         final Object invokeWithChain(Object parameter) {
@@ -1406,6 +1430,12 @@ public final class CarRetrofit {
     }
 
     private static class CommandReflect extends CommandGroup {
+
+        CommandInject commandInject;
+
+        void setCommandInject(CommandInject commandInject) {
+            this.commandInject = commandInject;
+        }
 
         static boolean isGet(CommandType type) {
             switch (type) {
@@ -1423,7 +1453,9 @@ public final class CarRetrofit {
             final Object target = info.target;
 
             if (target instanceof InjectReceiver) {
-                ((InjectReceiver) target).onBeforeInject();
+                if (((InjectReceiver) target).onBeforeInject(commandInject)) {
+                    return null;
+                }
             }
 
             for (int i = 0; i < childrenCommand.size(); i++) {
@@ -1440,9 +1472,6 @@ public final class CarRetrofit {
                         } else if (info.set && !isGetCommand) {
                             Object setValue = childCommand.getField().get(target);
                             childCommand.invokeWithChain(setValue);
-                        } else {
-                            throw new RuntimeException("impossible situation:" + info
-                                    + " child type:" + childType);
                         }
                     } catch (IllegalAccessException impossible) {
                         throw new RuntimeException(impossible);
@@ -1451,7 +1480,7 @@ public final class CarRetrofit {
             }
 
             if (target instanceof InjectReceiver) {
-                ((InjectReceiver) target).onAfterInject();
+                ((InjectReceiver) target).onAfterInject(commandInject);
             }
 
             return null;
@@ -1459,7 +1488,7 @@ public final class CarRetrofit {
 
         @Override
         public CommandType type() {
-            return null;
+            return CommandType.INJECT;
         }
     }
 
@@ -1489,49 +1518,95 @@ public final class CarRetrofit {
 
         CommandReflect commandReflect;
         private InjectInfo dispatchInfo;
+        private final Class<?> injectClass;
+        private final int parameterIndex;
 
-        CommandInject(CommandReflect commandReflect) {
+        CommandInject(Class<?> injectClass, int parameterIndex, CommandReflect commandReflect) {
+            this.injectClass = injectClass;
+            this.parameterIndex = parameterIndex;
             this.commandReflect = commandReflect;
+            commandReflect.setCommandInject(this);
+        }
+
+        @Override
+        boolean requireSource() {
+            return false;
         }
 
         @Override
         void onInit(Annotation annotation) {
-            if (key.method != null) {
+            if (key.method != null || key.isCallbackEntry) {
                 dispatchInfo = new InjectInfo();
-                Annotation[] annotations = key.method.getParameterAnnotations()[0];
+                Annotation[] annotations = key.method.getParameterAnnotations()[parameterIndex];
                 for (Annotation parameterAnno : annotations) {
-                    dispatchInfo.set |= parameterAnno instanceof In;
-                    dispatchInfo.get |= parameterAnno instanceof Out;
+                    if (key.isCallbackEntry) {
+                        dispatchInfo.get |= parameterAnno instanceof In;
+                        dispatchInfo.set |= parameterAnno instanceof Out;
+                    } else {
+                        dispatchInfo.set |= parameterAnno instanceof In;
+                        dispatchInfo.get |= parameterAnno instanceof Out;
+                    }
                 }
             }
         }
 
+        void suppressGetAndExecute(Object object) {
+            final boolean oldGetEnable = dispatchInfo.get;
+            dispatchInfo.get = false;
+            if (shouldExecuteReflectOperation(dispatchInfo)) {
+                dispatchInfo.target = object;
+                commandReflect.invoke(dispatchInfo);
+                dispatchInfo.target = null;
+            }
+            dispatchInfo.get = oldGetEnable;
+        }
+
+        void suppressSetAndExecute(Object object) {
+            final boolean oldSetEnable = dispatchInfo.set;
+            dispatchInfo.set = false;
+            if (shouldExecuteReflectOperation(dispatchInfo)) {
+                dispatchInfo.target = object;
+                commandReflect.invoke(dispatchInfo);
+                dispatchInfo.target = null;
+            }
+            dispatchInfo.set = oldSetEnable;
+        }
+
+        static boolean shouldExecuteReflectOperation(InjectInfo info) {
+            return info.set || info.get;
+        }
+
         @Override
         public Class<?> getInputType() {
-            return commandReflect.record.clazz;
+            return injectClass;
         }
 
         @Override
         public Object invoke(Object parameter) {
             if (dispatchInfo != null) {
-                dispatchInfo.target = parameter;
-                commandReflect.invoke(dispatchInfo);
-                dispatchInfo.target = null;
+                if (shouldExecuteReflectOperation(dispatchInfo)) {
+                    dispatchInfo.target = parameter;
+                    commandReflect.invoke(dispatchInfo);
+                    dispatchInfo.target = null;
+                }
             } else if (parameter instanceof InjectInfo) {
                 InjectInfo dispatchedInfo = (InjectInfo) parameter;
-                InjectInfo info = dispatchedInfo.copy();
-                try {
-                    info.target = key.field.get(dispatchedInfo.target);
-                } catch (IllegalAccessException impossible) {
-                    throw new RuntimeException(impossible);
+                if (shouldExecuteReflectOperation(dispatchedInfo)) {
+                    InjectInfo info = dispatchedInfo.copy();
+                    try {
+                        info.target = key.field.get(dispatchedInfo.target);
+                    } catch (IllegalAccessException impossible) {
+                        throw new RuntimeException(impossible);
+                    }
+                    if (dispatchedInfo.set && info.target == null) {
+                        throw new NullPointerException("Can not resolve target:" + key);
+                    }
+                    commandReflect.invoke(info);
+                    info.target = null;
                 }
-                if (dispatchedInfo.set && info.target == null) {
-                    throw new NullPointerException("Can not resolve target:" + key);
-                }
-                commandReflect.invoke(info);
-                info.target = null;
             } else {
-                throw new RuntimeException("impossible situation");
+                throw new RuntimeException("impossible situation parameter:" + parameter
+                        + " from:" + this);
             }
             return null;
         }
@@ -1543,10 +1618,8 @@ public final class CarRetrofit {
 
         @Override
         String toCommandString() {
-            boolean fromField = getField() != null;
-            return "CommandInject target:" + commandReflect
-                    + " from" + (!fromField ? ("method:" + getMethod().getName())
-                    : ("field:" + getField().getName()));
+            String stable = injectClass.getSimpleName();
+            return stable + " " + super.toCommandString();
         }
     }
 
@@ -1555,19 +1628,6 @@ public final class CarRetrofit {
 
         void addChildCommand(CommandImpl command) {
             childrenCommand.add(command);
-        }
-
-        @Override
-        String toCommandString() {
-            StringBuilder childrenToken = new StringBuilder("{");
-            for (int i = 0; i < childrenCommand.size(); i++) {
-                if (i > 0) {
-                    childrenToken.append(", ");
-                }
-                childrenToken.append(childrenCommand.get(i));
-            }
-            childrenToken.append('}');
-            return super.toCommandString() + childrenToken.toString();
         }
 
         @Override
@@ -1627,25 +1687,6 @@ public final class CarRetrofit {
                 }
             }
 
-//            combinatorId = combine.combinator();
-//            try {
-//                Object operatorObj = record.getConverterById(combinatorId);
-//                String operatorFullName = Function2.class.getName();
-//                String prefix = operatorFullName.substring(0, operatorFullName.lastIndexOf("."));
-//                int childElementCount = childrenCommand.size();
-//                String targetFunctionFullName = prefix + ".Function" + childElementCount;
-//                functionClass = Class.forName(targetFunctionFullName);
-//                if (functionClass.isInstance(operatorObj)) {
-//                    this.combinator = (Converter<?, ?>) Objects.requireNonNull(operatorObj,
-//                            "Failed to resolve id:" + combinatorId);
-//                } else {
-//                    throw new CarRetrofitException("Converter:" + combinatorId
-//                            + " doesn't match element count:" + childElementCount);
-//                }
-//            } catch (ReflectiveOperationException e) {
-//                throw new CarRetrofitException(e);
-//            }
-
             resolveConverter();
         }
 
@@ -1700,7 +1741,7 @@ public final class CarRetrofit {
                     flow = new MediatorFlow<>(combineFlow,
                             data -> mapConverter.convert(data.trackingObj));
                 }
-                if (stickyType == StickyType.ON || stickyType == StickyType.ON_NO_CACHE) {
+                if (isStickyOn()) {
                     flow = new StickyFlowImpl<>(flow, stickyType == StickyType.ON,
                             getCommandStickyGet());
                     ((StickyFlowImpl<?>)flow).addCommandReceiver(createCommandReceive());
@@ -1879,23 +1920,14 @@ public final class CarRetrofit {
             if (buildInValue != null) {
                 return buildInValue.extractValue(source.extractValueType(propertyId));
             }
-            Object rawArg;
-            if (key.field != null) {
-                try {
-                    rawArg = key.field.get(parameter);
-                } catch (IllegalAccessException ex) {
-                    throw new CarRetrofitException("Can not access to parameter", ex);
-                }
-            } else {
-                rawArg = parameter;
-            }
-            return argConverter != null && rawArg != null ? argConverter.convert(rawArg) : rawArg;
+            return argConverter != null && parameter != null ?
+                    argConverter.convert(parameter) : parameter;
         }
 
         @Override
         public Object invoke(Object parameter) {
             source.set(propertyId, area, collectArgs(parameter));
-            return SKIP;
+            return null;
         }
 
         @Override
@@ -1911,6 +1943,13 @@ public final class CarRetrofit {
         @Override
         public boolean fromApply() {
             return key.field != null;
+        }
+
+        @Override
+        String toCommandString() {
+            String stable = "id:0x" + Integer.toHexString(getPropertyId())
+                    + (area != CarApi.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "");
+            return stable + super.toCommandString();
         }
     }
 
@@ -1963,11 +2002,12 @@ public final class CarRetrofit {
 
         @Override
         String toCommandString() {
-            String stable = super.toCommandString();
+            String stable = "id:0x" + Integer.toHexString(getPropertyId())
+                    + (area != CarApi.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "");
             if (type != CarType.VALUE) {
                 stable += " valueType:" + type;
             }
-            return stable;
+            return stable + super.toCommandString();
         }
     }
 
@@ -2202,7 +2242,7 @@ public final class CarRetrofit {
                 }
                 Consumer<Object> consumer = (Consumer<Object>) parameter;
                 trackingFlow.addObserver(consumer);
-                return SKIP;
+                return null;
             } else {
                 return doInvoke();
             }
@@ -2224,6 +2264,10 @@ public final class CarRetrofit {
                 fromSuper += " sticky:" + stickyType;
             }
             return fromSuper;
+        }
+
+        boolean isStickyOn() {
+            return stickyType == StickyType.ON || stickyType == StickyType.ON_NO_CACHE;
         }
     }
 
@@ -2321,8 +2365,7 @@ public final class CarRetrofit {
                     }
                     break;
             }
-            if (type != CarType.NONE
-                    && (stickyType == StickyType.ON || stickyType == StickyType.ON_NO_CACHE)) {
+            if (type != CarType.NONE && isStickyOn()) {
                 result = new StickyFlowImpl<>(result, stickyType == StickyType.ON,
                         getCommandStickyGet());
                 ((StickyFlowImpl<?>) result).addCommandReceiver(createCommandReceive());
@@ -2357,11 +2400,12 @@ public final class CarRetrofit {
 
         @Override
         String toCommandString() {
-            String stable = super.toCommandString();
+            String stable = "id:0x" + Integer.toHexString(getPropertyId())
+                    + (area != CarApi.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "");
             if (type != CarType.VALUE) {
                 stable += " valueType:" + type;
             }
-            return stable;
+            return stable + super.toCommandString();
         }
     }
 
@@ -2389,7 +2433,7 @@ public final class CarRetrofit {
             RegisterCallbackWrapper wrapper = new RegisterCallbackWrapper(callback);
             callbackWrapperMapper.put(callback, wrapper);
             wrapper.register();
-            return SKIP;
+            return null;
         }
 
         @Override
@@ -2399,7 +2443,7 @@ public final class CarRetrofit {
 
         @Override
         public void untrack(Object callback) {
-            RegisterCallbackWrapper wrapper = callbackWrapperMapper.get(callback);
+            RegisterCallbackWrapper wrapper = callbackWrapperMapper.remove(callback);
             if (wrapper != null) {
                 wrapper.unregister();
             }
@@ -2477,14 +2521,22 @@ public final class CarRetrofit {
                         }
                     }
 
+                    for (int i = 0; i < parameterCount; i++) {
+                        CommandInject inject = outParameterList.get(i);
+                        if (inject != null) {
+                            inject.suppressSetAndExecute(parameters[i]);
+                        }
+                    }
+
                     result = method.invoke(callbackObj, parameters);
 
                     for (int i = 0; i < parameterCount; i++) {
                         CommandInject inject = outParameterList.get(i);
                         if (inject != null) {
-                            inject.invokeWithChain(parameters[i]);
+                            inject.suppressGetAndExecute(parameters[i]);
                         }
                     }
+
                     if (commandFlow.returnCommand != null) {
                         commandFlow.returnCommand.invokeWithChain(result);
                     }
@@ -2703,8 +2755,8 @@ public final class CarRetrofit {
             } else {
                 result = obj;
             }
-            if (result == null || result == SKIP) {
-                return result;
+            if (result == null) {
+                return null;
             }
             if (mapFlowSuppressed) {
                 return result;
@@ -2734,7 +2786,7 @@ public final class CarRetrofit {
 
         @Override
         String toCommandString() {
-            return key + " Delegate{" + targetCommand.toCommandString() + "}";
+            return super.toCommandString() + " Delegate{" + targetCommand.toCommandString() + "}";
         }
     }
 

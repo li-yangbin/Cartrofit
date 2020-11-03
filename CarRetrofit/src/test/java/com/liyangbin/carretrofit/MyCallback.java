@@ -2,6 +2,7 @@ package com.liyangbin.carretrofit;
 
 import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.Delegate;
+import com.liyangbin.carretrofit.annotation.In;
 import com.liyangbin.carretrofit.annotation.Out;
 import com.liyangbin.carretrofit.annotation.Set;
 import com.liyangbin.carretrofit.annotation.Track;
@@ -24,13 +25,13 @@ public interface MyCallback {
 //    @Set(id = 2)String onIntSignalChange(int cc);
 
     @Track(id = 2)
-    void loadStringArray(@Out StringArrayRespond respond, String bbb);
+    void loadStringArray(@In ExampleUnitTest.CarData data, @Out StringArrayRespond respond, String bbb);
 
     @Delegate(TestCarApiId.trackIntReactive)
     void onIntSignalChangeDele(int d);
 }
 
-class StringArrayRespond implements ApplyReceiver {
+class StringArrayRespond implements InjectReceiver {
 
     @Delegate(setStringArraySignal)
     String[] stringArray;
@@ -39,15 +40,21 @@ class StringArrayRespond implements ApplyReceiver {
     int index;
 
     @Override
-    public void onBeforeApply() {
-        System.out.println("onBeforeApply this:" + this);
-    }
-
-    @Override
     public String toString() {
         return "StringArrayRespond{" +
                 "stringArray=" + Arrays.toString(stringArray) +
                 ", index=" + index +
                 '}';
+    }
+
+    @Override
+    public boolean onBeforeInject(Command command) {
+        System.out.println("onBeforeInject from:" + this + " by:" + command);
+        return false;
+    }
+
+    @Override
+    public void onAfterInject(Command command) {
+
     }
 }

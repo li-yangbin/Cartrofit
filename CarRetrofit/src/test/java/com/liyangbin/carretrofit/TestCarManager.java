@@ -6,6 +6,7 @@ import androidx.annotation.Nullable;
 
 import com.liyangbin.carretrofit.funtion.Function2;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Random;
 

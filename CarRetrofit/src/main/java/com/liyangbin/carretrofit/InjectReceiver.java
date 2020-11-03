@@ -1,7 +1,7 @@
 package com.liyangbin.carretrofit;
 
 public interface InjectReceiver {
-    void onBeforeInject();
+    boolean onBeforeInject(Command injectCommand);
 
-    void onAfterInject();
+    void onAfterInject(Command injectCommand);
 }

@@ -3,6 +3,8 @@ package com.liyangbin.carretrofit;
 import androidx.databinding.ObservableBoolean;
 
 import com.liyangbin.carretrofit.annotation.CarApi;
+import com.liyangbin.carretrofit.annotation.In;
+import com.liyangbin.carretrofit.annotation.Out;
 import com.liyangbin.carretrofit.annotation.Register;
 import com.liyangbin.carretrofit.annotation.CarValue;
 import com.liyangbin.carretrofit.annotation.Combine;
@@ -93,7 +95,8 @@ public interface TestCarApi {
     @Track(id = 0)
     MyFlow trackCustomFlow();
 
-    void applyComboValues(ExampleUnitTest.CarData cardata);
+    @Inject
+    void applyComboValues(@In@Out ExampleUnitTest.CarData cardata);
 
     @Get(id = 6)
     int get6IntValue();

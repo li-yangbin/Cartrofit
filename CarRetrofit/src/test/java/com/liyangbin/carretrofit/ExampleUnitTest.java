@@ -3,6 +3,7 @@ package com.liyangbin.carretrofit;
 import com.liyangbin.carretrofit.annotation.CarApi;
 import com.liyangbin.carretrofit.annotation.Delegate;
 import com.liyangbin.carretrofit.annotation.Get;
+import com.liyangbin.carretrofit.annotation.Inject;
 import com.liyangbin.carretrofit.annotation.Set;
 
 import androidx.databinding.ObservableBoolean;
@@ -442,8 +443,9 @@ public class ExampleUnitTest {
 //        api.injectComboData(data);
         print("old array:" + Arrays.toString(api.get9StringArrayValue()));
 //        CarData data = api.getComboData();
-        api.applyComboValues(new CarData());
-        print(/*"before extract data:" + data +*/ " array:" + Arrays.toString(api.get9StringArrayValue()));
+        CarData carData = new CarData();
+        api.applyComboValues(carData);
+        print(/*"before extract data:" + data +*/ " array:" + Arrays.toString(api.get9StringArrayValue()) + " after carData:" + carData);
 
 //        api.applyComboValues(new CarData());
 //
@@ -585,11 +587,11 @@ public class ExampleUnitTest {
 //            }
 
             @Override
-            public void loadStringArray(StringArrayRespond respond, String bbbb) {
+            public void loadStringArray(ExampleUnitTest.CarData data, StringArrayRespond respond, String bbbb) {
                 respond.stringArray = new String[]{"what", "a", "pretty", toggle ? "girl" : "boy"};
                 respond.index = toggle ? 10003 : 10004;
                 toggle = !toggle;
-                print("loadStringArray goes bb string bbbb:" + bbbb + " array:" + Arrays.toString(api.get9StringArrayValue()));
+                print("loadStringArray goes bb string bbbb:" + bbbb + " array:" + Arrays.toString(api.get9StringArrayValue()) + " data:" + data);
             }
 
             @Override
@@ -692,29 +694,27 @@ public class ExampleUnitTest {
 
     @CarApi(scope = "test")
     public static class InnerData extends BaseData {
-        @Get(id = 1)
         @Set(id = 1)
         private int[] aaa = {10086};
 
-        @Get(id = 3)
         @Set(id = 3)
         private String[] bbb = {"inner", "set"};
 
-        @Get(id = 5)
-        @Set(id = 5)
-        FormatCalendar calendar;
+//        @Get(id = 5)
+//        @Set(id = 5)
+//        FormatCalendar calendar;
 
-        {
-            calendar = new FormatCalendar(Calendar.getInstance(Locale.CANADA), false);
-            calendar.calendar.set(1964, 4, 13);
-        }
+//        {
+//            calendar = new FormatCalendar(Calendar.getInstance(Locale.CANADA), false);
+//            calendar.calendar.set(1964, 4, 13);
+//        }
 
         @Override
         public String toString() {
             return "InnerData{" +
                     "aaa=" + Arrays.toString(aaa) +
                     ", bbb=" + Arrays.toString(bbb) +
-                    ", calendar=" + calendar +
+//                    ", calendar=" + calendar +
                     ", baseAbc=" + baseAbc +
                     '}';
         }
@@ -730,7 +730,7 @@ public class ExampleUnitTest {
         @Delegate(TestCarApiId.get8StringValue)
         String cvb = "hello bird";
 
-        @Delegate(TestCarApiId.setStringArraySignal)
+        @Delegate(TestCarApiId.getStringArraySignal)
         String[] vbns = {"hello", "another", "flying", "bird"};
 
         @Override
@@ -741,15 +741,14 @@ public class ExampleUnitTest {
                     ", cvb='" + cvb + '\'' +
                     ", vbns=" + Arrays.toString(vbns) +
                     ", firstOb=" + firstOb +
-//                    ", data=" + data +
+                    ", data=" + data +
                     '}';
         }
 
         @Delegate(TestCarApiId.trackIntReactive)
         Observable<Integer> firstOb;
 
-//        @Inject
-//        @Apply
-//        InnerData data = new InnerData();
+        @Inject
+        InnerData data = new InnerData();
     }
 }
