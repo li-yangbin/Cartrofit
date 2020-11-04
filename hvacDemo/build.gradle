@@ -31,7 +31,7 @@ android {
 }
 
 dependencies {
-    implementation project(path: ':CarRetrofit')
+    implementation project(path: ':Cartrofit')
     annotationProcessor project(':processorlib')
     implementation files('libs/android.car.jar')
 

@@ -4,13 +4,13 @@ import android.car.VehicleAreaSeat;
 import android.car.VehicleAreaWindow;
 import android.car.hardware.hvac.CarHvacManager;
 
-import com.liyangbin.carretrofit.Command;
-import com.liyangbin.carretrofit.Interceptor;
-import com.liyangbin.carretrofit.annotation.CarApi;
-import com.liyangbin.carretrofit.annotation.Get;
-import com.liyangbin.carretrofit.annotation.Set;
+import com.liyangbin.cartrofit.Command;
+import com.liyangbin.cartrofit.Interceptor;
+import com.liyangbin.cartrofit.annotation.CarApi;
+import com.liyangbin.cartrofit.annotation.Get;
+import com.liyangbin.cartrofit.annotation.Set;
 
-@CarApi(scope = HvacDataSource.class)
+@CarApi(scope = "test")
 public interface HvacApi {
     int DRIVER_ZONE_ID = VehicleAreaSeat.SEAT_ROW_1_LEFT |
             VehicleAreaSeat.SEAT_ROW_2_LEFT | VehicleAreaSeat.SEAT_ROW_2_CENTER;

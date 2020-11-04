@@ -13,12 +13,13 @@ import android.os.SystemClock;
 import android.util.SparseArray;
 import android.util.SparseLongArray;
 
-import com.liyangbin.carretrofit.CarType;
-import com.liyangbin.carretrofit.Command;
-import com.liyangbin.carretrofit.Converter;
-import com.liyangbin.carretrofit.DataSource;
-import com.liyangbin.carretrofit.Flow;
-import com.liyangbin.carretrofit.HvacApiId;
+import com.liyangbin.cartrofit.ApiBuilder;
+import com.liyangbin.cartrofit.CarType;
+import com.liyangbin.cartrofit.Command;
+import com.liyangbin.cartrofit.Converter;
+import com.liyangbin.cartrofit.DataSource;
+import com.liyangbin.cartrofit.Flow;
+import com.liyangbin.cartrofit.HvacApiId;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,12 +58,20 @@ public class HvacDataSource implements DataSource {
     }
 
     @Override
-    public Object get(int key, int area, CarType type) throws Exception {
+    public Object get(int key, int area, CarType type) {
         switch (type) {
             case VALUE:
-                return mCarPropertyManager.getProperty(key, area).getValue();
+                try {
+                    return mCarPropertyManager.getProperty(key, area).getValue();
+                } catch (CarNotConnectedException e) {
+                    e.printStackTrace();
+                }
             case AVAILABILITY:
-                return mCarPropertyManager.isPropertyAvailable(key, area);
+                try {
+                    return mCarPropertyManager.isPropertyAvailable(key, area);
+                } catch (CarNotConnectedException e) {
+                    e.printStackTrace();
+                }
             case CONFIG:
                 return mConfigMap.get(key);
             case ALL:
@@ -72,24 +81,32 @@ public class HvacDataSource implements DataSource {
     }
 
     @Override
-    public <TYPE> void set(int key, int area, TYPE value) throws Exception {
-        mCarPropertyManager.setProperty((Class<? super TYPE>) extractValueType(key), key, area, value);
+    public <TYPE> void set(int key, int area, TYPE value) {
+        try {
+            mCarPropertyManager.setProperty((Class<? super TYPE>) extractValueType(key), key, area, value);
+        } catch (CarNotConnectedException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
-    public Flow<CarPropertyValue<?>> track(int key, int area) throws Exception {
+    public Flow<CarPropertyValue<?>> track(int key, int area) {
         if (!mHvacChangeTracked) {
-            mCarHvacManager.registerCallback(new CarHvacManager.CarHvacEventCallback() {
-                @Override
-                public void onChangeEvent(CarPropertyValue value) {
-                    notifyChange(value);
-                }
+            try {
+                mCarHvacManager.registerCallback(new CarHvacManager.CarHvacEventCallback() {
+                    @Override
+                    public void onChangeEvent(CarPropertyValue value) {
+                        notifyChange(value);
+                    }
 
-                @Override
-                public void onErrorEvent(int i, int i1) {
-                }
-            });
-            mHvacChangeTracked = true;
+                    @Override
+                    public void onErrorEvent(int i, int i1) {
+                    }
+                });
+                mHvacChangeTracked = true;
+            } catch (CarNotConnectedException e) {
+                e.printStackTrace();
+            }
         }
         synchronized (mPublishedFlowList) {
             AreaPool pool = mPublishedFlowList.get(key);
@@ -108,6 +125,11 @@ public class HvacDataSource implements DataSource {
                 areaPool.notifyAreaChange(value);
             }
         }
+    }
+
+    @Override
+    public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
+
     }
 
     private class AreaPool {
@@ -176,17 +198,16 @@ public class HvacDataSource implements DataSource {
     }
 
     @Override
-    public Class<?> extractValueType(int key) throws Exception {
+    public Class<?> extractValueType(int key) {
         return mConfigMap.get(key).getPropertyType();
     }
 
     @Override
-    public void onCommandCreate(Command command) {
-        installInterceptor(command);
-        installConverter(command);
+    public String getScopeId() {
+        return "test";
     }
 
-    private void installInterceptor(Command command) {
+    /*private void installInterceptor(Command command) {
         switch (command.type()) {
             case SET:
                 command.addInterceptorToTop((target, parameter) -> {
@@ -242,5 +263,5 @@ public class HvacDataSource implements DataSource {
         }
 
         int convert(int value);
-    }
+    }*/
 }
