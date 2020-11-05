@@ -7,25 +7,22 @@ import android.car.hardware.CarPropertyValue;
 import android.car.hardware.hvac.CarHvacManager;
 import android.car.hardware.property.CarPropertyManager;
 import android.content.Context;
-import android.os.AsyncTask;
 import android.os.Handler;
-import android.os.SystemClock;
 import android.util.SparseArray;
 import android.util.SparseLongArray;
 
 import com.liyangbin.cartrofit.ApiBuilder;
 import com.liyangbin.cartrofit.CarType;
-import com.liyangbin.cartrofit.Command;
-import com.liyangbin.cartrofit.Converter;
 import com.liyangbin.cartrofit.DataSource;
 import com.liyangbin.cartrofit.Flow;
-import com.liyangbin.cartrofit.HvacApiId;
+import com.liyangbin.cartrofit.annotation.Scope;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
+@Scope(Car.HVAC_SERVICE)
 public class HvacDataSource implements DataSource {
 
     private CarPropertyManager mCarPropertyManager;
@@ -200,11 +197,6 @@ public class HvacDataSource implements DataSource {
     @Override
     public Class<?> extractValueType(int key) {
         return mConfigMap.get(key).getPropertyType();
-    }
-
-    @Override
-    public String getScopeId() {
-        return "test";
     }
 
     /*private void installInterceptor(Command command) {

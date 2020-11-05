@@ -14,7 +14,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 public @interface Set {
     int id();
 
-    int area() default CarApi.DEFAULT_AREA_ID;
+    int area() default Scope.DEFAULT_AREA_ID;
 
     int restoreTrack() default 0;
 

@@ -10,6 +10,10 @@ import java.util.function.Predicate;
 
 public abstract class ApiBuilder {
 
+    public abstract void setDefaultAreaId(int areaId);
+
+    public abstract void setDefaultStickyType(StickyType stickyType);
+
     public abstract ApiBuilder intercept(Interceptor interceptor);
 
     public final <T> PredicateBuilder<T> checkInput(Class<T> target) {
@@ -246,7 +250,7 @@ public abstract class ApiBuilder {
             if (this == ALL) {
                 return true;
             }
-            final CommandType thatType = command.type();
+            final CommandType thatType = command.getType();
             if (type == null && (thatType == CommandType.STICKY_GET
                     || thatType == CommandType.RECEIVE)) {
                 return false;

@@ -2,7 +2,6 @@ package com.liyangbin.cartrofit;
 
 import androidx.databinding.ObservableBoolean;
 
-import com.liyangbin.cartrofit.annotation.CarApi;
 import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Out;
 import com.liyangbin.cartrofit.annotation.Register;
@@ -11,6 +10,7 @@ import com.liyangbin.cartrofit.annotation.Combine;
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.Inject;
+import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
 import com.liyangbin.cartrofit.annotation.UnTrack;
@@ -20,7 +20,7 @@ import io.reactivex.Single;
 
 import static com.liyangbin.cartrofit.TestCarApiId.*;
 
-@CarApi(scope = "test")
+@Scope(value = "test", publish = true)
 public interface TestCarApi {
 
     @Get(id = 0)
@@ -68,7 +68,7 @@ public interface TestCarApi {
     @Track(id = 0)
     Flow<Integer> trackIntSignal();
 
-    @Track(id = 0, restoreSet = setIntSignal)
+    @Track(id = 0/*, restoreSet = setIntSignal*/)
     Observable<Integer> trackIntReactive();
 
     @Delegate(trackIntReactive)

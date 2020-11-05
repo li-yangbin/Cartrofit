@@ -87,28 +87,13 @@ class InterceptorChain {
         }
 
         @Override
-        public DataSource getSource() {
-            return previous.getSource();
-        }
-
-        @Override
-        public CommandType type() {
-            return previous.type();
+        public CommandType getType() {
+            return previous.getType();
         }
 
         @Override
         public String[] getCategory() {
             return previous.getCategory();
-        }
-
-        @Override
-        public boolean fromApply() {
-            return previous.fromApply();
-        }
-
-        @Override
-        public boolean fromInject() {
-            return previous.fromInject();
         }
 
         @Override

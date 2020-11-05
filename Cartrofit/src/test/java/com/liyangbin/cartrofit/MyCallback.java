@@ -1,10 +1,8 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.annotation.CarApi;
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Out;
-import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
 
 import java.util.Arrays;
@@ -12,7 +10,6 @@ import java.util.Arrays;
 import static com.liyangbin.cartrofit.TestCarApiId.setIntSignal;
 import static com.liyangbin.cartrofit.TestCarApiId.setStringArraySignal;
 
-@CarApi(scope = "test")
 public interface MyCallback {
 
     @Delegate(TestCarApiId.trackStringSignal)

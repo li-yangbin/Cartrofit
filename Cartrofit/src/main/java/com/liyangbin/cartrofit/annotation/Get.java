@@ -18,5 +18,5 @@ public @interface Get {
 
     CarType type() default CarType.VALUE;
 
-    int area() default CarApi.DEFAULT_AREA_ID;
+    int area() default Scope.DEFAULT_AREA_ID;
 }

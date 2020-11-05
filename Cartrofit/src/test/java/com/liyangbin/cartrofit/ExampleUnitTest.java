@@ -1,9 +1,11 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.annotation.CarApi;
+import android.car.Car;
+
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.Inject;
+import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 
 import androidx.databinding.ObservableBoolean;
@@ -14,7 +16,6 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.Calendar;
-import java.util.Locale;
 import java.util.Random;
 
 import io.reactivex.Observable;
@@ -692,7 +693,7 @@ public class ExampleUnitTest {
         int baseAbc = 4321;
     }
 
-    @CarApi(scope = "test")
+    @Scope("test")
     public static class InnerData extends BaseData {
         @Set(id = 1)
         private int[] aaa = {10086};

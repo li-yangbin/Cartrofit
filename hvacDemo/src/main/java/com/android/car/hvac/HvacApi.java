@@ -1,16 +1,15 @@
 package com.android.car.hvac;
 
+import android.car.Car;
 import android.car.VehicleAreaSeat;
 import android.car.VehicleAreaWindow;
 import android.car.hardware.hvac.CarHvacManager;
 
-import com.liyangbin.cartrofit.Command;
-import com.liyangbin.cartrofit.Interceptor;
-import com.liyangbin.cartrofit.annotation.CarApi;
 import com.liyangbin.cartrofit.annotation.Get;
+import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 
-@CarApi(scope = "test")
+@Scope(value = Car.HVAC_SERVICE, publish = true)
 public interface HvacApi {
     int DRIVER_ZONE_ID = VehicleAreaSeat.SEAT_ROW_1_LEFT |
             VehicleAreaSeat.SEAT_ROW_2_LEFT | VehicleAreaSeat.SEAT_ROW_2_CENTER;

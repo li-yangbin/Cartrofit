@@ -2,7 +2,6 @@ package com.liyangbin.cartrofit;
 
 import android.car.hardware.CarPropertyValue;
 
-import com.liyangbin.cartrofit.annotation.CarApi;
 import com.liyangbin.cartrofit.annotation.CarValue;
 import com.liyangbin.cartrofit.annotation.Category;
 import com.liyangbin.cartrofit.annotation.Combine;
@@ -13,6 +12,7 @@ import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Inject;
 import com.liyangbin.cartrofit.annotation.Out;
 import com.liyangbin.cartrofit.annotation.Register;
+import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
 import com.liyangbin.cartrofit.annotation.UnTrack;
@@ -86,7 +86,6 @@ public final class Cartrofit {
         if (mDataMap.isEmpty()) {
             throw new IllegalArgumentException("Cartrofit must be setup with data source");
         }
-        mDataMap.put("", new DummyDataSource());
         for (int i = 0; i < builder.interceptors.size(); i++) {
             if (mChainHead == null) {
                 mChainHead = new InterceptorChain();
@@ -94,32 +93,6 @@ public final class Cartrofit {
             mChainHead.addInterceptor(builder.interceptors.get(i));
         }
         mApiCallback.addAll(builder.apiCallbacks);
-    }
-
-    private static class DummyDataSource implements DataSource {
-        @Override
-        public Object get(int key, int area, CarType type) {
-            throw new IllegalStateException("impossible");
-        }
-        @Override
-        public <TYPE> void set(int key, int area, TYPE value) {
-            throw new IllegalStateException("impossible");
-        }
-        @Override
-        public Flow<CarPropertyValue<?>> track(int key, int area) {
-            throw new IllegalStateException("impossible");
-        }
-        @Override
-        public Class<?> extractValueType(int key) {
-            throw new IllegalStateException("impossible");
-        }
-        @Override
-        public String getScopeId() {
-            return "";
-        }
-        @Override
-        public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
-        }
     }
 
     public static void setDefault(Cartrofit retrofit) {
@@ -182,20 +155,15 @@ public final class Cartrofit {
 
         ApiRecord(Class<T> clazz) {
             this.clazz = clazz;
-            CarApi carApi = clazz.getAnnotation(CarApi.class);
-            if (carApi != null) {
-                this.dataScope = carApi.scope();
-                this.apiArea = carApi.area();
-                this.stickyType = carApi.defaultSticky();
-                if (stickyType == StickyType.NO_SET) {
-                    stickyType = mDefaultStickyType;
-                }
+            Scope carScope = clazz.getAnnotation(Scope.class);
+            if (carScope != null) {
+                this.dataScope = carScope.value();
 
                 this.source = Objects.requireNonNull(mDataMap.get(dataScope),
                         "Invalid scope:" + dataScope +
-                                " make sure use a valid scope registered in Builder().addDataSource()");
+                                ". Make sure use a valid scope id registered in Builder().addDataSource()");
 
-                if (clazz.isInterface()) {
+                if (carScope.publish() && clazz.isInterface()) {
                     try {
                         Class<?> selfScopeClass = Class.forName(clazz.getName() + ID_SUFFIX);
                         importDependency(selfScopeClass);
@@ -214,6 +182,16 @@ public final class Cartrofit {
                 return 0;
             }
             return selfDependencyReverse.getOrDefault(command.key.method, 0);
+        }
+
+        @Override
+        public void setDefaultAreaId(int areaId) {
+            apiArea = areaId;
+        }
+
+        @Override
+        public void setDefaultStickyType(StickyType stickyType) {
+            this.stickyType = stickyType;
         }
 
         @Override
@@ -426,7 +404,7 @@ public final class Cartrofit {
             return "ApiRecord{" +
                     "api=" + clazz +
                     ", dataScope='" + dataScope + '\'' +
-                    (apiArea != CarApi.DEFAULT_AREA_ID ?
+                    (apiArea != Scope.DEFAULT_AREA_ID ?
                     ", apiArea=0x" + Integer.toHexString(apiArea) : "") +
                     '}';
         }
@@ -635,7 +613,13 @@ public final class Cartrofit {
         private StickyType stickyType = DEFAULT_STICKY_TYPE;
 
         public Builder addDataSource(DataSource source) {
-            DataSource existedSource = dataMap.put(source.getScopeId(), source);
+            Scope sourceScope = Objects.requireNonNull(
+                    source.getClass().getDeclaredAnnotation(Scope.class));
+            if (sourceScope.publish()) {
+                throw new CartrofitException("Can not declare publish on data source:"
+                        + source);
+            }
+            DataSource existedSource = dataMap.put(sourceScope.value(), source);
             if (existedSource != null) {
                 throw new CartrofitException("Duplicate data source:" + existedSource);
             }
@@ -702,11 +686,11 @@ public final class Cartrofit {
         return getApi(api, false);
     }
 
-    private <T> ApiRecord<T> getApi(Class<T> api, boolean throwIfNotDeclareCarApi) {
+    private <T> ApiRecord<T> getApi(Class<T> api, boolean throwIfNotDeclareScope) {
         synchronized (mApiCache) {
             ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
             if (record == null) {
-                if (api.isAnnotationPresent(CarApi.class) || !throwIfNotDeclareCarApi) {
+                if (api.isAnnotationPresent(Scope.class) || !throwIfNotDeclareScope) {
                     record = new ApiRecord<>(api);
                     mApiCache.put(api, record);
                 } else {
@@ -1118,7 +1102,7 @@ public final class Cartrofit {
             CommandRegister commandRegister = new CommandRegister();
             searchAndCreateChildCommand(getApi(targetClass),
                     command -> {
-                        if (command.type() != CommandType.TRACK) {
+                        if (command.getType() != CommandType.TRACK) {
                             throw new CartrofitException("Illegal non-track on register callback:" + command);
                         }
                         Method method = command.getMethod();
@@ -1267,12 +1251,11 @@ public final class Cartrofit {
             this.record = record;
             this.source = record.source;
             if (this.source == null && requireSource()) {
-                throw new CartrofitException("Declare CarApi.scope() attribute" +
-                        " in your scope class:" + record.clazz);
+                throw new CartrofitException("Declare Scope in your api class:" + record.clazz);
             }
             this.key = key;
 
-            if (type() != CommandType.INJECT) {
+            if (getType() != CommandType.INJECT) {
                 this.id = record.loadId(this);
                 Category category = key.getAnnotation(Category.class);
                 if (category != null) {
@@ -1308,13 +1291,13 @@ public final class Cartrofit {
         }
 
         final void resolveArea(int userDeclaredArea) {
-            if (userDeclaredArea != CarApi.DEFAULT_AREA_ID) {
+            if (userDeclaredArea != Scope.DEFAULT_AREA_ID) {
                 this.area = userDeclaredArea;
             } else {
-                if (this.record.apiArea != CarApi.DEFAULT_AREA_ID) {
+                if (this.record.apiArea != Scope.DEFAULT_AREA_ID) {
                     this.area = record.apiArea;
                 } else {
-                    this.area = CarApi.GLOBAL_AREA_ID;
+                    this.area = Scope.GLOBAL_AREA_ID;
                 }
             }
         }
@@ -1348,16 +1331,6 @@ public final class Cartrofit {
         }
 
         @Override
-        public boolean fromInject() {
-            return false;
-        }
-
-        @Override
-        public boolean fromApply() {
-            return false;
-        }
-
-        @Override
         public int getPropertyId() {
             return delegateTarget().propertyId;
         }
@@ -1365,11 +1338,6 @@ public final class Cartrofit {
         @Override
         public int getArea() {
             return delegateTarget().area;
-        }
-
-        @Override
-        public DataSource getSource() {
-            return delegateTarget().source;
         }
 
         @Override
@@ -1389,7 +1357,7 @@ public final class Cartrofit {
 
         @Override
         public final String toString() {
-            return "Cmd " + type() + " 0x" + Integer.toHexString(hashCode())
+            return "Cmd " + getType() + " 0x" + Integer.toHexString(hashCode())
                     + " [" + toCommandString() + "]";
         }
 
@@ -1460,7 +1428,7 @@ public final class Cartrofit {
 
             for (int i = 0; i < childrenCommand.size(); i++) {
                 CommandImpl childCommand = childrenCommand.get(i);
-                CommandType childType = childCommand.type();
+                CommandType childType = childCommand.getType();
                 if (childType == CommandType.INJECT) {
                     childCommand.invoke(parameter);
                 } else {
@@ -1487,7 +1455,7 @@ public final class Cartrofit {
         }
 
         @Override
-        public CommandType type() {
+        public CommandType getType() {
             return CommandType.INJECT;
         }
     }
@@ -1612,7 +1580,7 @@ public final class Cartrofit {
         }
 
         @Override
-        public CommandType type() {
+        public CommandType getType() {
             return CommandType.INJECT;
         }
 
@@ -1768,7 +1736,7 @@ public final class Cartrofit {
         }
 
         @Override
-        public CommandType type() {
+        public CommandType getType() {
             return CommandType.COMBINE;
         }
 
@@ -1931,7 +1899,7 @@ public final class Cartrofit {
         }
 
         @Override
-        public CommandType type() {
+        public CommandType getType() {
             return CommandType.SET;
         }
 
@@ -1941,14 +1909,9 @@ public final class Cartrofit {
         }
 
         @Override
-        public boolean fromApply() {
-            return key.field != null;
-        }
-
-        @Override
         String toCommandString() {
             String stable = "id:0x" + Integer.toHexString(getPropertyId())
-                    + (area != CarApi.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "");
+                    + (area != Scope.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "");
             return stable + super.toCommandString();
         }
     }
@@ -1991,19 +1954,14 @@ public final class Cartrofit {
         }
 
         @Override
-        public CommandType type() {
+        public CommandType getType() {
             return CommandType.GET;
-        }
-
-        @Override
-        public boolean fromInject() {
-            return key.field != null;
         }
 
         @Override
         String toCommandString() {
             String stable = "id:0x" + Integer.toHexString(getPropertyId())
-                    + (area != CarApi.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "");
+                    + (area != Scope.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "");
             if (type != CarType.VALUE) {
                 stable += " valueType:" + type;
             }
@@ -2303,11 +2261,6 @@ public final class Cartrofit {
             return true;
         }
 
-        @Override
-        public boolean fromInject() {
-            return key.field != null;
-        }
-
         private void resolveConverter() {
             if (!mapFlowSuppressed) {
                 Converter<?, ?> converter = ConverterStore.find(this, Flow.class,
@@ -2394,14 +2347,14 @@ public final class Cartrofit {
         }
 
         @Override
-        public CommandType type() {
+        public CommandType getType() {
             return CommandType.TRACK;
         }
 
         @Override
         String toCommandString() {
             String stable = "id:0x" + Integer.toHexString(getPropertyId())
-                    + (area != CarApi.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "");
+                    + (area != Scope.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "");
             if (type != CarType.VALUE) {
                 stable += " valueType:" + type;
             }
@@ -2437,7 +2390,7 @@ public final class Cartrofit {
         }
 
         @Override
-        public CommandType type() {
+        public CommandType getType() {
             return CommandType.CALLBACK;
         }
 
@@ -2582,7 +2535,7 @@ public final class Cartrofit {
         }
 
         @Override
-        public CommandType type() {
+        public CommandType getType() {
             return CommandType.UN_TRACK;
         }
 
@@ -2613,7 +2566,7 @@ public final class Cartrofit {
         }
 
         @Override
-        public CommandType type() {
+        public CommandType getType() {
             return CommandType.RECEIVE;
         }
 
@@ -2652,7 +2605,7 @@ public final class Cartrofit {
         }
 
         @Override
-        public CommandType type() {
+        public CommandType getType() {
             return CommandType.STICKY_GET;
         }
 
@@ -2674,7 +2627,7 @@ public final class Cartrofit {
             Delegate delegate = (Delegate) annotation;
             resolveStickyType(delegate.sticky());
             carType = delegate.type();
-            commandSet = type() == CommandType.SET;
+            commandSet = getType() == CommandType.SET;
 
             targetCommand.overrideFromDelegate(this);
 
@@ -2765,18 +2718,8 @@ public final class Cartrofit {
         }
 
         @Override
-        public boolean fromApply() {
-            return targetCommand.fromApply();
-        }
-
-        @Override
-        public boolean fromInject() {
-            return targetCommand.fromInject();
-        }
-
-        @Override
-        public CommandType type() {
-            return targetCommand.type();
+        public CommandType getType() {
+            return targetCommand.getType();
         }
 
         @Override

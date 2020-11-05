@@ -11,17 +11,11 @@ public interface Command {
 
     int getArea();
 
-    DataSource getSource();
-
     Object invoke(Object parameter);
 
-    CommandType type();
+    CommandType getType();
 
     String[] getCategory();
-
-    boolean fromApply();
-
-    boolean fromInject();
 
     Method getMethod();
 

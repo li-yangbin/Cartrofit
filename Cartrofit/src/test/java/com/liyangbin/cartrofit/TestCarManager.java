@@ -4,12 +4,13 @@ import android.car.hardware.CarPropertyValue;
 
 import androidx.annotation.Nullable;
 
+import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.funtion.Function2;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Random;
 
+@Scope("test")
 public class TestCarManager extends CarManager2 {
 
     public static final HashMap<Integer, Combo> typeMockMap = new HashMap<>();
@@ -202,10 +203,5 @@ public class TestCarManager extends CarManager2 {
     @Override
     public synchronized Class<?> extractValueType(int key) {
         return typeMockMap.get(key).clazz;
-    }
-
-    @Override
-    public String getScopeId() {
-        return "test";
     }
 }

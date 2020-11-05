@@ -1,11 +1,11 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.annotation.CarApi;
 import com.liyangbin.cartrofit.annotation.Delegate;
+import com.liyangbin.cartrofit.annotation.Scope;
 
 import io.reactivex.Observable;
 
-@CarApi
+@Scope(value = "test", publish = true)
 public interface TestChildCarApi {
 
 //    @Delegate(getIntSignal)

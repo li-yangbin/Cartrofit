@@ -10,6 +10,4 @@ public interface DataSource extends ApiCallback {
     Flow<CarPropertyValue<?>> track(int key, int area);
 
     Class<?> extractValueType(int key);
-
-    String getScopeId();
 }
