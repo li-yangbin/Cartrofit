@@ -125,25 +125,72 @@ public class LocalHvacPropertyService {
     private void setupDefaultValues() {
         mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_HVAC_POWER_ON,
                 SEAT_ALL), DEFAULT_POWER_ON);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Boolean.class,
+                CarHvacManager.ID_ZONED_HVAC_POWER_ON,
+                VehicleAreaType.VEHICLE_AREA_TYPE_GLOBAL)
+                .addAreaConfig(SEAT_ALL, false, true).build());
+
         mProperties.put(new Pair<>(CarHvacManager.ID_WINDOW_DEFROSTER_ON,
                 VehicleAreaWindow.WINDOW_FRONT_WINDSHIELD), DEFAULT_DEFROSTER_ON);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Boolean.class,
+                CarHvacManager.ID_WINDOW_DEFROSTER_ON,
+                VehicleAreaType.VEHICLE_AREA_TYPE_WINDOW)
+                .addAreaConfig(VehicleAreaWindow.WINDOW_FRONT_WINDSHIELD, false, true).build());
+
         mProperties.put(new Pair<>(CarHvacManager.ID_WINDOW_DEFROSTER_ON,
                 VehicleAreaWindow.WINDOW_REAR_WINDSHIELD), DEFAULT_DEFROSTER_ON);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Boolean.class,
+                CarHvacManager.ID_WINDOW_DEFROSTER_ON,
+                VehicleAreaType.VEHICLE_AREA_TYPE_WINDOW)
+                .addAreaConfig(VehicleAreaWindow.WINDOW_REAR_WINDSHIELD, false, true).build());
+
         mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_AIR_RECIRCULATION_ON,
                 SEAT_ALL), DEFAULT_AIR_CIRCULATION_ON);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Boolean.class,
+                CarHvacManager.ID_ZONED_AIR_RECIRCULATION_ON,
+                VehicleAreaType.VEHICLE_AREA_TYPE_GLOBAL)
+                .addAreaConfig(SEAT_ALL, false, true).build());
+
         mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_AC_ON,
                 SEAT_ALL), DEFAULT_AC_ON);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Boolean.class,
+                CarHvacManager.ID_ZONED_AC_ON,
+                VehicleAreaType.VEHICLE_AREA_TYPE_GLOBAL)
+                .addAreaConfig(SEAT_ALL, false, true).build());
+
         mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_AUTOMATIC_MODE_ON,
                 SEAT_ALL), DEFAULT_AUTO_MODE);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Boolean.class,
+                CarHvacManager.ID_ZONED_AUTOMATIC_MODE_ON,
+                VehicleAreaType.VEHICLE_AREA_TYPE_GLOBAL)
+                .addAreaConfig(SEAT_ALL, false, true).build());
 
         mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_FAN_SPEED_SETPOINT,
                 SEAT_ALL), DEFAULT_FAN_SPEED);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Integer.class,
+                CarHvacManager.ID_ZONED_FAN_SPEED_SETPOINT,
+                VehicleAreaType.VEHICLE_AREA_TYPE_GLOBAL)
+                .addAreaConfig(SEAT_ALL, 0, 10).build());
+
         mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_FAN_DIRECTION,
                 SEAT_ALL), DEFAULT_FAN_DIRECTION);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Integer.class,
+                CarHvacManager.ID_ZONED_FAN_DIRECTION,
+                VehicleAreaType.VEHICLE_AREA_TYPE_GLOBAL)
+                .addAreaConfig(SEAT_ALL, 0, 10).build());
 
         mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_TEMP_SETPOINT,
                 DRIVER_ZONE_ID), DEFAULT_DRIVER_TEMP);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Float.class,
+                CarHvacManager.ID_ZONED_TEMP_SETPOINT,
+                VehicleAreaType.VEHICLE_AREA_TYPE_SEAT)
+                .addAreaConfig(DRIVER_ZONE_ID, 0f, 100f).build());
+
         mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_TEMP_SETPOINT,
                 PASSENGER_ZONE_ID), DEFAULT_PASSENGER_TEMP);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Float.class,
+                CarHvacManager.ID_ZONED_TEMP_SETPOINT,
+                VehicleAreaType.VEHICLE_AREA_TYPE_SEAT)
+                .addAreaConfig(PASSENGER_ZONE_ID, 0f, 100f).build());
     }
 }

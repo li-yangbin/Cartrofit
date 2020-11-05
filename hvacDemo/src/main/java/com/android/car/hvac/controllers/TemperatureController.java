@@ -41,7 +41,7 @@ public class TemperatureController {
         mDriverTempBarCollapsed = driverTemperatureBarCollapsed;
         mHvacController = controller;
 
-        mHvacController.registerCallback(mCallback);
+//        mHvacController.registerCallback(mCallback);
         mDriverTempBarExpanded.setTemperatureChangeListener(mDriverTempClickListener);
         mPassengerTempBarExpanded.setTemperatureChangeListener(mPassengerTempClickListener);
 
@@ -63,32 +63,32 @@ public class TemperatureController {
             mPassengerTempBarCollapsed.setTemperature(mHvacController.getPassengerTemperature());
         }
     }
-
-    private final HvacController.Callback mCallback = new HvacController.Callback() {
-        @Override
-        public void onPassengerTemperatureChange(CarPropertyValue value) {
-            final boolean available = value.getStatus() == CarPropertyValue.STATUS_AVAILABLE;
-            mPassengerTempBarExpanded.setAvailable(available);
-            mPassengerTempBarCollapsed.setAvailable(available);
-            if (available) {
-                final int temp = ((Float)value.getValue()).intValue();
-                mPassengerTempBarExpanded.setTemperature(temp);
-                mPassengerTempBarCollapsed.setTemperature(temp);
-            }
-        }
-
-        @Override
-        public void onDriverTemperatureChange(CarPropertyValue value) {
-            final boolean available = value.getStatus() == CarPropertyValue.STATUS_AVAILABLE;
-            mDriverTempBarExpanded.setAvailable(available);
-            mDriverTempBarExpanded.setAvailable(available);
-            if (available) {
-                final int temp = ((Float)value.getValue()).intValue();
-                mDriverTempBarCollapsed.setTemperature(temp);
-                mDriverTempBarExpanded.setTemperature(temp);
-            }
-        }
-    };
+//
+//    private final HvacController.Callback mCallback = new HvacController.Callback() {
+//        @Override
+//        public void onPassengerTemperatureChange(CarPropertyValue value) {
+//            final boolean available = value.getStatus() == CarPropertyValue.STATUS_AVAILABLE;
+//            mPassengerTempBarExpanded.setAvailable(available);
+//            mPassengerTempBarCollapsed.setAvailable(available);
+//            if (available) {
+//                final int temp = ((Float)value.getValue()).intValue();
+//                mPassengerTempBarExpanded.setTemperature(temp);
+//                mPassengerTempBarCollapsed.setTemperature(temp);
+//            }
+//        }
+//
+//        @Override
+//        public void onDriverTemperatureChange(CarPropertyValue value) {
+//            final boolean available = value.getStatus() == CarPropertyValue.STATUS_AVAILABLE;
+//            mDriverTempBarExpanded.setAvailable(available);
+//            mDriverTempBarExpanded.setAvailable(available);
+//            if (available) {
+//                final int temp = ((Float)value.getValue()).intValue();
+//                mDriverTempBarCollapsed.setTemperature(temp);
+//                mDriverTempBarExpanded.setTemperature(temp);
+//            }
+//        }
+//    };
 
     private final TemperatureBarOverlay.TemperatureAdjustClickListener mPassengerTempClickListener =
             new TemperatureBarOverlay.TemperatureAdjustClickListener() {

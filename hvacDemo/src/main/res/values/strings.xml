@@ -17,7 +17,6 @@
 -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- Application name -->
-    <string name="hvac_label">Climate Control</string>
     <string name="app_name">HVAC Demo</string>
 
     <string name="hvac_temperature_template"><xliff:g id="temperature">%1$s</xliff:g>&#x00B0;</string>

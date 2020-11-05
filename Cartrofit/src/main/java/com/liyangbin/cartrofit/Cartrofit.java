@@ -66,9 +66,8 @@ public final class Cartrofit {
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
     private static Method sRouterFinderMethod;
 
-    private final HashMap<String, DataSource> mDataMap;
+    private final HashMap<String, DataSource> mDataMap = new HashMap<>();
     private InterceptorChain mChainHead;
-    private final StickyType mDefaultStickyType;
     private final ArrayList<ApiCallback> mApiCallback = new ArrayList<>();
 
     private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
@@ -80,9 +79,11 @@ public final class Cartrofit {
         LiveDataConverter.addSupport();
     }
 
-    private Cartrofit(Builder builder) {
-        mDataMap = builder.dataMap;
-        mDefaultStickyType = builder.stickyType;
+    private Cartrofit() {
+    }
+
+    private void append(Builder builder) {
+        mDataMap.putAll(builder.dataMap);
         if (mDataMap.isEmpty()) {
             throw new IllegalArgumentException("Cartrofit must be setup with data source");
         }
@@ -95,17 +96,13 @@ public final class Cartrofit {
         mApiCallback.addAll(builder.apiCallbacks);
     }
 
-    public static void setDefault(Cartrofit retrofit) {
-        sDefault = Objects.requireNonNull(retrofit);
+    public static Builder builder() {
+        return new Builder();
     }
 
-    public static Cartrofit getDefault() {
-        return sDefault;
-    }
-
-    public static <T> T fromDefault(Class<T> api) {
+    public static <T> T from(Class<T> api) {
         return Objects.requireNonNull(sDefault,
-                "Call setDefault() before calling fromDefault()").from(api);
+                "Call setDefault() before calling fromDefault()").fromInternal(api);
     }
 
     private static Class<?> findApiClassById(int id) {
@@ -610,7 +607,9 @@ public final class Cartrofit {
         private final HashMap<String, DataSource> dataMap = new HashMap<>();
         private final ArrayList<Interceptor> interceptors = new ArrayList<>();
         private final ArrayList<ApiCallback> apiCallbacks = new ArrayList<>();
-        private StickyType stickyType = DEFAULT_STICKY_TYPE;
+
+        private Builder() {
+        }
 
         public Builder addDataSource(DataSource source) {
             Scope sourceScope = Objects.requireNonNull(
@@ -636,17 +635,14 @@ public final class Cartrofit {
             return this;
         }
 
-        public Builder setDefaultStickyType(StickyType type) {
-            stickyType = type;
-            return this;
-        }
-
-        public Cartrofit build() {
-            return new Cartrofit(this);
-        }
-
         public void buildAsDefault() {
-            setDefault(build());
+            if (sDefault == null) {
+                sDefault = new Cartrofit();
+            }
+            sDefault.append(this);
+            dataMap.clear();
+            interceptors.clear();
+            apiCallbacks.clear();
         }
     }
 
@@ -656,7 +652,7 @@ public final class Cartrofit {
         }
     }
 
-    public <T> T from(Class<T> api) {
+    private <T> T fromInternal(Class<T> api) {
         ApiRecord<T> record = getApi(api, true);
         if (record.apiObj != null) {
             return record.apiObj;
@@ -873,13 +869,6 @@ public final class Cartrofit {
         <T extends Annotation> boolean isAnnotationPresent(Class<T> annotationClass) {
             return method != null ? method.isAnnotationPresent(annotationClass)
                     : field.isAnnotationPresent(annotationClass);
-        }
-
-        boolean isInjectReturn() {
-            if (field != null) {
-                return true;
-            }
-            return method != null && method.getReturnType() != void.class;
         }
 
         Class<?> getGetClass() {

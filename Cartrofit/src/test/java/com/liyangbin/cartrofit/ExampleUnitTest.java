@@ -1,14 +1,12 @@
 package com.liyangbin.cartrofit;
 
-import android.car.Car;
+import androidx.databinding.ObservableBoolean;
 
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.Inject;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
-
-import androidx.databinding.ObservableBoolean;
 
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -318,23 +316,7 @@ public class ExampleUnitTest {
 
     @BeforeClass
     public static void start() {
-        Cartrofit.setDefault(new Cartrofit.Builder()
-                .addDataSource(new TestCarManager())
-//                .addConverter(new ConverterImpl())
-//                .addConverter(new TwoWayConverter<Integer, MappedData>() {
-//                    @Override
-//                    public MappedData fromCar2App(Integer value) {
-//                        return new MappedData(value);
-//                    }
-//
-//                    @Override
-//                    public Integer fromApp2Car(MappedData mappedData) {
-//                        return mappedData.rawData;
-//                    }
-//                })
-//                .addConverter(new Integer2Boolean())
-                .build());
-        api = Cartrofit.fromDefault(TestCarApi.class);
+        Cartrofit.builder().addDataSource(new TestCarManager()).buildAsDefault();
 
 //        Cartrofit.obtainConverterScope("test2")
 //                .addConverter(new Converter<Integer, Boolean>() {
@@ -354,7 +336,7 @@ public class ExampleUnitTest {
 //                })
 //                .create(TestCarApi.class);
 
-//        api = Cartrofit.create(TestCarApi.class);
+        api = Cartrofit.from(TestCarApi.class);
 
 //        Function<String, String> inner = new Function<String, String>() {
 //            @Override
@@ -489,7 +471,7 @@ public class ExampleUnitTest {
 //                print("boolean accept:" + aBoolean);
 //            }
 //        });
-        Cartrofit.fromDefault(TestChildCarApi.class)
+        Cartrofit.from(TestChildCarApi.class)
                 .trackIntReactiveAlias()
                 .subscribe(new Consumer<Integer>() {
             @Override

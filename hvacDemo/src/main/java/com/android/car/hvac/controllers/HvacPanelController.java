@@ -29,8 +29,13 @@ import android.view.WindowManager;
 import android.widget.ImageView;
 
 import androidx.annotation.IntDef;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.databinding.ObservableBoolean;
+import androidx.lifecycle.LifecycleOwner;
 
+import com.android.car.hvac.HvacApi;
 import com.android.car.hvac.HvacController;
+import com.android.car.hvac.HvacDataSource;
 import com.android.car.hvac.R;
 import com.android.car.hvac.ui.FanDirectionButtons;
 import com.android.car.hvac.ui.FanSpeedBar;
@@ -38,6 +43,7 @@ import com.android.car.hvac.ui.HvacPanelRow;
 import com.android.car.hvac.ui.SeatWarmerButton;
 import com.android.car.hvac.ui.TemperatureBarOverlay;
 import com.android.car.hvac.ui.ToggleButton;
+import com.liyangbin.cartrofit.Cartrofit;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -127,14 +133,22 @@ public class HvacPanelController {
     // TODO: read from shared pref
     private boolean mAutoMode;
 
-    public HvacPanelController(Context context, View container,
-            WindowManager windowManager,
-            TemperatureBarOverlay driverTemperatureExpanded,
-            TemperatureBarOverlay passengerTemperatureExpanded,
-            TemperatureBarOverlay driverTemperatureBarCollapsed,
-            TemperatureBarOverlay passengerTemperatureBarCollapsed) {
-        Resources res = context.getResources();
+    private HvacApi mHvacApi;
+    private AppCompatActivity mActivity;
+    public ObservableBoolean mAcOn;
+
+    public HvacPanelController(AppCompatActivity activity, View container,
+                               WindowManager windowManager,
+                               TemperatureBarOverlay driverTemperatureExpanded,
+                               TemperatureBarOverlay passengerTemperatureExpanded,
+                               TemperatureBarOverlay driverTemperatureBarCollapsed,
+                               TemperatureBarOverlay passengerTemperatureBarCollapsed) {
+
+        mHvacApi = Cartrofit.from(HvacApi.class);
+
+        Resources res = activity.getResources();
         mShowCollapsed = res.getBoolean(R.bool.config_showCollapsedBars);
+        mActivity = activity;
 
         mDriverTemperatureBarCollapsed = driverTemperatureBarCollapsed;
         mPassengerTemperatureBarCollapsed = passengerTemperatureBarCollapsed;
@@ -178,6 +192,7 @@ public class HvacPanelController {
         mAcButton = (ToggleButton) mPanelTopRow.findViewById(R.id.ac_button);
         mAcButton.setToggleIcons(res.getDrawable(R.drawable.ic_ac_on),
                 res.getDrawable(R.drawable.ic_ac_off));
+        mAcOn = mHvacApi.trackACState();
 
         mRecycleAirButton = (ToggleButton) mPanelTopRow.findViewById(R.id.recycle_air_button);
 
@@ -242,67 +257,73 @@ public class HvacPanelController {
             }
         });
 
-        mFrontDefrosterButton.setIsOn(mHvacController.getFrontDefrosterState());
+        mHvacApi.trackFrontDefrosterState().observe(mActivity, isOn -> {
+            mFrontDefrosterButton.setIsOn(isOn);
+        });
         mFrontDefrosterButton.setToggleListener(new ToggleButton.ToggleListener() {
             @Override
             public void onToggled(boolean isOn) {
-                mHvacController.setFrontDefrosterState(isOn);
+                mHvacApi.setFrontDefrosterState(isOn);
             }
         });
 
-        mRearDefrosterButton.setIsOn(mHvacController.getRearDefrosterState());
+        mHvacApi.trackRearDefrosterState().observe(mActivity, isOn -> {
+            mRearDefrosterButton.setIsOn(isOn);
+        });
         mRearDefrosterButton.setToggleListener(new ToggleButton.ToggleListener() {
             @Override
             public void onToggled(boolean isOn) {
-                mHvacController.setRearDefrosterState(isOn);
+                mHvacApi.setRearDefrosterState(isOn);
             }
         });
 
-        mRecycleAirButton.setIsOn(mHvacController.getAirCirculationState());
+        mHvacApi.trackAirCirculation().observe(mActivity, isOn -> {
+            mRecycleAirButton.setIsOn(isOn);
+        });
         mRecycleAirButton.setToggleListener(new ToggleButton.ToggleListener() {
             @Override
             public void onToggled(boolean isOn) {
-                mHvacController.setAirCirculation(isOn);
+                mHvacApi.setAirCirculation(isOn);
             }
         });
 
-        setAutoMode(mHvacController.getAutoModeState());
+        setAutoMode(mHvacApi.getAutoModeState());
 
-        mHvacPowerSwitch.setIsOn(mHvacController.getHvacPowerState());
-        mHvacPowerSwitch.setToggleListener(isOn -> mHvacController.setHvacPowerState(isOn));
+        mHvacPowerSwitch.setIsOn(mHvacApi.getHvacPowerState());
+        mHvacPowerSwitch.setToggleListener(isOn -> mHvacApi.setHvacPowerState(isOn));
 
-        mHvacController.registerCallback(mToggleButtonCallbacks);
-        mToggleButtonCallbacks.onHvacPowerChange(mHvacController.getHvacPowerState());
+//        mHvacController.registerCallback(mToggleButtonCallbacks);
+//        mToggleButtonCallbacks.onHvacPowerChange(mHvacController.getHvacPowerState());
     }
 
-    private HvacController.Callback mToggleButtonCallbacks
-            = new HvacController.Callback() {
-        @Override
-        public void onAirCirculationChange(boolean isOn) {
-            mRecycleAirButton.setIsOn(isOn);
-        }
-
-        @Override
-        public void onFrontDefrosterChange(boolean isOn) {
-            mFrontDefrosterButton.setIsOn(isOn);
-        }
-
-        @Override
-        public void onRearDefrosterChange(boolean isOn) {
-            mRearDefrosterButton.setIsOn(isOn);
-        }
-
-        @Override
-        public void onAcStateChange(boolean isOn) {
-            mAcButton.setIsOn(isOn);
-        }
-
-        @Override
-        public void onAutoModeChange(boolean isOn) {
-            mAutoMode = isOn;
-            setAutoMode(mAutoMode);
-        }
-    };
+//    private HvacController.Callback mToggleButtonCallbacks
+//            = new HvacController.Callback() {
+//        @Override
+//        public void onAirCirculationChange(boolean isOn) {
+//            mRecycleAirButton.setIsOn(isOn);
+//        }
+//
+//        @Override
+//        public void onFrontDefrosterChange(boolean isOn) {
+//            mFrontDefrosterButton.setIsOn(isOn);
+//        }
+//
+//        @Override
+//        public void onRearDefrosterChange(boolean isOn) {
+//            mRearDefrosterButton.setIsOn(isOn);
+//        }
+//
+//        @Override
+//        public void onAcStateChange(boolean isOn) {
+//            mAcButton.setIsOn(isOn);
+//        }
+//
+//        @Override
+//        public void onAutoModeChange(boolean isOn) {
+//            mAutoMode = isOn;
+//            setAutoMode(mAutoMode);
+//        }
+//    };
 
     /**
      * Take the listeners and animators from a {@link AnimatorSet} and merge them to the

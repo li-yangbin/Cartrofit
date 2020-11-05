@@ -15,7 +15,6 @@
  */
 package com.android.car.hvac;
 
-import android.app.Service;
 import android.car.Car;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -25,18 +24,25 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.res.Resources;
 import android.graphics.PixelFormat;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Display;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 
-import com.android.car.hvac.R;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.databinding.DataBindingUtil;
+
 import com.android.car.hvac.controllers.HvacPanelController;
 import com.android.car.hvac.ui.TemperatureBarOverlay;
+import com.liyangbin.cartrofit.Cartrofit;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +51,7 @@ import java.util.List;
 /**
  * Creates a sliding panel for HVAC controls and adds it to the window manager above SystemUI.
  */
-public class HvacUiService extends Service {
+public class HvacUiService extends AppCompatActivity {
     public static final String CAR_INTENT_ACTION_TOGGLE_HVAC_CONTROLS =
             "android.car.intent.action.TOGGLE_HVAC_CONTROLS";
     private static final String TAG = "HvacUiService";
@@ -80,15 +86,13 @@ public class HvacUiService extends Service {
     private TemperatureBarOverlay mPassengerTemperatureBar;
     private TemperatureBarOverlay mDriverTemperatureBarCollapsed;
     private TemperatureBarOverlay mPassengerTemperatureBarCollapsed;
-
-
-    @Override
-    public IBinder onBind(Intent intent) {
-        throw new UnsupportedOperationException("Not yet implemented.");
-    }
+    private FrameLayout mContent;
 
     @Override
-    public void onCreate() {
+    public void onCreate(Bundle icicle) {
+        super.onCreate(icicle);
+        setContentView(mContent = new FrameLayout(this));
+        Cartrofit.builder().addDataSource(new HvacDataSource(this)).buildAsDefault();
         Resources res = getResources();
         boolean showCollapsed = res.getBoolean(R.bool.config_showCollapsedBars);
         mPanelCollapsedHeight = res.getDimensionPixelSize(R.dimen.car_hvac_panel_collapsed_height);
@@ -132,7 +136,7 @@ public class HvacUiService extends Service {
 //                mInitialYOffset = (sysUIShowing) ? -mNavBarHeight : 0;
                 layoutHvacUi();
                 // we now have initial state so this empty view is not longer needed.
-                mWindowManager.removeView(this);
+                mSelfWm.removeView(this);
                 mAddedViews.remove(this);
             }
         };
@@ -145,6 +149,53 @@ public class HvacUiService extends Service {
                 Car.PERMISSION_CONTROL_CAR_CLIMATE, null);
     }
 
+    private WindowManagerSelf mSelfWm = new WindowManagerSelf();
+
+    private class WindowManagerSelf implements WindowManager {
+
+        @Override
+        public Display getDefaultDisplay() {
+            return null;
+        }
+
+        @Override
+        public void removeViewImmediate(View view) {
+            removeView(view);
+        }
+
+        @Override
+        public void addView(View view, ViewGroup.LayoutParams params) {
+            FrameLayout.LayoutParams lp = convert((LayoutParams) params);
+            mContent.addView(view, lp);
+        }
+
+        @Override
+        public void updateViewLayout(View view, ViewGroup.LayoutParams params) {
+            view.setLayoutParams(params);
+            view.requestLayout();
+        }
+
+        @Override
+        public void removeView(View view) {
+            mContent.removeView(view);
+        }
+    }
+
+    private FrameLayout.LayoutParams convert(WindowManager.LayoutParams lp) {
+        FrameLayout.LayoutParams result = new FrameLayout.LayoutParams(lp.width, lp.height);
+        result.gravity = lp.gravity;
+        if ((lp.gravity & Gravity.BOTTOM) != 0) {
+            result.bottomMargin = lp.y;
+        } else {
+            result.topMargin = lp.y;
+        }
+        if ((lp.gravity & (Gravity.RIGHT | Gravity.END)) != 0) {
+            result.rightMargin = lp.x;
+        } else {
+            result.leftMargin = lp.x;
+        }
+        return result;
+    }
 
     /**
      * Called after the mInitialYOffset is determined. This does a layout of all components needed
@@ -176,24 +227,24 @@ public class HvacUiService extends Service {
         // required of the sysui visiblity listener is not triggered.
 //        params.hasSystemUiListeners = true;
 
-        mContainer = inflater.inflate(R.layout.hvac_panel, null);
+        mContainer = DataBindingUtil.inflate(inflater, R.layout.hvac_panel, null, false).getRoot();
         mContainer.setLayoutParams(params);
-        mContainer.setOnSystemUiVisibilityChangeListener(visibility -> {
-            boolean systemUiVisible = (visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0;
-            int y = 0;
-            if (systemUiVisible) {
-                // when the system ui is visible the windowing systems coordinates start with
-                // 0 being above the system navigation bar. Therefore if we want to get the the
-                // actual bottom of the screen we need to set the y value to negative value of the
-                // navigation bar height.
-                y = -mNavBarHeight;
-            }
-            setYPosition(mDriverTemperatureBar, y);
-            setYPosition(mPassengerTemperatureBar, y);
-            setYPosition(mDriverTemperatureBarCollapsed, y);
-            setYPosition(mPassengerTemperatureBarCollapsed, y);
-            setYPosition(mContainer, y);
-        });
+//        mContainer.setOnSystemUiVisibilityChangeListener(visibility -> {
+//            boolean systemUiVisible = (visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0;
+//            int y = 0;
+//            if (systemUiVisible) {
+//                // when the system ui is visible the windowing systems coordinates start with
+//                // 0 being above the system navigation bar. Therefore if we want to get the the
+//                // actual bottom of the screen we need to set the y value to negative value of the
+//                // navigation bar height.
+//                y = -mNavBarHeight;
+//            }
+//            setYPosition(mDriverTemperatureBar, y);
+//            setYPosition(mPassengerTemperatureBar, y);
+//            setYPosition(mDriverTemperatureBarCollapsed, y);
+//            setYPosition(mPassengerTemperatureBarCollapsed, y);
+//            setYPosition(mContainer, y);
+//        });
 
         // The top padding should be calculated on the screen height and the height of the
         // expanded hvac panel. The space defined by the padding is meant to be clickable for
@@ -211,9 +262,8 @@ public class HvacUiService extends Service {
 
         createTemperatureBars(inflater);
         mHvacPanelController = new HvacPanelController(this /* context */, mContainer,
-                mWindowManager, mDriverTemperatureBar, mPassengerTemperatureBar,
-                mDriverTemperatureBarCollapsed, mPassengerTemperatureBarCollapsed
-        );
+                mSelfWm, mDriverTemperatureBar, mPassengerTemperatureBar,
+                mDriverTemperatureBarCollapsed, mPassengerTemperatureBarCollapsed);
         Intent bindIntent = new Intent(this /* context */, HvacController.class);
         if (!bindService(bindIntent, mServiceConnection, Context.BIND_AUTO_CREATE)) {
             Log.e(TAG, "Failed to connect to HvacController.");
@@ -221,7 +271,7 @@ public class HvacUiService extends Service {
     }
 
     private void addViewToWindowManagerAndTrack(View view, WindowManager.LayoutParams params) {
-        mWindowManager.addView(view, params);
+        mSelfWm.addView(view, params);
         mAddedViews.add(view);
     }
 
@@ -243,8 +293,9 @@ public class HvacUiService extends Service {
 
     @Override
     public void onDestroy() {
+        super.onDestroy();
         for (View view : mAddedViews) {
-            mWindowManager.removeView(view);
+            mSelfWm.removeView(view);
         }
         mAddedViews.clear();
         if(mHvacController != null){
@@ -264,6 +315,7 @@ public class HvacUiService extends Service {
                 // bind all the values.
                 mHvacPanelController.updateHvacController(mHvacController);
             };
+
 
             if (mHvacController != null) {
                 mHvacController.requestRefresh(r, new Handler(context.getMainLooper()));

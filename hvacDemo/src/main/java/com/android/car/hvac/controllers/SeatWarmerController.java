@@ -33,35 +33,35 @@ public class SeatWarmerController {
         mPassengerSeatButton = passengerSeatButton;
 
         mHvacController = hvacController;
-        mHvacController.registerCallback(mCallback);
+//        mHvacController.registerCallback(mCallback);
 
         mPassengerSeatButton.setSeatWarmerClickListener(mPassengerSeatListener);
         mDriverSeatButton.setSeatWarmerClickListener(mDriverSeatListener);
     }
 
-    private final HvacController.Callback mCallback = new HvacController.Callback() {
-        @Override
-        public void onPassengerSeatWarmerChange(int level) {
-            // If the value of the heating is less than HEAT_OFF, it means the seats are
-            // being cooled, show heated seat button as off.
-            if (level < SeatWarmerButton.HEAT_OFF) {
-                mPassengerSeatButton.setHeatLevel(SeatWarmerButton.HEAT_OFF);
-            } else {
-                mPassengerSeatButton.setHeatLevel(level);
-            }
-        }
-
-        @Override
-        public void onDriverSeatWarmerChange(int level) {
-            // If the value of the heating is less than HEAT_OFF, it means the seats are
-            // being cooled, show heated seat button as off.
-            if (level < SeatWarmerButton.HEAT_OFF) {
-                mDriverSeatButton.setHeatLevel(SeatWarmerButton.HEAT_OFF);
-            } else {
-                mDriverSeatButton.setHeatLevel(level);
-            }
-        }
-    };
+//    private final HvacController.Callback mCallback = new HvacController.Callback() {
+//        @Override
+//        public void onPassengerSeatWarmerChange(int level) {
+//            // If the value of the heating is less than HEAT_OFF, it means the seats are
+//            // being cooled, show heated seat button as off.
+//            if (level < SeatWarmerButton.HEAT_OFF) {
+//                mPassengerSeatButton.setHeatLevel(SeatWarmerButton.HEAT_OFF);
+//            } else {
+//                mPassengerSeatButton.setHeatLevel(level);
+//            }
+//        }
+//
+//        @Override
+//        public void onDriverSeatWarmerChange(int level) {
+//            // If the value of the heating is less than HEAT_OFF, it means the seats are
+//            // being cooled, show heated seat button as off.
+//            if (level < SeatWarmerButton.HEAT_OFF) {
+//                mDriverSeatButton.setHeatLevel(SeatWarmerButton.HEAT_OFF);
+//            } else {
+//                mDriverSeatButton.setHeatLevel(level);
+//            }
+//        }
+//    };
 
     private final SeatWarmerButton.SeatWarmerButtonClickListener mPassengerSeatListener
             = new SeatWarmerButton.SeatWarmerButtonClickListener() {

@@ -23,6 +23,7 @@ import android.car.VehicleAreaWindow;
 import android.car.hardware.CarPropertyConfig;
 import android.car.hardware.CarPropertyValue;
 import android.car.hardware.hvac.CarHvacManager;
+import android.car.hardware.property.CarPropertyManager;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.ServiceConnection;
@@ -61,44 +62,44 @@ public class HvacController extends Service {
      * Callback for receiving updates from the hvac manager. A Callback can be
      * registered using {@link #registerCallback}.
      */
-    public static abstract class Callback {
-
-        public void onPassengerTemperatureChange(CarPropertyValue propValue) {
-        }
-
-        public void onDriverTemperatureChange(CarPropertyValue propValue) {
-        }
-
-        public void onFanSpeedChange(int position) {
-        }
-
-        public void onAcStateChange(boolean isOn) {
-        }
-
-        public void onFrontDefrosterChange(boolean isOn) {
-        }
-
-        public void onRearDefrosterChange(boolean isOn) {
-        }
-
-        public void onPassengerSeatWarmerChange(int level) {
-        }
-
-        public void onDriverSeatWarmerChange(int level) {
-        }
-
-        public void onFanDirectionChange(int direction) {
-        }
-
-        public void onAirCirculationChange(boolean isOn) {
-        }
-
-        public void onAutoModeChange(boolean isOn) {
-        }
-
-        public void onHvacPowerChange(boolean isOn){
-        }
-    }
+//    public static abstract class Callback {
+//
+//        public void onPassengerTemperatureChange(CarPropertyValue propValue) {
+//        }
+//
+//        public void onDriverTemperatureChange(CarPropertyValue propValue) {
+//        }
+//
+//        public void onFanSpeedChange(int position) {
+//        }
+//
+//        public void onAcStateChange(boolean isOn) {
+//        }
+//
+//        public void onFrontDefrosterChange(boolean isOn) {
+//        }
+//
+//        public void onRearDefrosterChange(boolean isOn) {
+//        }
+//
+//        public void onPassengerSeatWarmerChange(int level) {
+//        }
+//
+//        public void onDriverSeatWarmerChange(int level) {
+//        }
+//
+//        public void onFanDirectionChange(int direction) {
+//        }
+//
+//        public void onAirCirculationChange(boolean isOn) {
+//        }
+//
+//        public void onAutoModeChange(boolean isOn) {
+//        }
+//
+//        public void onHvacPowerChange(boolean isOn){
+//        }
+//    }
 
     public class LocalBinder extends Binder {
         HvacController getService() {
@@ -114,7 +115,7 @@ public class HvacController extends Service {
 
     private HvacPolicy mPolicy;
     @GuardedBy("mCallbacks")
-    private List<Callback> mCallbacks = new ArrayList<>();
+//    private List<Callback> mCallbacks = new ArrayList<>();
     private DataStore mDataStore = new DataStore();
 
     @Override
@@ -153,17 +154,17 @@ public class HvacController extends Service {
         return mBinder;
     }
 
-    public void registerCallback(Callback callback) {
-        synchronized (mCallbacks) {
-            mCallbacks.add(callback);
-        }
-    }
-
-    public void unregisterCallback(Callback callback) {
-        synchronized (mCallbacks) {
-            mCallbacks.remove(callback);
-        }
-    }
+//    public void registerCallback(Callback callback) {
+//        synchronized (mCallbacks) {
+//            mCallbacks.add(callback);
+//        }
+//    }
+//
+//    public void unregisterCallback(Callback callback) {
+//        synchronized (mCallbacks) {
+//            mCallbacks.remove(callback);
+//        }
+//    }
 
     private void initHvacManager(CarHvacManager carHvacManager) {
         mHvacManager = carHvacManager;
@@ -277,13 +278,13 @@ public class HvacController extends Service {
         if (Log.isLoggable(TAG, Log.DEBUG)) {
             Log.d(TAG, "Hvac Power On: " + isOn + " should propagate: " + shouldPropagate);
         }
-        if (shouldPropagate) {
-            synchronized (mCallbacks) {
-                for (int i = 0; i < mCallbacks.size(); i++) {
-                    mCallbacks.get(i).onHvacPowerChange(isOn);
-                }
-            }
-        }
+//        if (shouldPropagate) {
+//            synchronized (mCallbacks) {
+//                for (int i = 0; i < mCallbacks.size(); i++) {
+//                    mCallbacks.get(i).onHvacPowerChange(isOn);
+//                }
+//            }
+//        }
     }
 
     void handleSeatWarmerUpdate(int zone, int level) {
@@ -292,17 +293,17 @@ public class HvacController extends Service {
             Log.d(TAG, "Seat Warmer Update, zone: " + zone + " level: " + level +
                     " should propagate: " + shouldPropagate);
         }
-        if (shouldPropagate) {
-            synchronized (mCallbacks) {
-                for (int i = 0; i < mCallbacks.size(); i++) {
-                    if (zone == VehicleAreaSeat.SEAT_ROW_1_LEFT) {
-                        mCallbacks.get(i).onDriverSeatWarmerChange(level);
-                    } else {
-                        mCallbacks.get(i).onPassengerSeatWarmerChange(level);
-                    }
-                }
-            }
-        }
+//        if (shouldPropagate) {
+//            synchronized (mCallbacks) {
+//                for (int i = 0; i < mCallbacks.size(); i++) {
+//                    if (zone == VehicleAreaSeat.SEAT_ROW_1_LEFT) {
+//                        mCallbacks.get(i).onDriverSeatWarmerChange(level);
+//                    } else {
+//                        mCallbacks.get(i).onPassengerSeatWarmerChange(level);
+//                    }
+//                }
+//            }
+//        }
     }
 
     private void handleAirCirculationUpdate(boolean airCirculationState) {
@@ -312,13 +313,13 @@ public class HvacController extends Service {
             Log.d(TAG, "Air Circulation Update: " + airCirculationState +
                     " should propagate: " + shouldPropagate);
         }
-        if (shouldPropagate) {
-            synchronized (mCallbacks) {
-                for (int i = 0; i < mCallbacks.size(); i++) {
-                    mCallbacks.get(i).onAirCirculationChange(airCirculationState);
-                }
-            }
-        }
+//        if (shouldPropagate) {
+//            synchronized (mCallbacks) {
+//                for (int i = 0; i < mCallbacks.size(); i++) {
+//                    mCallbacks.get(i).onAirCirculationChange(airCirculationState);
+//                }
+//            }
+//        }
     }
 
     private void handleAutoModeUpdate(boolean autoModeState) {
@@ -327,13 +328,13 @@ public class HvacController extends Service {
             Log.d(TAG, "AutoMode Update, id: " + autoModeState +
                     " should propagate: " + shouldPropagate);
         }
-        if (shouldPropagate) {
-            synchronized (mCallbacks) {
-                for (int i = 0; i < mCallbacks.size(); i++) {
-                    mCallbacks.get(i).onAutoModeChange(autoModeState);
-                }
-            }
-        }
+//        if (shouldPropagate) {
+//            synchronized (mCallbacks) {
+//                for (int i = 0; i < mCallbacks.size(); i++) {
+//                    mCallbacks.get(i).onAutoModeChange(autoModeState);
+//                }
+//            }
+//        }
     }
 
     private void handleAcStateUpdate(boolean acState) {
@@ -342,13 +343,13 @@ public class HvacController extends Service {
             Log.d(TAG, "AC State Update, id: " + acState +
                     " should propagate: " + shouldPropagate);
         }
-        if (shouldPropagate) {
-            synchronized (mCallbacks) {
-                for (int i = 0; i < mCallbacks.size(); i++) {
-                    mCallbacks.get(i).onAcStateChange(acState);
-                }
-            }
-        }
+//        if (shouldPropagate) {
+//            synchronized (mCallbacks) {
+//                for (int i = 0; i < mCallbacks.size(); i++) {
+//                    mCallbacks.get(i).onAcStateChange(acState);
+//                }
+//            }
+//        }
     }
 
     private void handleFanPositionUpdate(int zone, int position) {
@@ -358,13 +359,13 @@ public class HvacController extends Service {
             Log.d(TAG, "Fan Position Update, zone: " + zone + " position: " + position +
                     " should propagate: " + shouldPropagate);
         }
-        if (shouldPropagate) {
-            synchronized (mCallbacks) {
-                for (int i = 0; i < mCallbacks.size(); i++) {
-                    mCallbacks.get(i).onFanDirectionChange(position);
-                }
-            }
-        }
+//        if (shouldPropagate) {
+//            synchronized (mCallbacks) {
+//                for (int i = 0; i < mCallbacks.size(); i++) {
+//                    mCallbacks.get(i).onFanDirectionChange(position);
+//                }
+//            }
+//        }
     }
 
     private void handleFanSpeedUpdate(int zone, int speed) {
@@ -373,13 +374,13 @@ public class HvacController extends Service {
             Log.d(TAG, "Fan Speed Update, zone: " + zone + " speed: " + speed +
                     " should propagate: " + shouldPropagate);
         }
-        if (shouldPropagate) {
-            synchronized (mCallbacks) {
-                for (int i = 0; i < mCallbacks.size(); i++) {
-                    mCallbacks.get(i).onFanSpeedChange(speed);
-                }
-            }
-        }
+//        if (shouldPropagate) {
+//            synchronized (mCallbacks) {
+//                for (int i = 0; i < mCallbacks.size(); i++) {
+//                    mCallbacks.get(i).onFanSpeedChange(speed);
+//                }
+//            }
+//        }
     }
 
     private void handleTempUpdate(CarPropertyValue value) {
@@ -391,20 +392,20 @@ public class HvacController extends Service {
             Log.d(TAG, "Temp Update, zone: " + zone + " temp: " + temp +
                 "available: " + available + " should propagate: " + shouldPropagate);
         }
-        if (shouldPropagate) {
-            int userTemperature =  mPolicy.hardwareToUserTemp(temp);
-            synchronized (mCallbacks) {
-                for (int i = 0; i < mCallbacks.size(); i++) {
-                    if (zone == VehicleAreaSeat.SEAT_ROW_1_LEFT) {
-                        mCallbacks.get(i)
-                                .onDriverTemperatureChange(value);
-                    } else {
-                        mCallbacks.get(i)
-                                .onPassengerTemperatureChange(value);
-                    }
-                }
-            }
-        }
+//        if (shouldPropagate) {
+//            int userTemperature =  mPolicy.hardwareToUserTemp(temp);
+//            synchronized (mCallbacks) {
+//                for (int i = 0; i < mCallbacks.size(); i++) {
+//                    if (zone == VehicleAreaSeat.SEAT_ROW_1_LEFT) {
+//                        mCallbacks.get(i)
+//                                .onDriverTemperatureChange(value);
+//                    } else {
+//                        mCallbacks.get(i)
+//                                .onPassengerTemperatureChange(value);
+//                    }
+//                }
+//            }
+//        }
     }
 
     private void handleDefrosterUpdate(int zone, boolean defrosterState) {
@@ -413,17 +414,17 @@ public class HvacController extends Service {
             Log.d(TAG, "Defroster Update, zone: " + zone + " state: " + defrosterState +
                     " should propagate: " + shouldPropagate);
         }
-        if (shouldPropagate) {
-            synchronized (mCallbacks) {
-                for (int i = 0; i < mCallbacks.size(); i++) {
-                    if (zone == VehicleAreaWindow.WINDOW_FRONT_WINDSHIELD) {
-                        mCallbacks.get(i).onFrontDefrosterChange(defrosterState);
-                    } else if (zone == VehicleAreaWindow.WINDOW_REAR_WINDSHIELD) {
-                        mCallbacks.get(i).onRearDefrosterChange(defrosterState);
-                    }
-                }
-            }
-        }
+//        if (shouldPropagate) {
+//            synchronized (mCallbacks) {
+//                for (int i = 0; i < mCallbacks.size(); i++) {
+//                    if (zone == VehicleAreaWindow.WINDOW_FRONT_WINDSHIELD) {
+//                        mCallbacks.get(i).onFrontDefrosterChange(defrosterState);
+//                    } else if (zone == VehicleAreaWindow.WINDOW_REAR_WINDSHIELD) {
+//                        mCallbacks.get(i).onRearDefrosterChange(defrosterState);
+//                    }
+//                }
+//            }
+//        }
     }
 
     public void requestRefresh(final Runnable r, final Handler h) {

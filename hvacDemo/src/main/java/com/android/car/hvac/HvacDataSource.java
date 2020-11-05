@@ -8,6 +8,7 @@ import android.car.hardware.hvac.CarHvacManager;
 import android.car.hardware.property.CarPropertyManager;
 import android.content.Context;
 import android.os.Handler;
+import android.os.IBinder;
 import android.util.SparseArray;
 import android.util.SparseLongArray;
 
@@ -25,8 +26,9 @@ import java.util.function.Consumer;
 @Scope(Car.HVAC_SERVICE)
 public class HvacDataSource implements DataSource {
 
+    private static final String TAG = "HvacDataSource";
+
     private CarPropertyManager mCarPropertyManager;
-    private CarHvacManager mCarHvacManager;
     private HvacPolicy mPolicy;
     private SparseArray<CarPropertyConfig<?>> mConfigMap = new SparseArray<>();
     private boolean mHvacChangeTracked;
@@ -34,19 +36,16 @@ public class HvacDataSource implements DataSource {
     private final SparseLongArray mLastSetMillis = new SparseLongArray();
     private Handler mHandler = new Handler();
 
-    private HvacDataSource(Car car, Context context) {
-        try {
-            mCarPropertyManager = (CarPropertyManager) car.getCarManager(Car.PROPERTY_SERVICE);
-            mCarHvacManager = (CarHvacManager) car.getCarManager(Car.HVAC_SERVICE);
-        } catch (CarNotConnectedException ce) {
-            throw new RuntimeException(ce);
-        }
+    public HvacDataSource(Context context) {
+        IBinder binder = new LocalHvacPropertyService().getCarPropertyService();
+        mCarPropertyManager = new CarPropertyManager(binder, mHandler, false, TAG);
         List<CarPropertyConfig> list = null;
         try {
-            list = mCarHvacManager.getPropertyList();
+            list = mCarPropertyManager.getPropertyList();
         } catch (CarNotConnectedException e) {
             e.printStackTrace();
         }
+        android.os.Debug.waitForDebugger();
         if (list != null) {
             list.forEach(carPropertyConfig ->
                     mConfigMap.put(carPropertyConfig.getPropertyId(), carPropertyConfig));
@@ -90,16 +89,19 @@ public class HvacDataSource implements DataSource {
     public Flow<CarPropertyValue<?>> track(int key, int area) {
         if (!mHvacChangeTracked) {
             try {
-                mCarHvacManager.registerCallback(new CarHvacManager.CarHvacEventCallback() {
-                    @Override
-                    public void onChangeEvent(CarPropertyValue value) {
-                        notifyChange(value);
-                    }
+                for (int index = 0; index < mConfigMap.size(); index++) {
+                    int id = mConfigMap.keyAt(index);
+                    mCarPropertyManager.registerListener(new CarPropertyManager.CarPropertyEventListener() {
+                        @Override
+                        public void onChangeEvent(CarPropertyValue carPropertyValue) {
+                            notifyChange(carPropertyValue);
+                        }
 
-                    @Override
-                    public void onErrorEvent(int i, int i1) {
-                    }
-                });
+                        @Override
+                        public void onErrorEvent(int i, int i1) {
+                        }
+                    }, id, 0.0f);
+                }
                 mHvacChangeTracked = true;
             } catch (CarNotConnectedException e) {
                 e.printStackTrace();

@@ -41,7 +41,7 @@ public class FanSpeedBarController {
 
     private void initialize() {
         mFanSpeedBar.setFanspeedButtonClickListener(mClickListener);
-        mHvacController.registerCallback(mCallback);
+//        mHvacController.registerCallback(mCallback);
         // During initialization, we do not need to animate the changes.
         handleFanSpeedUpdate(mHvacController.getFanSpeed(), false /* animateUpdate */);
     }
@@ -89,10 +89,10 @@ public class FanSpeedBarController {
         }
     };
 
-    private HvacController.Callback mCallback = new HvacController.Callback() {
-        @Override
-        public void onFanSpeedChange(int speed) {
-            handleFanSpeedUpdate(speed, true /* animateUpdate */);
-        }
-    };
+//    private HvacController.Callback mCallback = new HvacController.Callback() {
+//        @Override
+//        public void onFanSpeedChange(int speed) {
+//            handleFanSpeedUpdate(speed, true /* animateUpdate */);
+//        }
+//    };
 }
