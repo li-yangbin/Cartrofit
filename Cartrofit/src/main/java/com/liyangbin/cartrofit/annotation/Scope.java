@@ -1,5 +1,8 @@
 package com.liyangbin.cartrofit.annotation;
 
+import com.liyangbin.cartrofit.ApiCallback;
+import com.liyangbin.cartrofit.Cartrofit;
+
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
@@ -17,4 +20,5 @@ public @interface Scope {
     String value();
 
     boolean publish() default false;
+    Class<? extends ApiCallback> onCreate() default Cartrofit.DummyOnCreate.class;
 }

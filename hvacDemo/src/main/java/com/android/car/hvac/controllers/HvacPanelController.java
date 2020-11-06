@@ -19,7 +19,6 @@ import android.animation.Animator;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
-import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
@@ -31,11 +30,11 @@ import android.widget.ImageView;
 import androidx.annotation.IntDef;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.databinding.ObservableBoolean;
+import androidx.lifecycle.LifecycleObserver;
 import androidx.lifecycle.LifecycleOwner;
 
-import com.android.car.hvac.HvacApi;
+import com.android.car.hvac.api.HvacPanelApi;
 import com.android.car.hvac.HvacController;
-import com.android.car.hvac.HvacDataSource;
 import com.android.car.hvac.R;
 import com.android.car.hvac.ui.FanDirectionButtons;
 import com.android.car.hvac.ui.FanSpeedBar;
@@ -51,7 +50,7 @@ import java.util.List;
 /**
  * A state machine to control transition from various HVAC UI layouts.
  */
-public class HvacPanelController {
+public class HvacPanelController implements LifecycleObserver {
     private static final int PANEL_ANIMATION_TIME_MS = 200;
     private static final int PANEL_COLLAPSE_ANIMATION_TIME_MS = 500;
 
@@ -133,9 +132,9 @@ public class HvacPanelController {
     // TODO: read from shared pref
     private boolean mAutoMode;
 
-    private HvacApi mHvacApi;
+    private final HvacPanelApi mHvacApi = Cartrofit.from(HvacPanelApi.class);
     private AppCompatActivity mActivity;
-    public ObservableBoolean mAcOn;
+    public ObservableBoolean mAcOn = mHvacApi.trackACState();
 
     public HvacPanelController(AppCompatActivity activity, View container,
                                WindowManager windowManager,
@@ -144,11 +143,10 @@ public class HvacPanelController {
                                TemperatureBarOverlay driverTemperatureBarCollapsed,
                                TemperatureBarOverlay passengerTemperatureBarCollapsed) {
 
-        mHvacApi = Cartrofit.from(HvacApi.class);
-
         Resources res = activity.getResources();
         mShowCollapsed = res.getBoolean(R.bool.config_showCollapsedBars);
         mActivity = activity;
+        activity.getLifecycle().addObserver(this);
 
         mDriverTemperatureBarCollapsed = driverTemperatureBarCollapsed;
         mPassengerTemperatureBarCollapsed = passengerTemperatureBarCollapsed;
@@ -192,7 +190,6 @@ public class HvacPanelController {
         mAcButton = (ToggleButton) mPanelTopRow.findViewById(R.id.ac_button);
         mAcButton.setToggleIcons(res.getDrawable(R.drawable.ic_ac_on),
                 res.getDrawable(R.drawable.ic_ac_off));
-        mAcOn = mHvacApi.trackACState();
 
         mRecycleAirButton = (ToggleButton) mPanelTopRow.findViewById(R.id.recycle_air_button);
 
@@ -236,24 +233,27 @@ public class HvacPanelController {
         mHvacController = controller;
 
         mFanSpeedBarController = new FanSpeedBarController(mFanSpeedBar, mHvacController);
+        mActivity.getLifecycle().addObserver(mFanSpeedBarController);
         mFanDirectionButtonsController
                 = new FanDirectionButtonsController(mFanDirectionButtons, mHvacController);
+        mActivity.getLifecycle().addObserver(mFanDirectionButtonsController);
         mTemperatureController = new TemperatureController(
                 mPassengerTemperatureBarExpanded,
                 mDriverTemperatureBarExpanded,
                 mPassengerTemperatureBarCollapsed,
                 mDriverTemperatureBarCollapsed,
                 mHvacController);
+        mActivity.getLifecycle().addObserver(mTemperatureController);
         mSeatWarmerController = new SeatWarmerController(mPassengerSeatWarmer,
                 mDriverSeatWarmer, mHvacController);
+        mActivity.getLifecycle().addObserver(mSeatWarmerController);
 
         // Toggle buttons do not need additional logic to map between hardware
         // and UI settings. Simply use a ToggleListener to handle clicks.
-        mAcButton.setIsOn(mHvacController.getAcState());
         mAcButton.setToggleListener(new ToggleButton.ToggleListener() {
             @Override
             public void onToggled(boolean isOn) {
-                mHvacController.setAcState(isOn);
+                mHvacApi.setACState(isOn);
             }
         });
 

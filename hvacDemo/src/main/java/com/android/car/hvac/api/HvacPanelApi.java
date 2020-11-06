@@ -1,4 +1,4 @@
-package com.android.car.hvac;
+package com.android.car.hvac.api;
 
 import android.car.Car;
 import android.car.VehicleAreaSeat;
@@ -16,7 +16,7 @@ import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
 
 @Scope(value = Car.HVAC_SERVICE, publish = true)
-public interface HvacApi {
+public interface HvacPanelApi {
     int DRIVER_ZONE_ID = VehicleAreaSeat.SEAT_ROW_1_LEFT |
             VehicleAreaSeat.SEAT_ROW_2_LEFT | VehicleAreaSeat.SEAT_ROW_2_CENTER;
     int PASSENGER_ZONE_ID = VehicleAreaSeat.SEAT_ROW_1_RIGHT |
@@ -32,18 +32,6 @@ public interface HvacApi {
             VehicleAreaSeat.SEAT_ROW_1_RIGHT | VehicleAreaSeat.SEAT_ROW_2_LEFT |
             VehicleAreaSeat.SEAT_ROW_2_CENTER | VehicleAreaSeat.SEAT_ROW_2_RIGHT;
 
-    @Set(id = CarHvacManager.ID_ZONED_TEMP_SETPOINT, area = DRIVER_ZONE_ID)
-    void setDriverTemperature(int temperature);
-
-    @Set(id = CarHvacManager.ID_ZONED_TEMP_SETPOINT, area = PASSENGER_ZONE_ID)
-    void setPassengerTemperature(int temperature);
-
-    @Get(id = CarHvacManager.ID_ZONED_TEMP_SETPOINT, area = DRIVER_ZONE_ID)
-    int getDriverTemperature();
-
-    @Get(id = CarHvacManager.ID_ZONED_TEMP_SETPOINT, area = PASSENGER_ZONE_ID)
-    int getPassengerTemperature();
-
     @Set(id = CarHvacManager.ID_ZONED_HVAC_POWER_ON, area = SEAT_ALL)
     void setHvacPowerState(boolean onOff);
 
@@ -56,8 +44,11 @@ public interface HvacApi {
     @Set(id = CarHvacManager.ID_ZONED_SEAT_TEMP, area = PASSENGER_ZONE_ID)
     void setPassengerSeatWarmerLevel(int level);
 
-    @Set(id = CarHvacManager.ID_ZONED_FAN_SPEED_SETPOINT, area = SEAT_ALL)
-    void setFanSpeed(int fanSpeed);
+    @Get(id = CarHvacManager.ID_ZONED_SEAT_TEMP, area = DRIVER_ZONE_ID)
+    int getDriverSeatWarmerLevel();
+
+    @Get(id = CarHvacManager.ID_ZONED_SEAT_TEMP, area = PASSENGER_ZONE_ID)
+    int getPassengerSeatWarmerLevel();
 
     @Set(id = CarHvacManager.ID_WINDOW_DEFROSTER_ON, area = VehicleAreaWindow.WINDOW_FRONT_WINDSHIELD)
     void setFrontDefrosterState(boolean onOff);
@@ -76,12 +67,6 @@ public interface HvacApi {
 
     @Track(id = CarHvacManager.ID_ZONED_AC_ON, area = SEAT_ALL, sticky = StickyType.ON)
     ObservableBoolean trackACState();
-
-    @Set(id = CarHvacManager.ID_ZONED_FAN_DIRECTION, area = SEAT_ALL)
-    void setFanDirection(int state);
-
-    @Track(id = CarHvacManager.ID_ZONED_FAN_DIRECTION, area = SEAT_ALL)
-    ObservableInt trackFanDirection();
 
     @Set(id = CarHvacManager.ID_ZONED_AIR_RECIRCULATION_ON, area = SEAT_ALL)
     void setAirCirculation(boolean state);

@@ -696,23 +696,23 @@ public class HvacController extends Service {
         return mDataStore.getAcState();
     }
 
-    public void setAcState(final boolean state) {
-        mDataStore.setAcState(state);
-        final AsyncTask<Void, Void, Void> task = new AsyncTask<Void, Void, Void>() {
-            protected Void doInBackground(Void... unused) {
-                if (mHvacManager != null) {
-                    try {
-                        mHvacManager.setBooleanProperty(CarHvacManager.ID_ZONED_AC_ON,
-                                SEAT_ALL, state);
-                    } catch (android.car.CarNotConnectedException e) {
-                        Log.e(TAG, "Car not connected in setAcState");
-                    }
-                }
-                return null;
-            }
-        };
-        task.execute();
-    }
+//    public void setAcState(final boolean state) {
+//        mDataStore.setAcState(state);
+//        final AsyncTask<Void, Void, Void> task = new AsyncTask<Void, Void, Void>() {
+//            protected Void doInBackground(Void... unused) {
+//                if (mHvacManager != null) {
+//                    try {
+//                    } catch (android.car.CarNotConnectedException e) {
+//                        mHvacManager.setBooleanProperty(CarHvacManager.ID_ZONED_AC_ON,
+//                                SEAT_ALL, state);
+//                        Log.e(TAG, "Car not connected in setAcState");
+//                    }
+//                }
+//                return null;
+//            }
+//        };
+//        task.execute();
+//    }
 
     private int fanPositionToAirflowIndex(int fanPosition) {
         for (int i = 0; i < AIRFLOW_STATES.length; i++) {

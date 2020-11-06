@@ -539,12 +539,12 @@ public class ExampleUnitTest {
     @Test
     public void combineTest() {
 
-//        api.trackStringAndCombine().subscribe(new Consumer<String>() {
-//            @Override
-//            public void accept(String string) throws Exception {
-//                print("combine receive:" + string);
-//            }
-//        });
+        api.trackIntAndBoolean().subscribe(new Consumer<String>() {
+            @Override
+            public void accept(String string) throws Exception {
+                print("combine receive:" + string);
+            }
+        });
     }
 
     @Test

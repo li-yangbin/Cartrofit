@@ -15,17 +15,25 @@
  */
 package com.android.car.hvac.controllers;
 
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleObserver;
+import androidx.lifecycle.OnLifecycleEvent;
+
 import com.android.car.hvac.HvacController;
+import com.android.car.hvac.api.SeatWarmerApi;
 import com.android.car.hvac.ui.SeatWarmerButton;
+import com.liyangbin.cartrofit.Cartrofit;
 
 /**
  * A controller to handle changes in the heated seat levels.
  */
-public class SeatWarmerController {
+public class SeatWarmerController implements LifecycleObserver, SeatWarmerApi.OnWarmLevelChangeCallback {
     private final SeatWarmerButton mPassengerSeatButton;
     private final SeatWarmerButton mDriverSeatButton;
 
     private final HvacController mHvacController;
+
+    private final SeatWarmerApi mSeatWarmerApi = Cartrofit.from(SeatWarmerApi.class);
 
     public SeatWarmerController(SeatWarmerButton passengerSeatButton,
             SeatWarmerButton driverSeatButton, HvacController hvacController) {
@@ -35,8 +43,12 @@ public class SeatWarmerController {
         mHvacController = hvacController;
 //        mHvacController.registerCallback(mCallback);
 
+        SeatWarmerApi.WarmInfo info = new SeatWarmerApi.WarmInfo();
+        mSeatWarmerApi.getSeatWarmLevel(info);
+
         mPassengerSeatButton.setSeatWarmerClickListener(mPassengerSeatListener);
         mDriverSeatButton.setSeatWarmerClickListener(mDriverSeatListener);
+        mSeatWarmerApi.registerWarmChangeCallback(this);
     }
 
 //    private final HvacController.Callback mCallback = new HvacController.Callback() {
@@ -67,7 +79,7 @@ public class SeatWarmerController {
             = new SeatWarmerButton.SeatWarmerButtonClickListener() {
         @Override
         public void onSeatWarmerButtonClicked(@SeatWarmerButton.HeatingLevel int level) {
-            mHvacController.setPassengerSeatWarmerLevel(level);
+            mSeatWarmerApi.setPassengerSeatWarmerLevel(level);
         }
     };
 
@@ -75,7 +87,34 @@ public class SeatWarmerController {
             = new SeatWarmerButton.SeatWarmerButtonClickListener() {
         @Override
         public void onSeatWarmerButtonClicked(@SeatWarmerButton.HeatingLevel int level) {
-            mHvacController.setDriverSeatWarmerLevel(level);
+            mSeatWarmerApi.setDriverSeatWarmerLevel(level);
         }
     };
+
+    @Override
+    public void onDriverLevelChange(int level) {
+        // If the value of the heating is less than HEAT_OFF, it means the seats are
+        // being cooled, show heated seat button as off.
+        if (level < SeatWarmerButton.HEAT_OFF) {
+            mDriverSeatButton.setHeatLevel(SeatWarmerButton.HEAT_OFF);
+        } else {
+            mDriverSeatButton.setHeatLevel(level);
+        }
+    }
+
+    @Override
+    public void onPassengerLevelChange(int level) {
+        // If the value of the heating is less than HEAT_OFF, it means the seats are
+        // being cooled, show heated seat button as off.
+        if (level < SeatWarmerButton.HEAT_OFF) {
+            mPassengerSeatButton.setHeatLevel(SeatWarmerButton.HEAT_OFF);
+        } else {
+            mPassengerSeatButton.setHeatLevel(level);
+        }
+    }
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+    private void onDestroy() {
+        mSeatWarmerApi.unregisterWarmChangeCallback(this);
+    }
 }

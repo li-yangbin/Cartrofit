@@ -5,7 +5,6 @@ import com.liyangbin.cartrofit.funtion.Function3;
 import com.liyangbin.cartrofit.funtion.Function4;
 import com.liyangbin.cartrofit.funtion.Function5;
 
-import java.util.Objects;
 import java.util.function.Predicate;
 
 public abstract class ApiBuilder {
@@ -69,6 +68,17 @@ public abstract class ApiBuilder {
     public final <FROM1, FROM2, FROM3, FROM4, FROM5> ConverterBuilder5<FROM1, FROM2, FROM3, FROM4, FROM5>
             combine(Class<FROM1> clazz1, Class<FROM2> clazz2, Class<FROM3> clazz3, Class<FROM4> clazz4, Class<FROM5> clazz5) {
         return new ConverterBuilder5<>(clazz1, clazz2, clazz3, clazz4, clazz5);
+    }
+
+    public void apply(int... id) {
+        if (id == null || id.length == 0) {
+            return;
+        }
+        Constraint[] out = new Constraint[id.length];
+        for (int i = 0; i < id.length; i++) {
+            out[i] = Constraint.of(id[i]);
+        }
+        apply(out);
     }
 
     public abstract void apply(Constraint... constraints);
@@ -189,120 +199,6 @@ public abstract class ApiBuilder {
                 ConverterBuilder5.this.converter = function5;
                 return ApiBuilder.this.convert(ConverterBuilder5.this);
             }
-        }
-    }
-
-    public static final class Constraint {
-        public static final Constraint ALL = new Constraint();
-        int priority;
-        int apiId;
-        String category;
-        CommandType type;
-
-        private Constraint() {
-        }
-
-        public static Constraint of(int apiId) {
-            Constraint constraint = new Constraint();
-            if (apiId == 0) {
-                throw new IllegalArgumentException("Invalid apiId:" + apiId);
-            }
-            constraint.apiId = apiId;
-            return constraint;
-        }
-
-        public static Constraint of(String category) {
-            Constraint constraint = new Constraint();
-            constraint.category = Objects.requireNonNull(category);
-            return constraint;
-        }
-
-        public static Constraint of(CommandType type) {
-            Constraint constraint = new Constraint();
-            constraint.type = Objects.requireNonNull(type);
-            return constraint;
-        }
-
-        public Constraint and(int apiId) {
-            if (apiId == 0) {
-                throw new IllegalArgumentException("Invalid apiId:" + apiId);
-            }
-            this.apiId = apiId;
-            return this;
-        }
-
-        public Constraint and(String category) {
-            this.category = Objects.requireNonNull(category);
-            return this;
-        }
-
-        public Constraint and(CommandType type) {
-            this.type = Objects.requireNonNull(type);
-            return this;
-        }
-
-        public Constraint priority(int priority) {
-            this.priority = priority;
-            return this;
-        }
-
-        boolean check(Command command) {
-            if (this == ALL) {
-                return true;
-            }
-            final CommandType thatType = command.getType();
-            if (type == null && (thatType == CommandType.STICKY_GET
-                    || thatType == CommandType.RECEIVE)) {
-                return false;
-            }
-            if (apiId != 0 && command.getId() != apiId) {
-                return false;
-            }
-            if (type != null && type != thatType) {
-                return false;
-            }
-            if (category != null) {
-                String[] commandCategory = command.getCategory();
-                if (commandCategory != null) {
-                    for (String category : commandCategory) {
-                        if (this.category.equals(category)) {
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }
-            return true;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-
-            Constraint that = (Constraint) o;
-
-            if (apiId != that.apiId) return false;
-            if (!Objects.equals(category, that.category))
-                return false;
-            return type == that.type;
-        }
-
-        @Override
-        public int hashCode() {
-            int result = apiId;
-            result = 31 * result + (category != null ? category.hashCode() : 0);
-            result = 31 * result + (type != null ? type.hashCode() : 0);
-            return result;
-        }
-
-        @Override
-        public String toString() {
-            return "Constraint{" +
-                    "apiId=" + apiId +
-                    ", category='" + category + '\'' +
-                    ", type=" + type +
-                    '}';
         }
     }
 }

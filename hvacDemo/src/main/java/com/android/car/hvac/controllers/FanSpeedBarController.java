@@ -15,19 +15,31 @@
  */
 package com.android.car.hvac.controllers;
 
+import android.car.Car;
+import android.car.hardware.hvac.CarHvacManager;
 import android.util.Log;
+
+import androidx.lifecycle.LifecycleObserver;
+
+import com.android.car.hvac.api.FanSpeedApi;
+import com.android.car.hvac.api.HvacPanelApi;
 import com.android.car.hvac.HvacController;
 import com.android.car.hvac.ui.FanSpeedBar;
+import com.liyangbin.cartrofit.Cartrofit;
+import com.liyangbin.cartrofit.annotation.Scope;
+import com.liyangbin.cartrofit.annotation.Track;
 
 /**
  * Controller for the fan speed bar to adjust fan speed.
  */
-public class FanSpeedBarController {
+public class FanSpeedBarController implements LifecycleObserver {
     private final static String TAG = "FanSpeedBarCtrl";
 
     private final FanSpeedBar mFanSpeedBar;
     private final HvacController mHvacController;
     private int mCurrentFanSpeed;
+
+    private FanSpeedApi mFanSpeedApi = Cartrofit.from(FanSpeedApi.class);
 
     // Note the following are car specific values.
     private static final int MAX_FAN_SPEED = 6;
@@ -41,6 +53,7 @@ public class FanSpeedBarController {
 
     private void initialize() {
         mFanSpeedBar.setFanspeedButtonClickListener(mClickListener);
+        mFanSpeedApi.registerFanSpeedChangeCallback(speed -> handleFanSpeedUpdate(speed, true));
 //        mHvacController.registerCallback(mCallback);
         // During initialization, we do not need to animate the changes.
         handleFanSpeedUpdate(mHvacController.getFanSpeed(), false /* animateUpdate */);
@@ -72,12 +85,12 @@ public class FanSpeedBarController {
             = new FanSpeedBar.FanSpeedButtonClickListener() {
         @Override
         public void onMaxButtonClicked() {
-            mHvacController.setFanSpeed(MAX_FAN_SPEED);
+            mFanSpeedApi.setFanSpeed(MAX_FAN_SPEED);
         }
 
         @Override
         public void onOffButtonClicked() {
-            mHvacController.setFanSpeed(MIN_FAN_SPEED);
+            mFanSpeedApi.setFanSpeed(MIN_FAN_SPEED);
         }
 
         @Override
@@ -85,14 +98,14 @@ public class FanSpeedBarController {
             // Note car specific values being used:
             // The lowest fanspeed is represented by the off button, the first segment
             // actually represents the second fan speed setting.
-            mHvacController.setFanSpeed(position + 1);
+            mFanSpeedApi.setFanSpeed(position + 1);
         }
     };
 
-//    private HvacController.Callback mCallback = new HvacController.Callback() {
-//        @Override
-//        public void onFanSpeedChange(int speed) {
-//            handleFanSpeedUpdate(speed, true /* animateUpdate */);
-//        }
-//    };
+    @Scope(Car.HVAC_SERVICE)
+    public interface OnFanSpeedChangeCallback {
+
+        @Track(id = CarHvacManager.ID_ZONED_FAN_SPEED_SETPOINT, area = HvacPanelApi.SEAT_ALL)
+        void onFanSpeedChange(int speed);
+    }
 }

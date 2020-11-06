@@ -45,7 +45,6 @@ public class HvacDataSource implements DataSource {
         } catch (CarNotConnectedException e) {
             e.printStackTrace();
         }
-        android.os.Debug.waitForDebugger();
         if (list != null) {
             list.forEach(carPropertyConfig ->
                     mConfigMap.put(carPropertyConfig.getPropertyId(), carPropertyConfig));
@@ -124,11 +123,6 @@ public class HvacDataSource implements DataSource {
                 areaPool.notifyAreaChange(value);
             }
         }
-    }
-
-    @Override
-    public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
-
     }
 
     private class AreaPool {

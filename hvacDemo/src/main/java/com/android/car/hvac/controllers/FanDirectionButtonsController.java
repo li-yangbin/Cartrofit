@@ -18,19 +18,24 @@ package com.android.car.hvac.controllers;
 import android.car.hardware.hvac.CarHvacManager;
 import android.util.SparseIntArray;
 
+import androidx.lifecycle.LifecycleObserver;
+
 import com.android.car.hvac.HvacController;
+import com.android.car.hvac.api.FanDirectionApi;
 import com.android.car.hvac.ui.FanDirectionButtons;
+import com.liyangbin.cartrofit.Cartrofit;
 
 /**
  * A controller to handle changes in the fan direction. Also maps fan directions specified
  * in the {@link FanDirectionButtons} to the {@link CarHvacManager}{@code #FAN_DIRECTION_*}
  * constants in the vehicle hardware.
  */
-public class FanDirectionButtonsController {
+public class FanDirectionButtonsController implements LifecycleObserver {
     private final static int FAN_DIRECTION_COUNT = 4;
 
     private final FanDirectionButtons mFanDirectionButtons;
     private final HvacController mHvacController;
+    private final FanDirectionApi mFanDirectionApi = Cartrofit.from(FanDirectionApi.class);
     private final SparseIntArray mFanDirectionMap = new SparseIntArray(FAN_DIRECTION_COUNT);
 
     public FanDirectionButtonsController(FanDirectionButtons speedBar, HvacController controller) {
@@ -57,7 +62,7 @@ public class FanDirectionButtonsController {
             = new FanDirectionButtons.FanDirectionClickListener() {
         @Override
         public void onFanDirectionClicked(@FanDirectionButtons.FanDirection int direction) {
-            mHvacController.setFanDirection(mFanDirectionMap.get(direction));
+            mFanDirectionApi.setFanDirection(mFanDirectionMap.get(direction));
         }
     };
 }

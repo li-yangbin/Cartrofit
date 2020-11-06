@@ -15,19 +15,29 @@
  */
 package com.android.car.hvac.controllers;
 
-import android.car.hardware.CarPropertyValue;
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleObserver;
+import androidx.lifecycle.OnLifecycleEvent;
+
 import com.android.car.hvac.HvacController;
+import com.android.car.hvac.api.TemperatureApi;
 import com.android.car.hvac.ui.TemperatureBarOverlay;
+import com.liyangbin.cartrofit.Cartrofit;
+
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Consumer;
 
 /**
  * A controller that handles temperature updates for the driver and passenger.
  */
-public class TemperatureController {
+public class TemperatureController implements LifecycleObserver {
     private final TemperatureBarOverlay mDriverTempBarExpanded;
     private final TemperatureBarOverlay mPassengerTempBarExpanded;
     private final TemperatureBarOverlay mDriverTempBarCollapsed;
     private final TemperatureBarOverlay mPassengerTempBarCollapsed;
-    private final HvacController mHvacController;
+//    private final HvacController mHvacController;
+    private final TemperatureApi mApi = Cartrofit.from(TemperatureApi.class);
+    private Disposable mDisposable;
 
     //TODO: builder pattern for clarity
     public TemperatureController(TemperatureBarOverlay passengerTemperatureBarExpanded,
@@ -39,31 +49,47 @@ public class TemperatureController {
         mPassengerTempBarExpanded = passengerTemperatureBarExpanded;
         mPassengerTempBarCollapsed = passengerTemperatureBarCollapsed;
         mDriverTempBarCollapsed = driverTemperatureBarCollapsed;
-        mHvacController = controller;
+//        mHvacController = controller;
 
 //        mHvacController.registerCallback(mCallback);
         mDriverTempBarExpanded.setTemperatureChangeListener(mDriverTempClickListener);
         mPassengerTempBarExpanded.setTemperatureChangeListener(mPassengerTempClickListener);
 
         final boolean isDriverTempControlAvailable =
-                mHvacController.isDriverTemperatureControlAvailable();
+                mApi.isDriverTemperatureControlAvailable();
         mDriverTempBarExpanded.setAvailable(isDriverTempControlAvailable);
         mDriverTempBarCollapsed.setAvailable(isDriverTempControlAvailable);
         if (isDriverTempControlAvailable) {
-            mDriverTempBarExpanded.setTemperature(mHvacController.getDriverTemperature());
-            mDriverTempBarCollapsed.setTemperature(mHvacController.getDriverTemperature());
+            mDriverTempBarExpanded.setTemperature(mApi.getDriverTemperature());
+            mDriverTempBarCollapsed.setTemperature(mApi.getDriverTemperature());
         }
 
         final boolean isPassengerTempControlAvailable =
-            mHvacController.isPassengerTemperatureControlAvailable();
+                mApi.isPassengerTemperatureControlAvailable();
         mPassengerTempBarExpanded.setAvailable(isPassengerTempControlAvailable);
         mPassengerTempBarCollapsed.setAvailable(isPassengerTempControlAvailable);
         if (isPassengerTempControlAvailable) {
-            mPassengerTempBarExpanded.setTemperature(mHvacController.getPassengerTemperature());
-            mPassengerTempBarCollapsed.setTemperature(mHvacController.getPassengerTemperature());
+            mPassengerTempBarExpanded.setTemperature(mApi.getPassengerTemperature());
+            mPassengerTempBarCollapsed.setTemperature(mApi.getPassengerTemperature());
         }
+
+        mDisposable = mApi.trackTempChange().subscribe(new Consumer<TemperatureApi.TempInfo>() {
+            @Override
+            public void accept(TemperatureApi.TempInfo tempInfo) throws Exception {
+                mDriverTempBarCollapsed.setTemperature(tempInfo.driverTemp);
+                mDriverTempBarExpanded.setTemperature(tempInfo.driverTemp);
+
+                mPassengerTempBarExpanded.setTemperature(tempInfo.passengerTemp);
+                mPassengerTempBarCollapsed.setTemperature(tempInfo.passengerTemp);
+            }
+        });
     }
-//
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+    private void onDestroy() {
+        mDisposable.dispose();
+    }
+
 //    private final HvacController.Callback mCallback = new HvacController.Callback() {
 //        @Override
 //        public void onPassengerTemperatureChange(CarPropertyValue value) {
@@ -94,7 +120,7 @@ public class TemperatureController {
             new TemperatureBarOverlay.TemperatureAdjustClickListener() {
                 @Override
                 public void onTemperatureChanged(int temperature) {
-                    mHvacController.setPassengerTemperature(temperature);
+                    mApi.setPassengerTemperature(temperature);
                     mPassengerTempBarCollapsed.setTemperature(temperature);
                 }
             };
@@ -103,7 +129,7 @@ public class TemperatureController {
             new TemperatureBarOverlay.TemperatureAdjustClickListener() {
                 @Override
                 public void onTemperatureChanged(int temperature) {
-                    mHvacController.setDriverTemperature(temperature);
+                    mApi.setDriverTemperature(temperature);
                     mDriverTempBarCollapsed.setTemperature(temperature);
                 }
             };

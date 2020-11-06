@@ -19,6 +19,7 @@ import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.funtion.FunctionalCombinator;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
@@ -96,6 +97,13 @@ public final class Cartrofit {
                 "Call setDefault() before calling from()").fromInternal(api);
     }
 
+    public static final class DummyOnCreate implements ApiCallback {
+        @Override
+        public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
+            throw new IllegalStateException("impossible call");
+        }
+    }
+
     private static Class<?> findApiClassById(int id) {
         try {
             if (sRouterFinderMethod == null) {
@@ -155,9 +163,22 @@ public final class Cartrofit {
                     try {
                         Class<?> selfScopeClass = Class.forName(clazz.getName() + ID_SUFFIX);
                         importDependency(selfScopeClass);
-                    } catch (ClassNotFoundException ignore) {
+                    } catch (ClassNotFoundException impossible) {
+                        throw new IllegalStateException("impossible", impossible);
                     }
-                    this.source.onApiCreate(clazz, this);
+
+                    Class<? extends ApiCallback> createHelper = carScope.onCreate();
+                    if (!createHelper.equals(DummyOnCreate.class)) {
+                        try {
+                            Constructor<? extends ApiCallback> constructor
+                                    = (Constructor<? extends ApiCallback>) createHelper.getDeclaredConstructor();
+                            constructor.setAccessible(true);
+                            constructor.newInstance().onApiCreate(clazz, this);
+                        } catch (ReflectiveOperationException illegal) {
+                            throw new IllegalArgumentException(illegal);
+                        }
+                    }
+
                     for (int i = 0; i < mApiCallback.size(); i++) {
                         mApiCallback.get(i).onApiCreate(clazz, this);
                     }
@@ -1043,7 +1064,7 @@ public final class Cartrofit {
         UnTrack unTrack = (flag & FLAG_PARSE_UN_TRACK) != 0 ? key.getAnnotation(UnTrack.class) : null;
         if (unTrack != null) {
             CommandUnTrack command = new CommandUnTrack();
-            final int targetTrack = unTrack.track();
+            final int targetTrack = unTrack.value();
             command.setTrackCommand((CommandFlow) getOrCreateCommandById(record, targetTrack,
                     FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE | FLAG_PARSE_REGISTER));
             command.init(record, unTrack, key);

@@ -2,7 +2,7 @@ package com.liyangbin.cartrofit;
 
 import android.car.hardware.CarPropertyValue;
 
-public interface DataSource extends ApiCallback {
+public interface DataSource {
     Object get(int key, int area, CarType type);
 
     <TYPE> void set(int key, int area, TYPE value);

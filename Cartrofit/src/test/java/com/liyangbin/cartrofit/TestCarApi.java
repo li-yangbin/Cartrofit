@@ -2,14 +2,14 @@ package com.liyangbin.cartrofit;
 
 import androidx.databinding.ObservableBoolean;
 
-import com.liyangbin.cartrofit.annotation.In;
-import com.liyangbin.cartrofit.annotation.Out;
-import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.CarValue;
 import com.liyangbin.cartrofit.annotation.Combine;
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.Get;
+import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Inject;
+import com.liyangbin.cartrofit.annotation.Out;
+import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
@@ -18,9 +18,14 @@ import com.liyangbin.cartrofit.annotation.UnTrack;
 import io.reactivex.Observable;
 import io.reactivex.Single;
 
-import static com.liyangbin.cartrofit.TestCarApiId.*;
+import static com.liyangbin.cartrofit.TestCarApiId.register2Callback;
+import static com.liyangbin.cartrofit.TestCarApiId.trackBooleanReactive;
+import static com.liyangbin.cartrofit.TestCarApiId.trackIntAndBoolean;
+import static com.liyangbin.cartrofit.TestCarApiId.trackIntReactive;
+import static com.liyangbin.cartrofit.TestCarApiId.trackStringAndCombine;
+import static com.liyangbin.cartrofit.TestCarApiId.trackStringSignal;
 
-@Scope(value = "test", publish = true)
+@Scope(value = "test", publish = true, onCreate = CreateHelper.class)
 public interface TestCarApi {
 
     @Get(id = 0)
@@ -128,6 +133,20 @@ public interface TestCarApi {
     @Register
     void register2Callback(MyCallback callback);
 
-    @UnTrack(track = register2Callback)
+    @UnTrack(register2Callback)
     void unregisterCallback(MyCallback callback);
+}
+
+class CreateHelper implements ApiCallback {
+    @Override
+    public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
+        builder.convert(int.class)
+                .to(boolean.class)
+                .by(value -> value > 0)
+                .apply(Constraint.ALL);
+        builder.combine(String.class, boolean.class)
+                .to(String.class)
+                .by((string, bool) -> "string:" + string + " together:" + bool)
+                .apply(TestCarApiId.trackIntAndBoolean);
+    }
 }
