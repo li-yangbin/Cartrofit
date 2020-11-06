@@ -355,7 +355,7 @@ public class CartrofitProcessor extends AbstractProcessor {
                     .returns(name)
                     .addModifiers(PRIVATE, Modifier.FINAL)
                     .beginControlFlow("if ($L == null)", fieldName)
-                    .addStatement(fieldName + " = $T.fromDefault($T.class)",
+                    .addStatement(fieldName + " = $T.from($T.class)",
                             CAR_RETROFIT_NAME, name)
                     .endControlFlow()
                     .addStatement("return $L", fieldName)

@@ -1,6 +1,6 @@
 package com.liyangbin.cartrofit.funtion;
 
-import com.liyangbin.cartrofit.Cartrofit;
+import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.Converter;
 
 public interface Function3<T1, T2, T3, R> extends Converter<Object[], R>, FunctionalCombinator<R> {
@@ -10,7 +10,7 @@ public interface Function3<T1, T2, T3, R> extends Converter<Object[], R>, Functi
 
     default R apply(int effectIndex, Object[] objects) {
         if (objects.length != 3) {
-            throw new Cartrofit.CartrofitException("Input elements size:"
+            throw new CartrofitGrammarException("Input elements size:"
                     + objects.length + " do not match converter:" + this);
         }
         return apply(effectIndex, (T1) objects[0], (T2) objects[1], (T3) objects[2]);
