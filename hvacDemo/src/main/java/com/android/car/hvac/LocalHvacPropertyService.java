@@ -34,6 +34,7 @@ import android.car.hardware.property.ICarPropertyEventListener;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Pair;
+import android.util.SparseArray;
 
 /**
  * A local {@link ICarProperty} that is used to mock up data for HVAC.
@@ -59,8 +60,8 @@ public class LocalHvacPropertyService {
     private static final boolean DEFAULT_AUTO_MODE = false;
     private static final int DEFAULT_FAN_SPEED = 3;
     private static final int DEFAULT_FAN_DIRECTION = 2;
-    private static final float DEFAULT_DRIVER_TEMP = 16;
-    private static final float DEFAULT_PASSENGER_TEMP = 25;
+    private static final float DEFAULT_DRIVER_TEMP = 16f;
+    private static final float DEFAULT_PASSENGER_TEMP = 25f;
     // Hardware specific value for the front seats
     public static final int SEAT_ALL = VehicleAreaSeat.SEAT_ROW_1_LEFT |
             VehicleAreaSeat.SEAT_ROW_1_RIGHT | VehicleAreaSeat.SEAT_ROW_2_LEFT |
@@ -68,7 +69,7 @@ public class LocalHvacPropertyService {
 
     private final List<CarPropertyConfig> mPropertyList;
     private final Map<Pair, Object> mProperties = new HashMap<>();
-    private final List<ICarPropertyEventListener> mListeners = new ArrayList<>();
+    private final SparseArray<ICarPropertyEventListener> mListenerMap = new SparseArray<>();
 
     public LocalHvacPropertyService() {
         CarPropertyConfig fanSpeedConfig = CarPropertyConfig.newBuilder(Integer.class,
@@ -89,12 +90,12 @@ public class LocalHvacPropertyService {
     private final IBinder mCarPropertyService = new ICarProperty.Stub(){
         @Override
         public void registerListener(int propId, float rate, ICarPropertyEventListener listener) throws RemoteException {
-            mListeners.add(listener);
+            mListenerMap.put(propId, listener);
         }
 
         @Override
         public void unregisterListener(int propId, ICarPropertyEventListener listener) throws RemoteException {
-            mListeners.remove(listener);
+            mListenerMap.remove(propId);
         }
 
         @Override
@@ -110,7 +111,8 @@ public class LocalHvacPropertyService {
         @Override
         public void setProperty(CarPropertyValue prop) throws RemoteException {
             mProperties.put(new Pair(prop.getPropertyId(), prop.getAreaId()), prop.getValue());
-            for (ICarPropertyEventListener listener : mListeners) {
+            ICarPropertyEventListener listener = mListenerMap.get(prop.getPropertyId());
+            if (listener != null) {
                 LinkedList<CarPropertyEvent> l = new LinkedList<>();
                 l.add(new CarPropertyEvent(CarPropertyEvent.PROPERTY_EVENT_PROPERTY_CHANGE, prop));
                 listener.onEvent(l);
@@ -190,6 +192,20 @@ public class LocalHvacPropertyService {
                 PASSENGER_ZONE_ID), DEFAULT_PASSENGER_TEMP);
         mPropertyList.add(CarPropertyConfig.newBuilder(Float.class,
                 CarHvacManager.ID_ZONED_TEMP_SETPOINT,
+                VehicleAreaType.VEHICLE_AREA_TYPE_SEAT)
+                .addAreaConfig(PASSENGER_ZONE_ID, 0f, 100f).build());
+
+        mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_SEAT_TEMP,
+                DRIVER_ZONE_ID), DEFAULT_DRIVER_TEMP);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Float.class,
+                CarHvacManager.ID_ZONED_SEAT_TEMP,
+                VehicleAreaType.VEHICLE_AREA_TYPE_SEAT)
+                .addAreaConfig(DRIVER_ZONE_ID, 0f, 100f).build());
+
+        mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_SEAT_TEMP,
+                PASSENGER_ZONE_ID), DEFAULT_PASSENGER_TEMP);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Float.class,
+                CarHvacManager.ID_ZONED_SEAT_TEMP,
                 VehicleAreaType.VEHICLE_AREA_TYPE_SEAT)
                 .addAreaConfig(PASSENGER_ZONE_ID, 0f, 100f).build());
     }

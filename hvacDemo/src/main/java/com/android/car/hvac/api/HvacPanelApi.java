@@ -10,12 +10,14 @@ import androidx.databinding.ObservableInt;
 import androidx.lifecycle.LiveData;
 
 import com.liyangbin.cartrofit.StickyType;
+import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
 
-@Scope(value = Car.HVAC_SERVICE, publish = true)
+@GenerateId
+@Scope(value = Car.HVAC_SERVICE)
 public interface HvacPanelApi {
     int DRIVER_ZONE_ID = VehicleAreaSeat.SEAT_ROW_1_LEFT |
             VehicleAreaSeat.SEAT_ROW_2_LEFT | VehicleAreaSeat.SEAT_ROW_2_CENTER;
@@ -39,16 +41,16 @@ public interface HvacPanelApi {
     boolean getHvacPowerState();
 
     @Set(id = CarHvacManager.ID_ZONED_SEAT_TEMP, area = DRIVER_ZONE_ID)
-    void setDriverSeatWarmerLevel(int level);
+    void setDriverSeatWarmerLevel(float level);
 
     @Set(id = CarHvacManager.ID_ZONED_SEAT_TEMP, area = PASSENGER_ZONE_ID)
-    void setPassengerSeatWarmerLevel(int level);
+    void setPassengerSeatWarmerLevel(float level);
 
     @Get(id = CarHvacManager.ID_ZONED_SEAT_TEMP, area = DRIVER_ZONE_ID)
-    int getDriverSeatWarmerLevel();
+    float getDriverSeatWarmerLevel();
 
     @Get(id = CarHvacManager.ID_ZONED_SEAT_TEMP, area = PASSENGER_ZONE_ID)
-    int getPassengerSeatWarmerLevel();
+    float getPassengerSeatWarmerLevel();
 
     @Set(id = CarHvacManager.ID_WINDOW_DEFROSTER_ON, area = VehicleAreaWindow.WINDOW_FRONT_WINDSHIELD)
     void setFrontDefrosterState(boolean onOff);

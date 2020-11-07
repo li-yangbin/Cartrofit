@@ -9,9 +9,10 @@
 
     <protected-broadcast android:name="android.car.intent.action.TOGGLE_HVAC_CONTROLS" />
 
-    <application android:label="@string/app_name"
-        android:icon="@drawable/ic_launcher_hvac"
-        android:persistent="true">
+    <application
+        android:name=".HvacApplication"
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_launcher_hvac">
         <service android:name=".HvacController"
             android:singleUser="true"
             android:exported="false" />

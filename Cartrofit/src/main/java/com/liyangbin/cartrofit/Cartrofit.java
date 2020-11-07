@@ -6,6 +6,7 @@ import com.liyangbin.cartrofit.annotation.CarValue;
 import com.liyangbin.cartrofit.annotation.Combine;
 import com.liyangbin.cartrofit.annotation.ConsiderSuper;
 import com.liyangbin.cartrofit.annotation.Delegate;
+import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Inject;
@@ -55,7 +56,9 @@ public final class Cartrofit {
             | FLAG_PARSE_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_COMBINE;
     private static final int FLAG_PARSE_ALL = FLAG_PARSE_SET | FLAG_PARSE_GET | FLAG_PARSE_TRACK
             | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_COMBINE | FLAG_PARSE_REGISTER;
+
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
+    private static final HashMap<Class<? extends ApiCallback>, ApiCallback> ON_CREATE_OBJ_CACHE = new HashMap<>();
     private static Method sRouterFinderMethod;
 
     private final HashMap<String, DataSource> mDataMap = new HashMap<>();
@@ -104,16 +107,33 @@ public final class Cartrofit {
         }
     }
 
+    private static Scope findScopeByClass(Class<?> clazz) {
+        Scope scope = clazz.getDeclaredAnnotation(Scope.class);
+        if (scope != null) {
+            return scope;
+        }
+        Class<?> enclosingClass = clazz.getEnclosingClass();
+        while (enclosingClass != null) {
+            scope = enclosingClass.getDeclaredAnnotation(Scope.class);
+            if (scope != null) {
+                return scope;
+            }
+            enclosingClass = enclosingClass.getEnclosingClass();
+        }
+        return null;
+    }
+
     private static Class<?> findApiClassById(int id) {
         try {
             if (sRouterFinderMethod == null) {
-                Class<?> idRouterClass = Class.forName(Cartrofit.class.getPackage().getName()
-                        + ".IdRouter");
+                Class<?> idRouterClass = Class.forName("com.liyangbin.cartrofit.IdRouter");
                 sRouterFinderMethod = idRouterClass.getMethod("findApiClassById", int.class);
             }
             return (Class<?>) sRouterFinderMethod.invoke(null, id);
-        } catch (ReflectiveOperationException ignore) {
+        } catch (ClassNotFoundException ignore) {
             return null;
+        } catch (ReflectiveOperationException impossible) {
+            throw new RuntimeException(impossible);
         }
     }
 
@@ -151,7 +171,17 @@ public final class Cartrofit {
 
         ApiRecord(Class<T> clazz) {
             this.clazz = clazz;
-            Scope carScope = clazz.getAnnotation(Scope.class);
+
+            if (clazz.isAnnotationPresent(GenerateId.class)) {
+                try {
+                    Class<?> selfScopeClass = Class.forName(clazz.getName() + ID_SUFFIX);
+                    importDependency(selfScopeClass);
+                } catch (ClassNotFoundException impossible) {
+                    throw new IllegalStateException("impossible", impossible);
+                }
+            }
+
+            Scope carScope = findScopeByClass(clazz);
             if (carScope != null) {
                 this.dataScope = carScope.value();
 
@@ -159,29 +189,25 @@ public final class Cartrofit {
                         "Invalid scope:" + dataScope +
                                 ". Make sure use a valid scope id registered in Builder().addDataSource()");
 
-                if (carScope.publish() && clazz.isInterface()) {
-                    try {
-                        Class<?> selfScopeClass = Class.forName(clazz.getName() + ID_SUFFIX);
-                        importDependency(selfScopeClass);
-                    } catch (ClassNotFoundException impossible) {
-                        throw new IllegalStateException("impossible", impossible);
-                    }
-
-                    Class<? extends ApiCallback> createHelper = carScope.onCreate();
-                    if (!createHelper.equals(DummyOnCreate.class)) {
+                Class<? extends ApiCallback> createHelper = carScope.onCreate();
+                if (!createHelper.equals(DummyOnCreate.class)) {
+                    ApiCallback singleton = ON_CREATE_OBJ_CACHE.get(createHelper);
+                    if (singleton == null) {
                         try {
                             Constructor<? extends ApiCallback> constructor
-                                    = (Constructor<? extends ApiCallback>) createHelper.getDeclaredConstructor();
+                                    = createHelper.getDeclaredConstructor();
                             constructor.setAccessible(true);
-                            constructor.newInstance().onApiCreate(clazz, this);
+                            singleton = constructor.newInstance();
+                            ON_CREATE_OBJ_CACHE.put(createHelper, singleton);
                         } catch (ReflectiveOperationException illegal) {
                             throw new IllegalArgumentException(illegal);
                         }
                     }
+                    singleton.onApiCreate(clazz, this);
+                }
 
-                    for (int i = 0; i < mApiCallback.size(); i++) {
-                        mApiCallback.get(i).onApiCreate(clazz, this);
-                    }
+                for (int i = 0; i < mApiCallback.size(); i++) {
+                    mApiCallback.get(i).onApiCreate(clazz, this);
                 }
             }
         }
@@ -335,7 +361,7 @@ public final class Cartrofit {
 
         InterceptorChain getInterceptorByKey(CommandImpl command) {
             InterceptorChain chain = interceptorManager.get(command);
-            if (command.delegateTarget() != command && mChainHead != null) {
+            if (command.delegateTarget() == command && mChainHead != null) {
                 if (chain != null) {
                     chain.addInterceptorChainToBottom(mChainHead);
                 } else {
@@ -623,11 +649,9 @@ public final class Cartrofit {
         }
 
         public Builder addDataSource(DataSource source) {
-            Scope sourceScope = Objects.requireNonNull(
-                    source.getClass().getDeclaredAnnotation(Scope.class));
-            if (sourceScope.publish()) {
-                throw new CartrofitGrammarException("Can not declare publish on data source:"
-                        + source);
+            Scope sourceScope = findScopeByClass(source.getClass());
+            if (sourceScope == null) {
+                throw new CartrofitGrammarException("Declare data scope in :" + source.getClass());
             }
             DataSource existedSource = dataMap.put(sourceScope.value(), source);
             if (existedSource != null) {
@@ -744,16 +768,14 @@ public final class Cartrofit {
             return null;
         }
         CommandImpl command;
-        synchronized (mCommandCache) {
+        synchronized (mApiCache) {
             command = mCommandCache.get(key);
-        }
-        if (command != null) {
-            return command;
-        }
-        key.doQualifyCheck();
-        command = createCommand(record, key, flag);
-        if (command != null) {
-            synchronized (mCommandCache) {
+            if (command != null) {
+                return command;
+            }
+            key.doQualifyCheck();
+            command = createCommand(record, key, flag);
+            if (command != null) {
                 mCommandCache.put(key, command);
             }
         }

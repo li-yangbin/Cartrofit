@@ -267,7 +267,8 @@ abstract class CommandFlow extends CommandImpl implements UnTrackable {
         if (key.isCallbackEntry) {
             registerTrack = true;
             mapFlowSuppressed = true;
-        } else if (key.method != null && key.method.getReturnType() == void.class) {
+        } else if (isReturnFlow() && key.method != null
+                && key.method.getReturnType() == void.class) {
             Class<?>[] classArray = key.method.getParameterTypes();
             if (classArray.length == 1) {
                 Class<?> parameterClass = classArray[0];

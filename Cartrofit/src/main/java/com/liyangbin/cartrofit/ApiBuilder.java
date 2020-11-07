@@ -70,6 +70,10 @@ public abstract class ApiBuilder {
         return new ConverterBuilder5<>(clazz1, clazz2, clazz3, clazz4, clazz5);
     }
 
+    public void applyToAll() {
+        apply(Constraint.ALL);
+    }
+
     public void apply(int... id) {
         if (id == null || id.length == 0) {
             return;

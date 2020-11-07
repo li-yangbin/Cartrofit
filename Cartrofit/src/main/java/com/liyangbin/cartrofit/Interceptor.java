@@ -3,6 +3,8 @@ package com.liyangbin.cartrofit;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
+import androidx.annotation.NonNull;
+
 public interface Interceptor {
     Object process(Command command, Object parameter);
 
@@ -78,17 +80,17 @@ class InterceptorChain {
 
         @Override
         public int getPropertyId() {
-            return previous.getPropertyId();
+            return command.getPropertyId();
         }
 
         @Override
         public int getArea() {
-            return previous.getArea();
+            return command.getArea();
         }
 
         @Override
         public CommandType getType() {
-            return previous.getType();
+            return command.getType();
         }
 
         @Override
@@ -98,27 +100,33 @@ class InterceptorChain {
 
         @Override
         public Method getMethod() {
-            return previous.getMethod();
+            return command.getMethod();
         }
 
         @Override
         public Field getField() {
-            return previous.getField();
+            return command.getField();
         }
 
         @Override
         public String getName() {
-            return previous.getName();
+            return command.getName();
         }
 
         @Override
         public Class<?> getOutputType() {
-            return previous.getOutputType();
+            return command.getOutputType();
         }
 
         @Override
         public Class<?> getInputType() {
-            return previous.getInputType();
+            return command.getInputType();
+        }
+
+        @NonNull
+        @Override
+        public String toString() {
+            return command.toString();
         }
     }
 }

@@ -88,9 +88,9 @@ public class HvacDataSource implements DataSource {
     public Flow<CarPropertyValue<?>> track(int key, int area) {
         if (!mHvacChangeTracked) {
             try {
-                for (int index = 0; index < mConfigMap.size(); index++) {
+                   for (int index = 0; index < mConfigMap.size(); index++) {
                     int id = mConfigMap.keyAt(index);
-                    mCarPropertyManager.registerListener(new CarPropertyManager.CarPropertyEventListener() {
+                     mCarPropertyManager.registerListener(new CarPropertyManager.CarPropertyEventListener() {
                         @Override
                         public void onChangeEvent(CarPropertyValue carPropertyValue) {
                             notifyChange(carPropertyValue);

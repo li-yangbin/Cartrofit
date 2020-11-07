@@ -19,6 +19,7 @@ class CommandDelegate extends CommandFlow {
     Converter<Object, ?> argConverter;
     CarType carType;
     boolean commandSet;
+    boolean commandGet;
 
     @Override
     void onInit(Annotation annotation) {
@@ -27,6 +28,7 @@ class CommandDelegate extends CommandFlow {
         resolveStickyType(delegate.sticky());
         carType = delegate.type();
         commandSet = getType() == CommandType.SET;
+        commandGet = getType() == CommandType.GET;
 
         targetCommand.overrideFromDelegate(this);
 
@@ -44,10 +46,11 @@ class CommandDelegate extends CommandFlow {
     }
 
     private void resolveConverter() {
-        if (commandSet) {
+        if (commandSet || commandGet) {
             if (targetCommand.userDataClass != null) {
                 argConverter = (Converter<Object, ?>) store.find(this,
-                        targetCommand.userDataClass, userDataClass = key.getSetClass());
+                        targetCommand.userDataClass,
+                        userDataClass = commandSet ? key.getSetClass() : key.getGetClass());
             }
         } else if (isReturnFlow()) {
             resultConverter = (Converter<Object, ?>) store.find(this,
@@ -55,7 +58,7 @@ class CommandDelegate extends CommandFlow {
                     key.getTrackClass());
             mapConverter = findMapConverter(targetCommand.userDataClass);
         } else {
-            resultConverter = findMapConverter(targetCommand.userDataClass);
+            throw new IllegalStateException("impossible situation");
         }
     }
 
@@ -79,8 +82,12 @@ class CommandDelegate extends CommandFlow {
         if (commandSet) {
             return targetCommand.invokeWithChain(argConverter != null ?
                     argConverter.convert(parameter) : parameter);
+        } else if (commandGet) {
+            Object obj = targetCommand.invokeWithChain(parameter);
+            return argConverter != null ? argConverter.convert(obj) : obj;
+        } else {
+            return super.invoke(parameter);
         }
-        return super.invoke(parameter);
     }
 
     @Override

@@ -3,7 +3,7 @@ package com.liyangbin.cartrofit;
 import java.util.Objects;
 
 public class Constraint {
-    public static final Constraint ALL = new Constraint();
+    static final Constraint ALL = new Constraint();
     int priority;
     int apiId;
     String category;

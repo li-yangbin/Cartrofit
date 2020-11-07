@@ -43,6 +43,8 @@ import androidx.databinding.DataBindingUtil;
 import com.android.car.hvac.controllers.HvacPanelController;
 import com.android.car.hvac.ui.TemperatureBarOverlay;
 import com.liyangbin.cartrofit.Cartrofit;
+import com.liyangbin.cartrofit.Command;
+import com.liyangbin.cartrofit.Interceptor;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -92,7 +94,6 @@ public class HvacUiService extends AppCompatActivity {
     public void onCreate(Bundle icicle) {
         super.onCreate(icicle);
         setContentView(mContent = new FrameLayout(this));
-        Cartrofit.builder().addDataSource(new HvacDataSource(this)).buildAsDefault();
         Resources res = getResources();
         boolean showCollapsed = res.getBoolean(R.bool.config_showCollapsedBars);
         mPanelCollapsedHeight = res.getDimensionPixelSize(R.dimen.car_hvac_panel_collapsed_height);

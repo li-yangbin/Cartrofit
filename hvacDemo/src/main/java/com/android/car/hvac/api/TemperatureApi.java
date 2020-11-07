@@ -8,8 +8,9 @@ import com.liyangbin.cartrofit.ApiCallback;
 import com.liyangbin.cartrofit.CarType;
 import com.liyangbin.cartrofit.Converter;
 import com.liyangbin.cartrofit.Flow;
-import com.liyangbin.cartrofit.TemperatureApiId;
+import com.liyangbin.cartrofit.TwoWayConverter;
 import com.liyangbin.cartrofit.annotation.Combine;
+import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
@@ -17,7 +18,10 @@ import com.liyangbin.cartrofit.annotation.Track;
 
 import io.reactivex.Observable;
 
-@Scope(value = Car.HVAC_SERVICE, publish = true, onCreate = CreateHelper.class)
+import static com.android.car.hvac.api.TemperatureApiId.*;
+
+@GenerateId
+@Scope(value = Car.HVAC_SERVICE, onCreate = CreateHelper.class)
 public interface TemperatureApi extends ApiCallback {
 
     @Set(id = CarHvacManager.ID_ZONED_TEMP_SETPOINT, area = HvacPanelApi.DRIVER_ZONE_ID)
@@ -64,11 +68,23 @@ class CreateHelper implements ApiCallback {
         builder.combine(int.class, int.class)
                 .to(TemperatureApi.TempInfo.class)
                 .by(TemperatureApi.TempInfo::new)
-                .apply(TemperatureApiId.trackTempChange);
+                .apply(trackTempChange);
 
         builder.convert(Float.class)
                 .to(int.class)
-                .by(Float::intValue)
-                .apply(TemperatureApiId.getDriverTemperature, TemperatureApiId.getPassengerTemperature);
+                .by(new TwoWayConverter<Float, Integer>() {
+                    @Override
+                    public Integer fromCar2App(Float value) {
+                        return value.intValue();
+                    }
+
+                    @Override
+                    public Float fromApp2Car(Integer integer) {
+                        return integer.floatValue();
+                    }
+                })
+                .apply(getDriverTemperature, getPassengerTemperature,
+                        setPassengerTemperature, setDriverTemperature,
+                        trackDriverTemperature, trackPassengerTemperature);
     }
 }
