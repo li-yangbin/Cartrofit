@@ -22,7 +22,7 @@ import static com.android.car.hvac.api.TemperatureApiId.*;
 
 @GenerateId
 @Scope(value = Car.HVAC_SERVICE, onCreate = CreateHelper.class)
-public interface TemperatureApi extends ApiCallback {
+public interface TemperatureApi {
 
     @Set(id = CarHvacManager.ID_ZONED_TEMP_SETPOINT, area = HvacPanelApi.DRIVER_ZONE_ID)
     void setDriverTemperature(int temperature);

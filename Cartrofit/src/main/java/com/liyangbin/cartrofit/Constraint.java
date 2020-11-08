@@ -8,6 +8,7 @@ public class Constraint {
     int apiId;
     String category;
     CommandType type;
+    boolean considerCombine;
 
     private Constraint() {
     }
@@ -51,12 +52,17 @@ public class Constraint {
         return this;
     }
 
+    public Constraint includingCombine() {
+        considerCombine = true;
+        return this;
+    }
+
     public Constraint priority(int priority) {
         this.priority = priority;
         return this;
     }
 
-    boolean check(Command command) {
+    boolean check(CommandImpl command) {
         if (this == ALL) {
             return true;
         }
@@ -68,8 +74,13 @@ public class Constraint {
         if (apiId != 0 && command.getId() != apiId) {
             return false;
         }
-        if (type != null && type != thatType) {
-            return false;
+        if (type != null) {
+            if (type != thatType) {
+                return false;
+            } else if ((thatType == CommandType.STICKY_GET || thatType == CommandType.RECEIVE)
+                    && command.delegateTarget().getType() == CommandType.COMBINE && !considerCombine) {
+                return false;
+            }
         }
         if (category != null) {
             String[] commandCategory = command.getCategory();

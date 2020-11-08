@@ -25,6 +25,7 @@ class CommandReceive extends CommandImpl {
     CommandReceive(CommandFlow commandFlow) {
         this.commandFlow = commandFlow;
         copyFrom(commandFlow);
+        this.chain = record.getInterceptorByKey(this);
     }
 
     @Override
@@ -474,7 +475,7 @@ class CommandTrack extends CommandFlow {
         if (type != CarType.VALUE) {
             stable += " valueType:" + type;
         }
-        return stable + super.toCommandString();
+        return stable + " " + super.toCommandString();
     }
 }
 
