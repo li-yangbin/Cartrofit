@@ -48,9 +48,15 @@ class CommandDelegate extends CommandFlow {
     private void resolveConverter() {
         if (commandSet || commandGet) {
             if (targetCommand.userDataClass != null) {
-                argConverter = (Converter<Object, ?>) store.find(this,
-                        targetCommand.userDataClass,
-                        userDataClass = commandSet ? key.getSetClass() : key.getGetClass());
+                if (commandSet) {
+                    argConverter = (Converter<Object, ?>) store.find(this,
+                            userDataClass = key.getSetClass(),
+                            targetCommand.userDataClass);
+                } else {
+                    argConverter = (Converter<Object, ?>) store.find(this,
+                            targetCommand.userDataClass,
+                            userDataClass = key.getGetClass());
+                }
             }
         } else if (isReturnFlow()) {
             resultConverter = (Converter<Object, ?>) store.find(this,
@@ -362,7 +368,7 @@ class CommandRegister extends CommandGroup implements UnTrackable {
 
     @Override
     public CommandType getType() {
-        return CommandType.CALLBACK;
+        return CommandType.REGISTER;
     }
 
     @Override

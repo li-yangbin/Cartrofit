@@ -118,8 +118,6 @@ public class HvacPanelController implements LifecycleObserver {
 
     private HvacPanelStateTransition mTransition;
 
-    private View mHvacFanControlBackground;
-
     private HvacController mHvacController;
     private FanSpeedBarController mFanSpeedBarController;
     private FanDirectionButtonsController mFanDirectionButtonsController;
@@ -133,8 +131,8 @@ public class HvacPanelController implements LifecycleObserver {
     private boolean mAutoMode;
 
     private final HvacPanelApi mHvacApi = Cartrofit.from(HvacPanelApi.class);
+    public ObservableBoolean acObservable = mHvacApi.trackACState();
     private AppCompatActivity mActivity;
-    public ObservableBoolean mAcOn = mHvacApi.trackACState();
 
     public HvacPanelController(AppCompatActivity activity, View container,
                                WindowManager windowManager,
@@ -179,7 +177,6 @@ public class HvacPanelController implements LifecycleObserver {
         mContainer.setOnClickListener(mCollapseHvac);
         mPanel = mContainer.findViewById(R.id.hvac_center_panel);
 
-        mHvacFanControlBackground = mPanel.findViewById(R.id.fan_control_bg);
         // set clickable so that clicks are not forward to the mContainer. This way a miss click
         // does not close the UI
         mPanel.setClickable(true);
@@ -372,7 +369,7 @@ public class HvacPanelController implements LifecycleObserver {
                 animationList.add(heightAnimator);
                 heightAnimator.setDuration(PANEL_COLLAPSE_ANIMATION_TIME_MS);
                 fanBgAlphaAnimator
-                        = ObjectAnimator.ofFloat(mHvacFanControlBackground, View.ALPHA, 1, 0)
+                        = ObjectAnimator.ofFloat(mPanel, View.ALPHA, 1, 0)
                         .setDuration(PANEL_COLLAPSE_ANIMATION_TIME_MS);
                 fanBgAlphaAnimator.setStartDelay(PANEL_ANIMATION_DELAY_MS);
                 animationList.add(fanBgAlphaAnimator);
@@ -407,7 +404,7 @@ public class HvacPanelController implements LifecycleObserver {
                 // 3. Increase height of the hvac center panel, but maintain container height.
                 // 4. Fade in fan control background in a staggered manner.
                 fanBgAlphaAnimator
-                        = ObjectAnimator.ofFloat(mHvacFanControlBackground, View.ALPHA, 0, 1)
+                        = ObjectAnimator.ofFloat(mPanel, View.ALPHA, 0, 1)
                         .setDuration(PANEL_ANIMATION_TIME_MS);
                 fanBgAlphaAnimator.setStartDelay(PANEL_ANIMATION_DELAY_MS);
                 animationList.add(fanBgAlphaAnimator);
@@ -469,7 +466,6 @@ public class HvacPanelController implements LifecycleObserver {
 
         ValueAnimator heightAnimator = new ValueAnimator().ofInt(startHeight, endHeight)
                 .setDuration(PANEL_ANIMATION_TIME_MS);
-        heightAnimator.addUpdateListener(mHeightUpdateListener);
         return heightAnimator;
     }
 
@@ -502,7 +498,7 @@ public class HvacPanelController implements LifecycleObserver {
             mTopPanelMaxAlpha = ENABLED_BUTTON_ALPHA;
             mAutoButton.setImageDrawable(mAutoOffDrawable);
         }
-        mHvacFanControlBackground.setAlpha(mTopPanelMaxAlpha);
+        mPanel.setAlpha(mTopPanelMaxAlpha);
         mPanelTopRow.setAlpha(mTopPanelMaxAlpha);
     }
 
@@ -551,18 +547,6 @@ public class HvacPanelController implements LifecycleObserver {
         }
     };
 
-
-    private ValueAnimator.AnimatorUpdateListener mHeightUpdateListener
-            = new ValueAnimator.AnimatorUpdateListener() {
-        @Override
-        public void onAnimationUpdate(ValueAnimator animation) {
-            int height = (Integer) animation.getAnimatedValue();
-            int currentHeight = mPanel.getLayoutParams().height;
-            mPanel.getLayoutParams().height = height;
-            mPanel.setTop(mPanel.getTop() + height - currentHeight);
-            mPanel.requestLayout();
-        }
-    };
 
     /**
      * Handles the necessary setup/clean up before and after a state transition.

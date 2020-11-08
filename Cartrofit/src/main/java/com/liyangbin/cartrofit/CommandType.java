@@ -9,5 +9,5 @@ public enum CommandType {
     INJECT,
     STICKY_GET,
     COMBINE,
-    CALLBACK
+    REGISTER
 }

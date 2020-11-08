@@ -41,6 +41,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.databinding.DataBindingUtil;
 
 import com.android.car.hvac.controllers.HvacPanelController;
+import com.android.car.hvac.databinding.HvacPanelBinding;
 import com.android.car.hvac.ui.TemperatureBarOverlay;
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.Command;
@@ -89,6 +90,7 @@ public class HvacUiService extends AppCompatActivity {
     private TemperatureBarOverlay mDriverTemperatureBarCollapsed;
     private TemperatureBarOverlay mPassengerTemperatureBarCollapsed;
     private FrameLayout mContent;
+    private HvacPanelBinding mBinding;
 
     @Override
     public void onCreate(Bundle icicle) {
@@ -109,7 +111,7 @@ public class HvacUiService extends AppCompatActivity {
         mWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
         mDisplayMetrics = new DisplayMetrics();
-        mWindowManager.getDefaultDisplay().getRealMetrics(mDisplayMetrics);
+        mWindowManager.getDefaultDisplay().getMetrics(mDisplayMetrics);
         mScreenBottom = mDisplayMetrics.heightPixels;
         mScreenWidth = mDisplayMetrics.widthPixels;
 
@@ -117,32 +119,12 @@ public class HvacUiService extends AppCompatActivity {
         mNavBarHeight = (identifier > 0 && showCollapsed) ?
                 res.getDimensionPixelSize(identifier) : 0;
 
-        WindowManager.LayoutParams testparams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT);
-
         // There does not exist a way to get the current state of the system ui visibility from
         // inside a Service thus we place something that's full screen and check it's final
         // measurements as a hack to get that information. Once we have the initial state  we can
         // safely just register for the change events from that point on.
-        View windowSizeTest = new View(this) {
-            @Override
-            protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
-                boolean sysUIShowing = (mDisplayMetrics.heightPixels != bottom);
-//                mInitialYOffset = (sysUIShowing) ? -mNavBarHeight : 0;
-                layoutHvacUi();
-                // we now have initial state so this empty view is not longer needed.
-                mSelfWm.removeView(this);
-                mAddedViews.remove(this);
-            }
-        };
         Log.i(TAG, "onCreate");
-        addViewToWindowManagerAndTrack(windowSizeTest, testparams);
+        layoutHvacUi();
         IntentFilter filter = new IntentFilter();
         filter.addAction(CAR_INTENT_ACTION_TOGGLE_HVAC_CONTROLS);
         // Register receiver such that any user with climate control permission can call it.
@@ -216,10 +198,6 @@ public class HvacUiService extends AppCompatActivity {
                 PixelFormat.TRANSLUCENT);
 
         params.packageName = this.getPackageName();
-        params.gravity = Gravity.BOTTOM | Gravity.LEFT;
-
-        params.x = 0;
-        params.y = mInitialYOffset;
 
         params.width = mScreenWidth;
         params.height = mScreenBottom;
@@ -228,7 +206,9 @@ public class HvacUiService extends AppCompatActivity {
         // required of the sysui visiblity listener is not triggered.
 //        params.hasSystemUiListeners = true;
 
-        mContainer = DataBindingUtil.inflate(inflater, R.layout.hvac_panel, null, false).getRoot();
+        mBinding = DataBindingUtil
+                .inflate(inflater, R.layout.hvac_panel, null, false);
+        mContainer = mBinding.getRoot();
         mContainer.setLayoutParams(params);
 //        mContainer.setOnSystemUiVisibilityChangeListener(visibility -> {
 //            boolean systemUiVisible = (visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0;
@@ -250,14 +230,11 @@ public class HvacUiService extends AppCompatActivity {
         // The top padding should be calculated on the screen height and the height of the
         // expanded hvac panel. The space defined by the padding is meant to be clickable for
         // dismissing the hvac panel.
-        int topPadding = mScreenBottom - mPanelFullExpandedHeight;
-        mContainer.setPadding(0, topPadding, 0, 0);
+//        int topPadding = mScreenBottom - mPanelFullExpandedHeight;
+//        mContainer.setPadding(0, topPadding, 0, 0);
 
         mContainer.setFocusable(false);
         mContainer.setFocusableInTouchMode(false);
-
-        View panel = mContainer.findViewById(R.id.hvac_center_panel);
-        panel.getLayoutParams().height = mPanelCollapsedHeight;
 
         addViewToWindowManagerAndTrack(mContainer, params);
 
@@ -265,6 +242,7 @@ public class HvacUiService extends AppCompatActivity {
         mHvacPanelController = new HvacPanelController(this /* context */, mContainer,
                 mSelfWm, mDriverTemperatureBar, mPassengerTemperatureBar,
                 mDriverTemperatureBarCollapsed, mPassengerTemperatureBarCollapsed);
+        mBinding.setController(mHvacPanelController);
         Intent bindIntent = new Intent(this /* context */, HvacController.class);
         if (!bindService(bindIntent, mServiceConnection, Context.BIND_AUTO_CREATE)) {
             Log.e(TAG, "Failed to connect to HvacController.");
@@ -303,6 +281,7 @@ public class HvacUiService extends AppCompatActivity {
             unbindService(mServiceConnection);
         }
         unregisterReceiver(mBroadcastReceiver);
+        mBinding.unbind();
     }
 
     private ServiceConnection mServiceConnection = new ServiceConnection() {

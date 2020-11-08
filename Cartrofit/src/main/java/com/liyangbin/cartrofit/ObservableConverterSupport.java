@@ -1,5 +1,10 @@
 package com.liyangbin.cartrofit;
 
+import com.liyangbin.cartrofit.annotation.WrappedData;
+
+import java.lang.reflect.Field;
+import java.util.function.Consumer;
+
 import androidx.annotation.NonNull;
 import androidx.databinding.BaseObservable;
 import androidx.databinding.ObservableBoolean;
@@ -9,11 +14,6 @@ import androidx.databinding.ObservableFloat;
 import androidx.databinding.ObservableInt;
 import androidx.databinding.ObservableLong;
 import androidx.databinding.PropertyChangeRegistry;
-
-import com.liyangbin.cartrofit.annotation.WrappedData;
-
-import java.lang.reflect.Field;
-import java.util.function.Consumer;
 
 class ObservableConverter {
     static void addSupport() {
@@ -53,7 +53,7 @@ class ObservableConverterField implements FlowConverter<ObservableField<Object>>
         Flow<T> flow;
         boolean hasCallback;
 
-        public FlowObservableField(Flow<T> flow) {
+        FlowObservableField(Flow<T> flow) {
             this.flow = flow;
         }
 
@@ -176,7 +176,7 @@ class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
         Flow<Object> flow;
         boolean hasCallback;
 
-        public FlowObservableBoolean(Flow<Object> flow) {
+        FlowObservableBoolean(Flow<Object> flow) {
             this.flow = flow;
         }
 

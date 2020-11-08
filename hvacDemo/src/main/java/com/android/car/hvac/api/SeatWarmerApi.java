@@ -22,10 +22,13 @@ import com.liyangbin.cartrofit.annotation.UnTrack;
 public interface SeatWarmerApi {
 
     String FLOAT_TO_INT = "float2int";
+    String INT_TO_FLOAT = "int2float";
 
+    @Category(INT_TO_FLOAT)
     @Delegate(HvacPanelApiId.setPassengerSeatWarmerLevel)
     void setPassengerSeatWarmerLevel(int level);
 
+    @Category(INT_TO_FLOAT)
     @Delegate(HvacPanelApiId.setDriverSeatWarmerLevel)
     void setDriverSeatWarmerLevel(int level);
 
@@ -66,5 +69,10 @@ class SeatWarmerApiCreateHelper implements ApiCallback {
                 .to(int.class)
                 .by(Float::intValue)
                 .apply(Constraint.of(SeatWarmerApi.FLOAT_TO_INT));
+
+        builder.convert(int.class)
+                .to(float.class)
+                .by(Integer::floatValue)
+                .apply(Constraint.of(SeatWarmerApi.INT_TO_FLOAT));
     }
 }

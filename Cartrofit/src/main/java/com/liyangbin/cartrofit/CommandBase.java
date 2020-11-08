@@ -252,7 +252,7 @@ class CommandSet extends CommandImpl {
     String toCommandString() {
         String stable = "id:0x" + Integer.toHexString(getPropertyId())
                 + (area != Scope.GLOBAL_AREA_ID ? " area:0x" + Integer.toHexString(area) : "");
-        return stable + super.toCommandString();
+        return stable + " " + super.toCommandString();
     }
 }
 

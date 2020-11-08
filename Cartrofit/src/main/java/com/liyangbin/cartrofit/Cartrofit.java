@@ -1087,7 +1087,7 @@ public final class Cartrofit {
         if (unTrack != null) {
             CommandUnTrack command = new CommandUnTrack();
             final int targetTrack = unTrack.value();
-            command.setTrackCommand((CommandFlow) getOrCreateCommandById(record, targetTrack,
+            command.setTrackCommand((UnTrackable) getOrCreateCommandById(record, targetTrack,
                     FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE | FLAG_PARSE_REGISTER));
             command.init(record, unTrack, key);
             return command;
@@ -1115,8 +1115,8 @@ public final class Cartrofit {
             return command;
         }
 
-        Register callback = (flag & FLAG_PARSE_REGISTER) != 0 ? key.getAnnotation(Register.class) : null;
-        if (callback != null) {
+        Register register = (flag & FLAG_PARSE_REGISTER) != 0 ? key.getAnnotation(Register.class) : null;
+        if (register != null) {
             Class<?> targetClass = key.getSetClass();
             if (!targetClass.isInterface()) {
                 throw new CartrofitGrammarException("Declare CarCallback parameter as an interface:" + targetClass);
@@ -1142,6 +1142,7 @@ public final class Cartrofit {
             if (commandRegister.childrenCommand.size() == 0) {
                 throw new CartrofitGrammarException("Failed to resolve callback entry point in " + targetClass);
             }
+            commandRegister.init(record, register, key);
             return commandRegister;
         }
 

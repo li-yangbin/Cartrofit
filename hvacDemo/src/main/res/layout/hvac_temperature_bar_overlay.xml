@@ -27,9 +27,7 @@ and animate only the children -->
             android:id="@+id/floating_temperature_text"
             android:textColor="@color/hvac_temperature_floating_text_color"
             android:textSize="@dimen/temperature_bar_floating_text_size"
-            android:layout_gravity="bottom"
-            android:layout_marginBottom="@dimen/temperature_bar_floating_text_bottom_margin"
-            android:layout_marginLeft="@dimen/hvac_floating_text_left_margin"
+            android:layout_gravity="center"
             style="@style/HvacTemperature"/>
     <TextView
             android:id="@+id/temperature_off_text"

@@ -137,7 +137,6 @@ public class CartrofitProcessor extends AbstractProcessor {
         PackageElement packageElement = (PackageElement) element.getEnclosingElement();
         String packageName = packageElement.getQualifiedName().toString();
         String apiClassName = element.getSimpleName().toString();
-        logI("packageName:" + packageName + " apiClassName:" + apiClassName);
         ClassName idClassName = ClassName.get(packageName, apiClassName + "Id");
         TypeSpec.Builder indexClassBuilder = TypeSpec.classBuilder(idClassName)
                 .addModifiers(PUBLIC, FINAL);
