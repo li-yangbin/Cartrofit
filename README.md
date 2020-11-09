@@ -27,8 +27,7 @@ public interface HvacPanelApi {
 Cartrofit的接口声明方式
 ====================
 
-1. Set Get
-----------
+### 1. Set Get
 使用Set和Get注解来访问CarPropertyService中的属性, 等价于setProperty和getProperty
 
 如下所示
@@ -45,8 +44,7 @@ Cartrofit的接口声明方式
    CarHvacManager.getIntProperty(CarHvacManager.ID_ZONED_TEMP_SETPOINT, DRIVER_ZONE_ID);
 ```
 
-2. Track
---------
+### 2. Track
 使用Track注解来订阅CarPropertyService中的CarPropertyValue变化事件
 如下所示
 ```java
@@ -66,8 +64,7 @@ Flow是框架内置的被观察数据源的默认类型，除了该类型之外�
     LiveData<Boolean> trackRearDefrosterState();
 ```
 
-3. Inject, In, Out
-------------------
+### 3. Inject, In, Out
 使用Inject注解来与CarService同时交互多组数据, 可以配合上In注解指定该次数据注入方向是从App层到CarService,
 也可以配合Out注解指定该次注入方向是从CarService到App, 或者, 可以同时使用InOut注解来同时注入两个方向上的多组数据
 
@@ -90,8 +87,7 @@ WarmInfo由使用方自行定义， 如下所示
 ```
 该例子相当于同时从CarService获取主驾驶温度和副驾驶温度两个数据并且自动为使用方包装成了WarmInfo这个类型
 
-4. Interceptor与Converter
--------------------------
+### 4. Interceptor与Converter
 使用Interceptor来来拦截特定的一个或者多个注解接口, 比如可以使用interceptor来检查入参格式, 检查返回结果, 检查回调数据类型,
 或者也可以统一的将某些Set操作转移到工作线程, 将订阅回调转移至ui线程
 
@@ -138,8 +134,7 @@ WarmInfo由使用方自行定义， 如下所示
     }
 ```
 
-5. Combine
-----------
+### 5. Combine
 在一些情况下上层app更多需要的是多个信号的组合判断, 比如某个按钮只会在某一个信号为On另一个信号为Off的情况下才会允许用户操作,
 这种情况下使用Combine注解来组合多个Get或者Track操作, 需要在每一个Combine命令上使用Converter来组合多个信号的合并结果
 
@@ -170,8 +165,7 @@ WarmInfo由使用方自行定义， 如下所示
 ```
 该例子中同时监听主驾侧温度和副驾侧温度，当有任何一侧温度发生变化时候，同时将两个数据拼装成TempInfo类型回调给使用方
 
-6. Register
------------
+### 6. Register
 更加复杂的订阅业务需要使用Register来自定义接口, 比如某个app业务需要订阅CarService的三个信号, 而且每个信号的订阅事件都对应着不一样的业务逻辑,
 当然也可以让应用层去调用三个Track命令, 但是使用Register自定义后的接口可以让代码看起来更加贴合上层开发的编码习惯
 
@@ -196,8 +190,7 @@ WarmInfo由使用方自行定义， 如下所示
 registerWarmChangeCallback代表向CarService注册座椅加热档位变化回调，回调类型OnWarmLevelChangeCallback由使用方自定义，
 其中onDriverLevelChange代表主驾侧温度变化档位值回调， onPassengerLevelChange代表副驾侧温度变化档位值回调
 
-7. Delegate
------------
+### 7. Delegate
 代理注解，该注解允许调用方直接封装另外模块中的已经定义好的业务接口，使得使用方可以面向接口定义接口，
 该功能需要被调用方在定义已有业务接口的同时声明GenerateId注解，并且在build.gradle中声明注解处理器模块processorLib
 
@@ -232,8 +225,7 @@ public interface HvacPanelApi {
 Cartrofit的其他辅助功能
 =======================
 
-1. Scope与DataSource
---------
+### 1. Scope与DataSource
 Scope定义作用域，指定这个接口是用来作用于CarService中的哪一个Manager，比如CarHvacManager
 
 如下所示
@@ -266,8 +258,7 @@ public class HvacDataSource implements DataSource {
 }
 ```
 
-2. ApiBuilder与Constraint
-------------------------
+### 2. ApiBuilder与Constraint
 这两个类帮助你扩展定义已有的业务接口，可以在Scope的onCreate属性中声明一个ApiBuilder
 
 如下所示
@@ -311,8 +302,7 @@ class CreateHelper implements ApiCallback {
 }
 ```
 
-3. Category
------------
+### 3. Category
 使用了Category注解的接口可以被ApiBuilder统一作用
 
 如下所示
@@ -333,12 +323,10 @@ class SeatWarmerApiCreateHelper implements ApiCallback {
 }
 ```
 
-4. CarValue
------------
+### 4. CarValue
 待补充
 
-5. CarType
-----------
+### 5. CarType
 使用CarType来声明你想要的数据是哪一种
 
 如下所示
@@ -362,16 +350,16 @@ class SeatWarmerApiCreateHelper implements ApiCallback {
     }
 ```
 
-6. InjectReceiver
------------------
+### 6. Track超时
 待补充
 
-7. 在Register注解中使用返回值
---------------------------
+### 7. InjectReceiver
 待补充
 
-8. UnTrack
-----------
+### 8. 在Register注解中使用返回值
+待补充
+
+### 9. UnTrack
 对应着Track或者Register注解，帮助调用方解除注册
 ```java
     @UnTrack(SeatWarmerApiId.registerWarmChangeCallback)
