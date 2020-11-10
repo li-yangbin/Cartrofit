@@ -360,22 +360,22 @@ class BuildInValue {
         } else if (String[].class == clazz) {
             return stringArray;
         }
-        else if (int.class == clazz) {
+        else if (int.class == clazz || Integer.class == clazz) {
             return intValue;
         } else if (int[].class == clazz) {
             return intArray;
         }
-        else if (byte.class == clazz) {
+        else if (byte.class == clazz || Byte.class == clazz) {
             return byteValue;
         } else if (byte[].class == clazz) {
             return byteArray;
         }
-        else if (float.class == clazz) {
+        else if (float.class == clazz || Float.class == clazz) {
             return floatValue;
         } else if (float[].class == clazz) {
             return floatArray;
         }
-        else if (long.class == clazz) {
+        else if (long.class == clazz || Long.class == clazz) {
             return longValue;
         } else if (long[].class == clazz) {
             return longArray;

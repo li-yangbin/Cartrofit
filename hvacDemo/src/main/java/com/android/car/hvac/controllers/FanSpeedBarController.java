@@ -42,8 +42,6 @@ public class FanSpeedBarController implements LifecycleObserver {
     private FanSpeedApi mFanSpeedApi = Cartrofit.from(FanSpeedApi.class);
 
     // Note the following are car specific values.
-    private static final int MAX_FAN_SPEED = 6;
-    private static final int MIN_FAN_SPEED = 1;
 
     public FanSpeedBarController(FanSpeedBar speedBar, HvacController controller) {
         mFanSpeedBar = speedBar;
@@ -65,11 +63,11 @@ public class FanSpeedBarController implements LifecycleObserver {
         }
 
         mCurrentFanSpeed = speed;
-        if (mCurrentFanSpeed == MIN_FAN_SPEED) {
+        if (mCurrentFanSpeed == FanSpeedApi.MIN_FAN_SPEED) {
             mFanSpeedBar.setOff();
-        } else if (mCurrentFanSpeed >= MAX_FAN_SPEED) {
+        } else if (mCurrentFanSpeed >= FanSpeedApi.MAX_FAN_SPEED) {
             mFanSpeedBar.setMax();
-        } else if (mCurrentFanSpeed < MAX_FAN_SPEED && mCurrentFanSpeed > MIN_FAN_SPEED) {
+        } else if (mCurrentFanSpeed < FanSpeedApi.MAX_FAN_SPEED && mCurrentFanSpeed > FanSpeedApi.MIN_FAN_SPEED) {
             // Note car specific values being used:
             // The lowest fanspeed is represented by the off button, the first segment
             // actually represents the second fan speed setting.
@@ -85,12 +83,12 @@ public class FanSpeedBarController implements LifecycleObserver {
             = new FanSpeedBar.FanSpeedButtonClickListener() {
         @Override
         public void onMaxButtonClicked() {
-            mFanSpeedApi.setFanSpeed(MAX_FAN_SPEED);
+            mFanSpeedApi.setFanSpeedToMax();
         }
 
         @Override
         public void onOffButtonClicked() {
-            mFanSpeedApi.setFanSpeed(MIN_FAN_SPEED);
+            mFanSpeedApi.setFanSpeedToMin();
         }
 
         @Override

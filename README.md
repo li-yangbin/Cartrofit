@@ -24,6 +24,14 @@ public interface HvacPanelApi {
     HvacPanelApi hvacApi = Cartrofit.from(HvacPanelApi.class);
 ```
 
+### 目录说明
+
+Cartrofit 框架所在主目录, 应该作为依赖被使用方app在build.gradle中导入
+
+processorLib 框架部分功能所依赖的注解处理器, 同样应该作为依赖被使用方app在build.gradle中导入
+
+hvacDemo 由原生android车机的空调App修改而来, 做测试和demo展示的作用, 仅供参考
+
 Cartrofit的接口声明方式
 ====================
 
