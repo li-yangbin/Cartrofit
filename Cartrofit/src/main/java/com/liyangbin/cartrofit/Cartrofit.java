@@ -59,7 +59,7 @@ public final class Cartrofit {
 
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
     private static final HashMap<Class<? extends ApiCallback>, ApiCallback> ON_CREATE_OBJ_CACHE = new HashMap<>();
-    private static Method sRouterFinderMethod;
+    private static final Router ID_ROUTER = new Router();
 
     private final HashMap<String, DataSource> mDataMap = new HashMap<>();
     private InterceptorChain mChainHead;
@@ -123,17 +123,42 @@ public final class Cartrofit {
         return null;
     }
 
-    private static Class<?> findApiClassById(int id) {
-        try {
-            if (sRouterFinderMethod == null) {
-                Class<?> idRouterClass = Class.forName("com.liyangbin.cartrofit.IdRouter");
-                sRouterFinderMethod = idRouterClass.getMethod("findApiClassById", int.class);
+    private static class Router {
+        private static final String ROUTER_BASE_NAME = "com.liyangbin.cartrofit.IdRouter";
+        private static final String METHOD_NAME = "findApiClassById";
+
+        ArrayList<Method> findMethodList;
+
+        private Class<?> findApiClassById(int id) {
+            try {
+                collectChildRouter();
+                for (int i = 0; i < findMethodList.size(); i++) {
+                    Class<?> clazz = (Class<?>) findMethodList.get(i).invoke(null, id);
+                    if (clazz != null) {
+                        return clazz;
+                    }
+                }
+                return null;
+            } catch (ReflectiveOperationException impossible) {
+                throw new RuntimeException(impossible);
             }
-            return (Class<?>) sRouterFinderMethod.invoke(null, id);
-        } catch (ClassNotFoundException ignore) {
-            return null;
-        } catch (ReflectiveOperationException impossible) {
-            throw new RuntimeException(impossible);
+        }
+
+        private void collectChildRouter() throws NoSuchMethodException {
+            if (findMethodList == null) {
+                findMethodList = new ArrayList<>();
+                int index = 1;
+                while (true) {
+                    try {
+                        Class<?> idRouterClass = Class.forName(ROUTER_BASE_NAME + index);
+                        Method method = idRouterClass.getMethod(METHOD_NAME, int.class);
+                        findMethodList.add(method);
+                        index++;
+                    } catch (ClassNotFoundException ignore) {
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -748,7 +773,7 @@ public final class Cartrofit {
                                                boolean throwIfNotFound) {
         Method method = record.selfDependency.get(id);
         if (method == null) {
-            Class<?> apiClass = findApiClassById(id);
+            Class<?> apiClass = ID_ROUTER.findApiClassById(id);
             if (apiClass == record.clazz || apiClass == null) {
                 throw new CartrofitGrammarException("Can not find target Id:" + id + " from:" + apiClass);
             }

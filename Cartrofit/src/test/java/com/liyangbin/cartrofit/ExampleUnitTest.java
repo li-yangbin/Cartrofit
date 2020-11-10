@@ -316,6 +316,7 @@ public class ExampleUnitTest {
 
     @BeforeClass
     public static void start() {
+
         Cartrofit.builder().addDataSource(new TestCarManager()).buildAsDefault();
 
 //        Cartrofit.obtainConverterScope("test2")

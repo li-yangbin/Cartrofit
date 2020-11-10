@@ -5,6 +5,7 @@ import androidx.databinding.ObservableBoolean;
 import com.liyangbin.cartrofit.annotation.CarValue;
 import com.liyangbin.cartrofit.annotation.Combine;
 import com.liyangbin.cartrofit.annotation.Delegate;
+import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Inject;
@@ -25,7 +26,8 @@ import static com.liyangbin.cartrofit.TestCarApiId.trackIntReactive;
 import static com.liyangbin.cartrofit.TestCarApiId.trackStringAndCombine;
 import static com.liyangbin.cartrofit.TestCarApiId.trackStringSignal;
 
-@Scope(value = "test", publish = true, onCreate = CreateHelper.class)
+@GenerateId
+@Scope(value = "test", onCreate = CreateHelper.class)
 public interface TestCarApi {
 
     @Get(id = 0)
