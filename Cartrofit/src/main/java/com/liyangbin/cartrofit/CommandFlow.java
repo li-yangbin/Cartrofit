@@ -766,7 +766,7 @@ class MediatorFlow<FROM, TO> implements Flow<TO>, Consumer<FROM> {
 
     private final Flow<FROM> base;
     Function<FROM, TO> mediator;
-    private ArrayList<Consumer<TO>> consumers = new ArrayList<>();
+    ArrayList<Consumer<TO>> consumers = new ArrayList<>();
 
     MediatorFlow(Flow<FROM> base,
                          Function<FROM, TO> mediator) {
@@ -903,9 +903,10 @@ class FlowWrapper<T> extends MediatorFlow<T, T> {
     }
 }
 
-class StickyFlowImpl<T> extends FlowWrapper<T> implements Flow.StickyFlow<T> {
+class StickyFlowImpl<T> extends FlowWrapper<T> implements Flow.StickyFlow<T>, Runnable {
     private T lastValue;
     private boolean valueReceived;
+    private boolean waitingForConnected;
     private final boolean stickyUseCache;
     private CommandStickyGet headStickyGetCommand;
 
@@ -918,7 +919,21 @@ class StickyFlowImpl<T> extends FlowWrapper<T> implements Flow.StickyFlow<T> {
     @Override
     public void addObserver(Consumer<T> consumer) {
         super.addObserver(consumer);
-        consumer.accept(get());
+        if (ConnectHelper.isConnected()) {
+            consumer.accept(get());
+        } else if (!waitingForConnected) {
+            waitingForConnected = true;
+            ConnectHelper.addOnConnectAction(this);
+        }
+    }
+
+    @Override
+    public void removeObserver(Consumer<T> consumer) {
+        super.removeObserver(consumer);
+        if (waitingForConnected && consumers.size() == 0) {
+            waitingForConnected = false;
+            ConnectHelper.removeOnConnectAction(this);
+        }
     }
 
     @Override
@@ -958,11 +973,20 @@ class StickyFlowImpl<T> extends FlowWrapper<T> implements Flow.StickyFlow<T> {
             result = mediator != null ? mediator.apply(t) : t;
         }
         synchronized (this) {
-            if (stickyUseCache && !valueReceived) {
+            if (stickyUseCache && !valueReceived && ConnectHelper.isConnected()) {
                 valueReceived = true;
                 lastValue = result;
             }
         }
         return result;
+    }
+
+    @Override
+    public void run() {
+        waitingForConnected = false;
+        T data = get();
+        for (int i = 0; i < consumers.size(); i++) {
+            consumers.get(i).accept(data);
+        }
     }
 }

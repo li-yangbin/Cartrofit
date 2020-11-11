@@ -1,6 +1,7 @@
 package com.liyangbin.cartrofit;
 
 import android.car.hardware.CarPropertyValue;
+import android.content.Context;
 
 import com.liyangbin.cartrofit.annotation.CarValue;
 import com.liyangbin.cartrofit.annotation.Combine;
@@ -673,12 +674,25 @@ public final class Cartrofit {
         private Builder() {
         }
 
+        public Builder connectCarService(Context context) {
+            ConnectHelper.ensureConnect(context);
+            return this;
+        }
+
         public Builder addDataSource(DataSource source) {
             Scope sourceScope = findScopeByClass(source.getClass());
             if (sourceScope == null) {
                 throw new CartrofitGrammarException("Declare data scope in :" + source.getClass());
             }
             DataSource existedSource = dataMap.put(sourceScope.value(), source);
+            if (existedSource != null) {
+                throw new CartrofitGrammarException("Duplicate data source:" + existedSource);
+            }
+            return this;
+        }
+
+        public Builder addDataSource(CommonCarDataSource source) {
+            DataSource existedSource = dataMap.put(source.getKey(), source);
             if (existedSource != null) {
                 throw new CartrofitGrammarException("Duplicate data source:" + existedSource);
             }
