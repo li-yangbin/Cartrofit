@@ -1,11 +1,13 @@
 apply plugin: 'com.android.library'
+apply plugin: 'com.github.dcendents.android-maven'
+
+group='com.gitee.li-yangbin'
 
 android {
     compileSdkVersion 29
 
     defaultConfig {
-        minSdkVersion 28
-        targetSdkVersion 29
+        minSdkVersion 19
         versionCode 1
         versionName "1.0"
 
@@ -19,9 +21,6 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
-    dataBinding {
-        enabled = true
-    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
@@ -34,10 +33,16 @@ dependencies {
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'androidx.test.ext:junit:1.1.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
-    testImplementation 'io.reactivex.rxjava2:rxjava:2.2.9'
+
     compileOnly 'io.reactivex.rxjava2:rxjava:2.2.9'
-    testImplementation 'androidx.lifecycle:lifecycle-livedata:2.0.0'
+    testImplementation 'io.reactivex.rxjava2:rxjava:2.2.9'
+
     compileOnly 'androidx.lifecycle:lifecycle-livedata:2.0.0'
+    testImplementation 'androidx.lifecycle:lifecycle-livedata:2.0.0'
+
+    compileOnly 'androidx.databinding:databinding-runtime:3.5.0'
+    testImplementation 'androidx.databinding:databinding-runtime:3.5.0'
+
     annotationProcessor project(':processorlib')
     testAnnotationProcessor project(':processorlib')
 }

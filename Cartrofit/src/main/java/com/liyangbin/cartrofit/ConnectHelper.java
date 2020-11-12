@@ -36,6 +36,17 @@ public final class ConnectHelper<T> {
     }
 
     public static void ensureConnect(Context context) {
+        ensureConnect(context, null);
+    }
+
+    public static void ensureConnect(Context context, Runnable onConnect) {
+        if (onConnect != null) {
+            if (sConnected) {
+                onConnect.run();
+                return;
+            }
+            sConnectAction.add(onConnect);
+        }
         if (!sConnected && !sConnecting) {
             sConnecting = true;
             sCar = Car.createCar(context.getApplicationContext(), new ServiceConnection() {
