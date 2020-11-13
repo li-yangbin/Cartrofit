@@ -182,7 +182,7 @@ WarmInfo由使用方自行定义， 如下所示
     @Register
     void registerWarmChangeCallback(OnWarmLevelChangeCallback callback);
 
-    @UnTrack(SeatWarmerApiId.registerWarmChangeCallback)
+    @Unregister(SeatWarmerApiId.registerWarmChangeCallback)
     void unregisterWarmChangeCallback(OnWarmLevelChangeCallback callback);
 
     interface OnWarmLevelChangeCallback {
@@ -367,10 +367,10 @@ class SeatWarmerApiCreateHelper implements ApiCallback {
 ### 8. 在Register注解中使用返回值
 待补充
 
-### 9. UnTrack
+### 9. Unregister
 对应着Track或者Register注解，帮助调用方解除注册
 ```java
-    @UnTrack(SeatWarmerApiId.registerWarmChangeCallback)
+    @Unregister(SeatWarmerApiId.registerWarmChangeCallback)
     void unregisterWarmChangeCallback(OnWarmLevelChangeCallback callback);
 ```
 

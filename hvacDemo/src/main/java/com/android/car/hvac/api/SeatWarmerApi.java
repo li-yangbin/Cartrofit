@@ -15,7 +15,7 @@ import com.liyangbin.cartrofit.annotation.Out;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Track;
-import com.liyangbin.cartrofit.annotation.UnTrack;
+import com.liyangbin.cartrofit.annotation.Unregister;
 
 @GenerateId
 @Scope(value = Car.HVAC_SERVICE, onCreate = SeatWarmerApiCreateHelper.class)
@@ -48,7 +48,7 @@ public interface SeatWarmerApi {
     @Register
     void registerWarmChangeCallback(OnWarmLevelChangeCallback callback);
 
-    @UnTrack(SeatWarmerApiId.registerWarmChangeCallback)
+    @Unregister(SeatWarmerApiId.registerWarmChangeCallback)
     void unregisterWarmChangeCallback(OnWarmLevelChangeCallback callback);
 
     interface OnWarmLevelChangeCallback {

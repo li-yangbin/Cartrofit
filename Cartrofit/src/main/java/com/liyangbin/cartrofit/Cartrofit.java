@@ -16,7 +16,7 @@ import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
-import com.liyangbin.cartrofit.annotation.UnTrack;
+import com.liyangbin.cartrofit.annotation.Unregister;
 import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.funtion.FunctionalCombinator;
 
@@ -49,14 +49,14 @@ public final class Cartrofit {
     private static final int FLAG_PARSE_SET = FLAG_FIRST_BIT;
     private static final int FLAG_PARSE_GET = FLAG_FIRST_BIT << 1;
     private static final int FLAG_PARSE_TRACK = FLAG_FIRST_BIT << 2;
-    private static final int FLAG_PARSE_UN_TRACK = FLAG_FIRST_BIT << 3;
+    private static final int FLAG_PARSE_UN_REGISTER = FLAG_FIRST_BIT << 3;
     private static final int FLAG_PARSE_INJECT = FLAG_FIRST_BIT << 4;
     private static final int FLAG_PARSE_COMBINE = FLAG_FIRST_BIT << 5;
     private static final int FLAG_PARSE_REGISTER = FLAG_FIRST_BIT << 6;
     private static final int FLAG_PARSE_INJECT_CHILDREN = FLAG_PARSE_SET | FLAG_PARSE_GET
             | FLAG_PARSE_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_COMBINE;
     private static final int FLAG_PARSE_ALL = FLAG_PARSE_SET | FLAG_PARSE_GET | FLAG_PARSE_TRACK
-            | FLAG_PARSE_UN_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_COMBINE | FLAG_PARSE_REGISTER;
+            | FLAG_PARSE_UN_REGISTER | FLAG_PARSE_INJECT | FLAG_PARSE_COMBINE | FLAG_PARSE_REGISTER;
 
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
     private static final HashMap<Class<? extends ApiCallback>, ApiCallback> ON_CREATE_OBJ_CACHE = new HashMap<>();
@@ -924,6 +924,10 @@ public final class Cartrofit {
                         throw new CartrofitGrammarException("Invalid parameter declaration " + this);
                     }
                 }
+            }  else if (isAnnotationPresent(Track.class)) {
+                if (method != null && method.getParameterCount() > 0) {
+                    throw new CartrofitGrammarException("Invalid track declaration " + this);
+                }
             } else if (field != null && Modifier.isFinal(field.getModifiers())
                     && isAnnotationPresent(Set.class)) {
                 throw new CartrofitGrammarException("Invalid key:" + this + " in command Inject");
@@ -1122,13 +1126,13 @@ public final class Cartrofit {
             return command;
         }
 
-        UnTrack unTrack = (flag & FLAG_PARSE_UN_TRACK) != 0 ? key.getAnnotation(UnTrack.class) : null;
-        if (unTrack != null) {
-            CommandUnTrack command = new CommandUnTrack();
-            final int targetTrack = unTrack.value();
+        Unregister unregister = (flag & FLAG_PARSE_UN_REGISTER) != 0 ? key.getAnnotation(Unregister.class) : null;
+        if (unregister != null) {
+            CommandUnregister command = new CommandUnregister();
+            final int targetTrack = unregister.value();
             command.setTrackCommand((UnTrackable) getOrCreateCommandById(record, targetTrack,
                     FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE | FLAG_PARSE_REGISTER));
-            command.init(record, unTrack, key);
+            command.init(record, unregister, key);
             return command;
         }
 

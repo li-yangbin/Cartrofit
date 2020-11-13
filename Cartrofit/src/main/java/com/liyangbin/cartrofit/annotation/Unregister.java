@@ -8,6 +8,6 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 @Target(METHOD)
 @Retention(RUNTIME)
-public @interface UnTrack {
+public @interface Unregister {
     int value();
 }

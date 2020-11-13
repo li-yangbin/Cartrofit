@@ -6,11 +6,10 @@ import android.car.hardware.hvac.CarHvacManager;
 import com.android.car.hvac.controllers.FanSpeedBarController;
 import com.liyangbin.cartrofit.annotation.CarValue;
 import com.liyangbin.cartrofit.annotation.GenerateId;
-import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
-import com.liyangbin.cartrofit.annotation.UnTrack;
+import com.liyangbin.cartrofit.annotation.Unregister;
 
 @GenerateId
 @Scope(value = Car.HVAC_SERVICE)
@@ -31,6 +30,6 @@ public interface FanSpeedApi {
     @Register
     void registerFanSpeedChangeCallback(FanSpeedBarController.OnFanSpeedChangeCallback callback);
 
-    @UnTrack(FanSpeedApiId.registerFanSpeedChangeCallback)
+    @Unregister(FanSpeedApiId.registerFanSpeedChangeCallback)
     void unregisterFanSpeedChangeCallback(FanSpeedBarController.OnFanSpeedChangeCallback callback);
 }

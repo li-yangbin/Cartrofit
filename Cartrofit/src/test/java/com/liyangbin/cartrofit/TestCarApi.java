@@ -14,7 +14,7 @@ import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
-import com.liyangbin.cartrofit.annotation.UnTrack;
+import com.liyangbin.cartrofit.annotation.Unregister;
 
 import io.reactivex.Observable;
 import io.reactivex.Single;
@@ -135,7 +135,7 @@ public interface TestCarApi {
     @Register
     void register2Callback(MyCallback callback);
 
-    @UnTrack(register2Callback)
+    @Unregister(register2Callback)
     void unregisterCallback(MyCallback callback);
 }
 

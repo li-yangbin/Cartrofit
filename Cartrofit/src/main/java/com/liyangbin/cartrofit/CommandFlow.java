@@ -268,18 +268,6 @@ abstract class CommandFlow extends CommandImpl implements UnTrackable {
         if (key.isCallbackEntry) {
             registerTrack = true;
             mapFlowSuppressed = true;
-        } else if (isReturnFlow() && key.method != null
-                && key.method.getReturnType() == void.class) {
-            Class<?>[] classArray = key.method.getParameterTypes();
-            if (classArray.length == 1) {
-                Class<?> parameterClass = classArray[0];
-                if (Consumer.class.isAssignableFrom(parameterClass)) {
-                    registerTrack = true;
-                    mapFlowSuppressed = true;
-                } else {
-                    throw new CartrofitGrammarException("invalid track parameter:" + this);
-                }
-            }
         }
     }
 
@@ -479,7 +467,7 @@ class CommandTrack extends CommandFlow {
     }
 }
 
-class CommandUnTrack extends CommandImpl {
+class CommandUnregister extends CommandImpl {
     UnTrackable trackCommand;
 
     @Override
