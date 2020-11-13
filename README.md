@@ -1,3 +1,5 @@
+[![](https://jitpack.io/v/com.gitee.li-yangbin/cartrofit.svg)](https://jitpack.io/#com.gitee.li-yangbin/cartrofit)
+
 Cartrofit是什么?
 ===============
 ### Cartrofit = CarPropertyService + Retrofit
@@ -12,9 +14,10 @@ public interface HvacPanelApi {
     */
 }
 ```
-使用前先定义Cartrofit数据源，如下所示
+使用前先初始化Cartrofit连接CarService已经添加自定义数据源，如下所示
 ```java
     Cartrofit.builder()
+         .connectCarService(this)
          .addDataSource(new HvacDataSource(this))
          .addInterceptor(new CartrofitLogger())
          .buildAsDefault();
@@ -24,11 +27,28 @@ public interface HvacPanelApi {
     HvacPanelApi hvacApi = Cartrofit.from(HvacPanelApi.class);
 ```
 
-### 目录说明
+### 目录引用说明
 
-Cartrofit 框架所在主目录, 应该作为依赖被使用方app在build.gradle中导入
+首先需要在根目录下声明jitpack库
+```groovy
+    allprojects {
+        repositories {
+            google()
+            jcenter()
+            maven { url 'https://jitpack.io' }
+        }
+    }
+```
 
-processorLib 框架部分功能所依赖的注解处理器, 同样应该作为依赖被使用方app在build.gradle中导入
+Cartrofit 框架所在主目录, 应该作为依赖被使用方模块在build.gradle中导入
+```groovy
+    implementation 'com.gitee.li-yangbin.cartrofit:Cartrofit:latest-version'
+```
+
+processorLib 框架部分功能所依赖的注解处理器, 同样应该作为依赖被使用方模块在build.gradle中导入
+```groovy
+    annotationProcessor 'com.gitee.li-yangbin.cartrofit:processorlib:latest-version'
+```
 
 hvacDemo 由原生android车机的空调App修改而来, 做测试和demo展示的作用, 仅供参考
 
