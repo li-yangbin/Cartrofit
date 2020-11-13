@@ -8,25 +8,40 @@ import android.car.hardware.CarVendorExtensionManager;
 import android.car.hardware.cabin.CarCabinManager;
 import android.car.hardware.hvac.CarHvacManager;
 import android.car.hardware.property.CarPropertyManager;
-import android.util.ArraySet;
 import android.util.SparseArray;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
-public class CommonCarDataSource implements DataSource, CarPropertyManager.CarPropertyEventListener {
+class CommonCarDataSource implements DataSource, CarPropertyManager.CarPropertyEventListener {
 
     private Object mTargetManager;
     private CarPropertyManager mPropertyManager;
     private final SparseArray<CarPropertyConfig> mConfigMap = new SparseArray<>();
-    private final Set<Integer> mRegistered = new ArraySet<>();
+    private final Set<Integer> mRegistered = new HashSet<>();
     private final String mKey;
     private final SparseArray<AreaPool> mPublishedFlowList = new SparseArray<>();
 
-    CommonCarDataSource(String key) {
+    static CommonCarDataSource create(String key) {
+        if (Car.HVAC_SERVICE.equals(key)) {
+            return new CommonCarDataSource(key);
+        } else if (Car.VENDOR_EXTENSION_SERVICE.equals(key)) {
+            return new CommonCarDataSource(key);
+        } else if (Car.PROPERTY_SERVICE.equals(key)) {
+            return new CommonCarDataSource(key);
+        } else if (Car.CABIN_SERVICE.equals(key)) {
+            return new CommonCarDataSource(key);
+        } else {
+            return null;
+        }
+    }
+
+    private CommonCarDataSource(String key) {
         mKey = key;
         ConnectHelper.addOnConnectAction(() -> {
             try {
@@ -56,7 +71,10 @@ public class CommonCarDataSource implements DataSource, CarPropertyManager.CarPr
                 throw new RuntimeException(impossible);
             }
             if (configList != null) {
-                configList.forEach(config -> mConfigMap.put(config.getPropertyId(), config));
+                for (int i = 0; i < configList.size(); i++) {
+                    CarPropertyConfig config = configList.get(i);
+                    mConfigMap.put(config.getPropertyId(), config);
+                }
             }
         });
     }

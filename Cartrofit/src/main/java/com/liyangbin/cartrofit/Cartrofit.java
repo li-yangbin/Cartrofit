@@ -2,6 +2,7 @@ package com.liyangbin.cartrofit;
 
 import android.car.hardware.CarPropertyValue;
 import android.content.Context;
+import android.os.Build;
 
 import com.liyangbin.cartrofit.annotation.CarValue;
 import com.liyangbin.cartrofit.annotation.Combine;
@@ -68,6 +69,7 @@ public final class Cartrofit {
 
     private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
     private final HashMap<Key, CommandImpl> mCommandCache = new HashMap<>();
+    private DataSourceFactory mDefaultFactory = CommonCarDataSource::create;
 
     static {
         RxJavaConverter.addSupport();
@@ -80,9 +82,6 @@ public final class Cartrofit {
 
     private void append(Builder builder) {
         mDataMap.putAll(builder.dataMap);
-        if (mDataMap.isEmpty()) {
-            throw new IllegalArgumentException("Cartrofit must be setup with data source");
-        }
         for (int i = 0; i < builder.interceptors.size(); i++) {
             if (mChainHead == null) {
                 mChainHead = new InterceptorChain();
@@ -90,6 +89,7 @@ public final class Cartrofit {
             mChainHead.addInterceptor(builder.interceptors.get(i));
         }
         mApiCallback.addAll(builder.apiCallbacks);
+        mDefaultFactory = OffshoreDataSourceFactory.get(builder.factory, mDefaultFactory);
     }
 
     public static Builder builder() {
@@ -173,6 +173,28 @@ public final class Cartrofit {
         return null;
     }
 
+    private static int getParameterCount(Method method) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Class<?>[] classArray = method.getParameterTypes();
+            return classArray != null ? classArray.length : 0;
+        } else {
+            return method.getParameterCount();
+        }
+    }
+
+    private DataSource acquireDataSource(String scope) {
+        DataSource source = mDataMap.get(scope);
+        if (source == null) {
+            source = mDefaultFactory.createDataSource(scope);
+            if (source == null) {
+                throw new IllegalStateException("Invalid scope:" + scope +
+                        ". Make sure use a valid scope presented in Builder.addDataSourceAPI");
+            }
+            mDataMap.put(scope, source);
+        }
+        return source;
+    }
+
     class ApiRecord<T> extends ApiBuilder {
         private static final String ID_SUFFIX = "Id";
 
@@ -211,9 +233,7 @@ public final class Cartrofit {
             if (carScope != null) {
                 this.dataScope = carScope.value();
 
-                this.source = Objects.requireNonNull(mDataMap.get(dataScope),
-                        "Invalid scope:" + dataScope +
-                                ". Make sure use a valid scope id registered in Builder().addDataSource()");
+                this.source = acquireDataSource(dataScope);
 
                 Class<? extends ApiCallback> createHelper = carScope.onCreate();
                 if (!createHelper.equals(DummyOnCreate.class)) {
@@ -666,10 +686,39 @@ public final class Cartrofit {
         }
     }
 
+    public interface DataSourceFactory {
+        DataSource createDataSource(String scope);
+    }
+
+    private static final class OffshoreDataSourceFactory implements DataSourceFactory {
+
+        private DataSourceFactory upStreamFactory;
+        private DataSourceFactory delegateFactory;
+
+        static DataSourceFactory get(DataSourceFactory delegate, DataSourceFactory upStream) {
+            if (delegate == null) {
+                return upStream;
+            }
+            OffshoreDataSourceFactory factory = new OffshoreDataSourceFactory();
+            factory.upStreamFactory = upStream;
+            factory.delegateFactory = delegate;
+            return factory;
+        }
+
+        @Override
+        public DataSource createDataSource(String scope) {
+            DataSource source = delegateFactory.createDataSource(scope);
+            return source != null || upStreamFactory == null ? source
+                    : upStreamFactory.createDataSource(scope);
+        }
+    }
+
     public static final class Builder {
+
         private final HashMap<String, DataSource> dataMap = new HashMap<>();
         private final ArrayList<Interceptor> interceptors = new ArrayList<>();
         private final ArrayList<ApiCallback> apiCallbacks = new ArrayList<>();
+        private DataSourceFactory factory;
 
         private Builder() {
         }
@@ -684,18 +733,12 @@ public final class Cartrofit {
             if (sourceScope == null) {
                 throw new CartrofitGrammarException("Declare data scope in :" + source.getClass());
             }
-            DataSource existedSource = dataMap.put(sourceScope.value(), source);
-            if (existedSource != null) {
-                throw new CartrofitGrammarException("Duplicate data source:" + existedSource);
-            }
+            dataMap.put(sourceScope.value(), source);
             return this;
         }
 
-        public Builder addDataSource(CommonCarDataSource source) {
-            DataSource existedSource = dataMap.put(source.getKey(), source);
-            if (existedSource != null) {
-                throw new CartrofitGrammarException("Duplicate data source:" + existedSource);
-            }
+        public Builder addDataSourceFactory(DataSourceFactory factory) {
+            this.factory = OffshoreDataSourceFactory.get(factory, this.factory);
             return this;
         }
 
@@ -717,6 +760,7 @@ public final class Cartrofit {
             dataMap.clear();
             interceptors.clear();
             apiCallbacks.clear();
+            factory = null;
         }
     }
 
@@ -887,7 +931,7 @@ public final class Cartrofit {
                 if (setWithReturn != declareReturn) {
                     throw new CartrofitGrammarException("Invalid declaration:" + method);
                 }
-                int parameterCount = method.getParameterCount();
+                int parameterCount = getParameterCount(method);
                 if (parameterCount > 0) {
                     Annotation[][] annotationAll = method.getParameterAnnotations();
                     int countWithInOut = 0;
@@ -909,7 +953,7 @@ public final class Cartrofit {
                     if (method.getReturnType() != void.class) {
                         throw new CartrofitGrammarException("Can not return any result by using Inject");
                     }
-                    int parameterCount = method.getParameterCount();
+                    int parameterCount = getParameterCount(method);
                     if (parameterCount != 1) {
                         throw new CartrofitGrammarException("Can not declare parameter more or less than one " + this);
                     }
@@ -925,7 +969,7 @@ public final class Cartrofit {
                     }
                 }
             }  else if (isAnnotationPresent(Track.class)) {
-                if (method != null && method.getParameterCount() > 0) {
+                if (method != null && getParameterCount(method) > 0) {
                     throw new CartrofitGrammarException("Invalid track declaration " + this);
                 }
             } else if (field != null && Modifier.isFinal(field.getModifiers())
@@ -1171,7 +1215,7 @@ public final class Cartrofit {
                             throw new CartrofitGrammarException("Illegal non-track on register callback:" + command);
                         }
                         Method method = command.getMethod();
-                        final int parameterCount = method.getParameterCount();
+                        final int parameterCount = getParameterCount(method);
                         ArrayList<CommandInject> outCommandList = new ArrayList<>();
                         for (int i = 0; i < parameterCount; i++) {
                             if (i == command.key.trackReceiveArgIndex) {

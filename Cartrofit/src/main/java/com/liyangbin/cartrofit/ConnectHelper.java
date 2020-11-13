@@ -66,6 +66,7 @@ public final class ConnectHelper<T> {
                     sConnectAction.clear();
                 }
             });
+            sCar.connect();
         }
     }
 

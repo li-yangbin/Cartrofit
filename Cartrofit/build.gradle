@@ -4,10 +4,10 @@ apply plugin: 'com.github.dcendents.android-maven'
 group='com.gitee.li-yangbin'
 
 android {
-    compileSdkVersion 29
+    compileSdkVersion 28
 
     defaultConfig {
-        minSdkVersion 19
+        minSdkVersion 24
         versionCode 1
         versionName "1.0"
 
