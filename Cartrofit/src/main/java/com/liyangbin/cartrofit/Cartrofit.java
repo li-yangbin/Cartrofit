@@ -101,6 +101,10 @@ public final class Cartrofit {
                 "Call setDefault() before calling from()").fromInternal(api);
     }
 
+    static Cartrofit getDefault() {
+        return sDefault;
+    }
+
     public static final class DummyOnCreate implements ApiCallback {
         @Override
         public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
@@ -789,7 +793,7 @@ public final class Cartrofit {
                             throw new UnsupportedOperationException(
                                     "Do not declare any method with multiple parameters");
                         }
-                        return getOrCreateCommand(record, new Key(method, false))
+                        return getOrCreateCommand(new Key(record, method, false))
                                 .invokeWithChain(args != null ? args[0] : null);
                     });
         }
@@ -815,15 +819,15 @@ public final class Cartrofit {
         }
     }
 
-    private CommandImpl getOrCreateCommand(ApiRecord<?> record, Key key) {
-        CommandImpl command = getOrCreateCommand(record, key, FLAG_PARSE_ALL);
+    private CommandImpl getOrCreateCommand(Key key) {
+        CommandImpl command = getOrCreateCommand(key, FLAG_PARSE_ALL);
         if (command == null) {
             throw new CartrofitGrammarException("Can not parse command from:" + key);
         }
         return command;
     }
 
-    private CommandImpl getOrCreateCommandById(ApiRecord<?> record, int id, int flag) {
+    CommandImpl getOrCreateCommandById(ApiRecord<?> record, int id, int flag) {
         return getOrCreateCommandById(record, id, flag, true);
     }
 
@@ -837,8 +841,7 @@ public final class Cartrofit {
             }
             return getOrCreateCommandById(getApi(apiClass, true), id, flag, throwIfNotFound);
         }
-        CommandImpl command = getOrCreateCommand(getApi(method.getDeclaringClass()),
-                new Key(method, false), flag);
+        CommandImpl command = getOrCreateCommand(new Key(method, false), flag);
         if (throwIfNotFound && command == null) {
             throw new CartrofitGrammarException("Can not resolve target Id:" + id
                     + " in specific type from:" + this);
@@ -846,10 +849,7 @@ public final class Cartrofit {
         return command;
     }
 
-    private CommandImpl getOrCreateCommand(ApiRecord<?> record, Key key, int flag) {
-        if (record == null) {
-            return null;
-        }
+    private CommandImpl getOrCreateCommand(Key key, int flag) {
         CommandImpl command;
         synchronized (mApiCache) {
             command = mCommandCache.get(key);
@@ -857,7 +857,7 @@ public final class Cartrofit {
                 return command;
             }
             key.doQualifyCheck();
-            command = createCommand(record, key, flag);
+            command = createCommand(key, flag);
             if (command != null) {
                 mCommandCache.put(key, command);
             }
@@ -882,12 +882,23 @@ public final class Cartrofit {
 
         Field field;
 
+        ApiRecord<?> record;
+
         Key(Method method, boolean isCallbackEntry) {
+            this(sDefault.getApi(method.getDeclaringClass()), method, isCallbackEntry);
+        }
+
+        Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
+            this.record = record;
             this.method = method;
             this.isCallbackEntry = isCallbackEntry;
         }
 
         Key(Field field) {
+            this(sDefault.getApi(field.getDeclaringClass()), field);
+        }
+
+        Key(ApiRecord<?> record, Field field) {
             this.field = field;
             this.isCallbackEntry = false;
         }
@@ -1134,11 +1145,11 @@ public final class Cartrofit {
         }
     }
 
-    private CommandImpl createCommand(ApiRecord<?> record, Key key, int flag) {
+    private CommandImpl createCommand(Key key, int flag) {
         Set set = (flag & FLAG_PARSE_SET) != 0 ? key.getAnnotation(Set.class) : null;
         if (set != null) {
             CommandSet command = new CommandSet();
-            command.init(record, set, key);
+            command.init(set, key);
             if (set.restoreTrack() != 0) {
                 CommandTrack trackCommand = (CommandTrack) getOrCreateCommandById(record,
                         set.restoreTrack(), FLAG_PARSE_TRACK);

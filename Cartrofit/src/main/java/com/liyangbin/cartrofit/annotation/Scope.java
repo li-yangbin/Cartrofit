@@ -17,5 +17,7 @@ public @interface Scope {
 
     String value();
 
+    int area() default DEFAULT_AREA_ID;
+
     Class<? extends ApiCallback> onCreate() default Cartrofit.DummyOnCreate.class;
 }
