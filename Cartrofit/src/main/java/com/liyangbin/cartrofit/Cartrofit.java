@@ -68,7 +68,7 @@ public final class Cartrofit {
     private final ArrayList<ApiCallback> mApiCallback = new ArrayList<>();
 
     private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
-    private final HashMap<Key, CommandImpl> mCommandCache = new HashMap<>();
+    private final HashMap<Key, CommandBase> mCommandCache = new HashMap<>();
     private DataSourceFactory mDefaultFactory = CommonCarDataSource::create;
 
     static {
@@ -262,7 +262,7 @@ public final class Cartrofit {
             }
         }
 
-        int loadId(CommandImpl command) {
+        int loadId(CommandBase command) {
             if (command.key.method == null) {
                 return 0;
             }
@@ -332,7 +332,7 @@ public final class Cartrofit {
                 }
             }
             abstract void add(Constraint constraint, ELEMENT element);
-            abstract GROUP get(CommandImpl command);
+            abstract GROUP get(CommandBase command);
         }
 
         private final class InterceptorManager extends AbstractManager<Interceptor, InterceptorChain> {
@@ -350,7 +350,7 @@ public final class Cartrofit {
             }
 
             @Override
-            InterceptorChain get(CommandImpl command) {
+            InterceptorChain get(CommandBase command) {
                 InterceptorChain group = null;
                 for (int i = 0; i < constraintList.size(); i++) {
                     Constraint constraint = constraintList.get(i);
@@ -389,7 +389,7 @@ public final class Cartrofit {
             }
 
             @Override
-            ConverterStore get(CommandImpl command) {
+            ConverterStore get(CommandBase command) {
                 ConverterStore current = null;
                 for (int i = constraintList.size() - 1; i >= 0; i--) {
                     Constraint constraint = constraintList.get(i);
@@ -409,7 +409,7 @@ public final class Cartrofit {
             }
         }
 
-        InterceptorChain getInterceptorByKey(CommandImpl command) {
+        InterceptorChain getInterceptorByKey(CommandBase command) {
             InterceptorChain chain = interceptorManager.get(command);
             if (command.delegateTarget() == command && mChainHead != null) {
                 if (chain != null) {
@@ -421,7 +421,7 @@ public final class Cartrofit {
             return chain;
         }
 
-        ConverterStore getConverterByKey(CommandImpl command) {
+        ConverterStore getConverterByKey(CommandBase command) {
             ConverterStore store = converterManager.get(command);
             if (store != null) {
                 store.addParentToEnd(GLOBAL_CONVERTER);
@@ -675,7 +675,7 @@ public final class Cartrofit {
             }
         }
 
-        Converter<?, ?> find(CommandImpl command, Class<?> from, Class<?> to) {
+        Converter<?, ?> find(CommandBase command, Class<?> from, Class<?> to) {
             Converter<?, ?> converter = findWithoutCommand(from, to);
             if (converter != null || classEquals(from, to)) {
                 return converter;
@@ -819,19 +819,19 @@ public final class Cartrofit {
         }
     }
 
-    private CommandImpl getOrCreateCommand(Key key) {
-        CommandImpl command = getOrCreateCommand(key, FLAG_PARSE_ALL);
+    private CommandBase getOrCreateCommand(Key key) {
+        CommandBase command = getOrCreateCommand(key, FLAG_PARSE_ALL);
         if (command == null) {
             throw new CartrofitGrammarException("Can not parse command from:" + key);
         }
         return command;
     }
 
-    CommandImpl getOrCreateCommandById(ApiRecord<?> record, int id, int flag) {
+    CommandBase getOrCreateCommandById(ApiRecord<?> record, int id, int flag) {
         return getOrCreateCommandById(record, id, flag, true);
     }
 
-    private CommandImpl getOrCreateCommandById(ApiRecord<?> record, int id, int flag,
+    private CommandBase getOrCreateCommandById(ApiRecord<?> record, int id, int flag,
                                                boolean throwIfNotFound) {
         Method method = record.selfDependency.get(id);
         if (method == null) {
@@ -841,7 +841,7 @@ public final class Cartrofit {
             }
             return getOrCreateCommandById(getApi(apiClass, true), id, flag, throwIfNotFound);
         }
-        CommandImpl command = getOrCreateCommand(new Key(record, method, false), flag);
+        CommandBase command = getOrCreateCommand(new Key(record, method, false), flag);
         if (throwIfNotFound && command == null) {
             throw new CartrofitGrammarException("Can not resolve target Id:" + id
                     + " in specific type from:" + this);
@@ -849,8 +849,8 @@ public final class Cartrofit {
         return command;
     }
 
-    private CommandImpl getOrCreateCommand(Key key, int flag) {
-        CommandImpl command;
+    private CommandBase getOrCreateCommand(Key key, int flag) {
+        CommandBase command;
         synchronized (mApiCache) {
             command = mCommandCache.get(key);
             if (command != null) {
@@ -1137,7 +1137,7 @@ public final class Cartrofit {
         }
     }
 
-    private CommandImpl createCommand(Key key, int flag) {
+    private CommandBase createCommand(Key key, int flag) {
         Set set = (flag & FLAG_PARSE_SET) != 0 ? key.getAnnotation(Set.class) : null;
         if (set != null) {
             CommandSet command = new CommandSet();
@@ -1197,7 +1197,7 @@ public final class Cartrofit {
                         + key + " elements:" + Arrays.toString(elements));
             }
             for (int element : elements) {
-                CommandImpl childCommand = getOrCreateCommandById(key.record, element,
+                CommandBase childCommand = getOrCreateCommandById(key.record, element,
                         FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
                 command.addChildCommand(childCommand);
             }
@@ -1238,7 +1238,7 @@ public final class Cartrofit {
 
         Delegate delegate = key.getAnnotation(Delegate.class);
         if (delegate != null) {
-            CommandImpl delegateTarget = getOrCreateCommandById(key.record, delegate.value(),
+            CommandBase delegateTarget = getOrCreateCommandById(key.record, delegate.value(),
                     flag, false);
             if (delegateTarget != null) {
                 CommandDelegate command = new CommandDelegate();
@@ -1284,7 +1284,7 @@ public final class Cartrofit {
 
     private void setupCallbackEntryCommandIfNeeded(CommandFlow entryCommand, Key key) {
         if (key.isCallbackEntry) {
-            CommandImpl returnCommand = null;
+            CommandBase returnCommand = null;
             Set set = key.getAnnotation(Set.class);
             if (set != null) {
                 returnCommand = new CommandSet();
@@ -1292,7 +1292,7 @@ public final class Cartrofit {
             }
             Delegate returnDelegate = returnCommand == null ? key.getAnnotation(Delegate.class) : null;
             if (returnDelegate != null && returnDelegate._return() != 0) {
-                CommandImpl delegateTarget = getOrCreateCommandById(key.record,
+                CommandBase delegateTarget = getOrCreateCommandById(key.record,
                         returnDelegate._return(), FLAG_PARSE_SET);
                 CommandDelegate returnDelegateCommand = new CommandDelegate();
                 returnDelegateCommand.setTargetCommand(delegateTarget);
@@ -1305,11 +1305,11 @@ public final class Cartrofit {
     }
 
     private void searchAndCreateChildCommand(ApiRecord<?> record,
-                                             Consumer<CommandImpl> commandReceiver, int flag) {
+                                             Consumer<CommandBase> commandReceiver, int flag) {
         ArrayList<Key> childKeys = record.getChildKey();
         for (int i = 0; i < childKeys.size(); i++) {
             Key childKey = childKeys.get(i);
-            CommandImpl command = getOrCreateCommand(record, childKey, flag);
+            CommandBase command = getOrCreateCommand(record, childKey, flag);
             if (command != null) {
                 commandReceiver.accept(command);
             }

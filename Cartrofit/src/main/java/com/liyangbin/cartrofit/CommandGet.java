@@ -5,7 +5,7 @@ import com.liyangbin.cartrofit.annotation.Scope;
 
 import java.lang.annotation.Annotation;
 
-public abstract class CommandGet extends CommandImpl {
+public abstract class CommandGet extends CommandBase {
 
     Converter<Object, ?> resultConverter;
     CarType type;

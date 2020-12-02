@@ -15,7 +15,7 @@ import java.util.function.Function;
 
 @SuppressWarnings("unchecked")
 class CommandDelegate extends CommandFlow {
-    CommandImpl targetCommand;
+    CommandBase targetCommand;
     Converter<Object, ?> argConverter;
     CarType carType;
     boolean commandSet;
@@ -68,12 +68,12 @@ class CommandDelegate extends CommandFlow {
         }
     }
 
-    void setTargetCommand(CommandImpl targetCommand) {
+    void setTargetCommand(CommandBase targetCommand) {
         this.targetCommand = targetCommand.shallowCopy();
     }
 
     @Override
-    boolean checkElement(CommandImpl command) {
+    boolean checkElement(CommandBase command) {
         if (command == this) {
             return true;
         }
@@ -135,7 +135,7 @@ class CommandDelegate extends CommandFlow {
     }
 
     @Override
-    CommandImpl delegateTarget() {
+    CommandBase delegateTarget() {
         return targetCommand.delegateTarget();
     }
 
@@ -175,7 +175,7 @@ class CommandReflect extends CommandGroup {
         }
 
         for (int i = 0; i < childrenCommand.size(); i++) {
-            CommandImpl childCommand = childrenCommand.get(i);
+            CommandBase childCommand = childrenCommand.get(i);
             CommandType childType = childCommand.getType();
             if (childType == CommandType.INJECT) {
                 childCommand.invoke(parameter);
@@ -230,7 +230,7 @@ class InjectInfo {
     }
 }
 
-class CommandInject extends CommandImpl {
+class CommandInject extends CommandBase {
 
     CommandReflect commandReflect;
     private InjectInfo dispatchInfo;
@@ -342,14 +342,14 @@ class CommandInject extends CommandImpl {
 class CommandRegister extends CommandGroup implements UnTrackable {
 
     private final HashMap<Object, RegisterCallbackWrapper> callbackWrapperMapper = new HashMap<>();
-    private final HashMap<CommandImpl, ArrayList<CommandInject>> outParameterMap = new HashMap<>();
+    private final HashMap<CommandBase, ArrayList<CommandInject>> outParameterMap = new HashMap<>();
 
     @Override
     void onInit(Annotation annotation) {
         // ignore
     }
 
-    void addChildCommand(CommandImpl command, ArrayList<CommandInject> outList) {
+    void addChildCommand(CommandBase command, ArrayList<CommandInject> outList) {
         addChildCommand(command);
         outParameterMap.put(command, outList);
     }

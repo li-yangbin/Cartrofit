@@ -13,7 +13,7 @@ class CommandTrack extends CommandFlow {
     Annotation annotation;
 
     @Override
-    void setRestoreCommand(CommandImpl restoreCommand) {
+    void setRestoreCommand(CommandBase restoreCommand) {
         super.setRestoreCommand(restoreCommand);
         setupRestoreInterceptor(restoreCommand);
     }

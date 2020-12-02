@@ -62,7 +62,7 @@ public class Constraint {
         return this;
     }
 
-    boolean check(CommandImpl command) {
+    boolean check(CommandBase command) {
         if (this == ALL) {
             return true;
         }

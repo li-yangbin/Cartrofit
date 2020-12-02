@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-class CommandReceive extends CommandImpl {
+class CommandReceive extends CommandBase {
     CommandFlow commandFlow;
     FlowWrapper<Object> flowWrapper;
 
@@ -31,7 +31,7 @@ class CommandReceive extends CommandImpl {
     }
 
     @Override
-    CommandImpl delegateTarget() {
+    CommandBase delegateTarget() {
         return commandFlow;
     }
 
@@ -46,7 +46,7 @@ class CommandReceive extends CommandImpl {
     }
 }
 
-class CommandStickyGet extends CommandImpl {
+class CommandStickyGet extends CommandBase {
     CommandFlow commandFlow;
     Converter<Object, ?> converter;
     CarType carType = CarType.VALUE;
@@ -70,7 +70,7 @@ class CommandStickyGet extends CommandImpl {
     }
 
     @Override
-    CommandImpl delegateTarget() {
+    CommandBase delegateTarget() {
         return commandFlow;
     }
 
@@ -86,7 +86,7 @@ class CommandStickyGet extends CommandImpl {
 }
 
 @SuppressWarnings("unchecked")
-abstract class CommandFlow extends CommandImpl implements UnTrackable {
+abstract class CommandFlow extends CommandBase implements UnTrackable {
     private static final Timer sTimeOutTimer = new Timer("timeout-tracker");
     private static final long TIMEOUT_DELAY = 1500;
 
@@ -97,10 +97,10 @@ abstract class CommandFlow extends CommandImpl implements UnTrackable {
     StickyType stickyType;
 
     private boolean registerTrack;
-    ArrayList<CommandImpl> childrenCommand = new ArrayList<>();
+    ArrayList<CommandBase> childrenCommand = new ArrayList<>();
 
-    CommandImpl restoreCommand;
-    CommandImpl returnCommand;
+    CommandBase restoreCommand;
+    CommandBase returnCommand;
 
     // runtime variable
     CommandStickyGet commandStickyGet;
@@ -112,7 +112,7 @@ abstract class CommandFlow extends CommandImpl implements UnTrackable {
     /**
      * Principle: Flow command paired non-Flow command
      */
-    void setRestoreCommand(CommandImpl restoreCommand) {
+    void setRestoreCommand(CommandBase restoreCommand) {
         if (isReturnFlow()) {
             if (restoreCommand.isReturnFlow()) {
                 throw new CartrofitGrammarException("Invalid flow restore:" + restoreCommand
@@ -128,7 +128,7 @@ abstract class CommandFlow extends CommandImpl implements UnTrackable {
         }
     }
 
-    void setupRestoreInterceptor(CommandImpl restoreCommand) {
+    void setupRestoreInterceptor(CommandBase restoreCommand) {
         if (stickyType == StickyType.NO_SET || stickyType == StickyType.OFF) {
             throw new CartrofitGrammarException("Sticky type must be ON if restore command is set");
         }
@@ -216,11 +216,11 @@ abstract class CommandFlow extends CommandImpl implements UnTrackable {
     }
 
     // used for CommandCombine
-    void addChildCommand(CommandImpl command) {
+    void addChildCommand(CommandBase command) {
         childrenCommand.add(command);
     }
 
-    void setReturnCommand(CommandImpl command) {
+    void setReturnCommand(CommandBase command) {
         returnCommand = command;
     }
 
@@ -267,12 +267,12 @@ abstract class CommandFlow extends CommandImpl implements UnTrackable {
         }
     }
 
-    boolean checkElement(CommandImpl command) {
+    boolean checkElement(CommandBase command) {
         if (command == this) {
             return true;
         }
         for (int i = 0; i < childrenCommand.size(); i++) {
-            CommandImpl childCommand = childrenCommand.get(i);
+            CommandBase childCommand = childrenCommand.get(i);
             if (childCommand instanceof CommandFlow) {
                 if (((CommandFlow) childCommand).checkElement(command)) {
                     return true;
@@ -330,7 +330,7 @@ abstract class CommandFlow extends CommandImpl implements UnTrackable {
     }
 }
 
-class CommandUnregister extends CommandImpl {
+class CommandUnregister extends CommandBase {
     UnTrackable trackCommand;
 
     @Override
@@ -373,8 +373,8 @@ class CommandCombine extends CommandFlow {
     CombineFlow combineFlow;
 
     @Override
-    void addChildCommand(CommandImpl command) {
-        CommandImpl childCopy = command.shallowCopy();
+    void addChildCommand(CommandBase command) {
+        CommandBase childCopy = command.shallowCopy();
         childrenCommand.add(childCopy);
     }
 
@@ -393,9 +393,9 @@ class CommandCombine extends CommandFlow {
         }
 
         ArrayList<CommandFlow> flowChildren = null;
-        ArrayList<CommandImpl> otherChildren = null;
+        ArrayList<CommandBase> otherChildren = null;
         for (int i = 0; i < childrenCommand.size(); i++) {
-            CommandImpl childCommand = childrenCommand.get(i);
+            CommandBase childCommand = childrenCommand.get(i);
             childCommand.overrideFromDelegate(this);
             if (childCommand instanceof CommandFlow) {
                 if (flowChildren == null) {
@@ -456,7 +456,7 @@ class CommandCombine extends CommandFlow {
             final int size = childrenCommand.size();
             Object[] elementResult = new Object[size];
             for (int i = 0; i < size; i++) {
-                CommandImpl childCommand = childrenCommand.get(i);
+                CommandBase childCommand = childrenCommand.get(i);
                 elementResult[i] = childCommand.invokeWithChain(null);
             }
             combineFlow = new CombineFlow(elementResult);
