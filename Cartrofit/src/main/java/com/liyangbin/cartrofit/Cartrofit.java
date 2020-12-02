@@ -448,7 +448,7 @@ public final class Cartrofit {
             if (clazz.isInterface()) {
                 Method[] methods = clazz.getDeclaredMethods();
                 for (Method method : methods) {
-                    Key childKey = new Key(method, true);
+                    Key childKey = new Key(this, method, true);
                     if (!childKey.isInvalid()) {
                         result.add(childKey);
                     }
@@ -456,7 +456,7 @@ public final class Cartrofit {
             } else {
                 Field[] fields = clazz.getDeclaredFields();
                 for (Field field : fields) {
-                    Key childKey = new Key(field);
+                    Key childKey = new Key(this, field);
                     if (!childKey.isInvalid()) {
                         result.add(childKey);
                     }
@@ -841,7 +841,7 @@ public final class Cartrofit {
             }
             return getOrCreateCommandById(getApi(apiClass, true), id, flag, throwIfNotFound);
         }
-        CommandImpl command = getOrCreateCommand(new Key(method, false), flag);
+        CommandImpl command = getOrCreateCommand(new Key(record, method, false), flag);
         if (throwIfNotFound && command == null) {
             throw new CartrofitGrammarException("Can not resolve target Id:" + id
                     + " in specific type from:" + this);
@@ -884,18 +884,10 @@ public final class Cartrofit {
 
         ApiRecord<?> record;
 
-        Key(Method method, boolean isCallbackEntry) {
-            this(sDefault.getApi(method.getDeclaringClass()), method, isCallbackEntry);
-        }
-
         Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
             this.record = record;
             this.method = method;
             this.isCallbackEntry = isCallbackEntry;
-        }
-
-        Key(Field field) {
-            this(sDefault.getApi(field.getDeclaringClass()), field);
         }
 
         Key(ApiRecord<?> record, Field field) {
@@ -1151,7 +1143,7 @@ public final class Cartrofit {
             CommandSet command = new CommandSet();
             command.init(set, key);
             if (set.restoreTrack() != 0) {
-                CommandTrack trackCommand = (CommandTrack) getOrCreateCommandById(record,
+                CommandTrack trackCommand = (CommandTrack) getOrCreateCommandById(key.record,
                         set.restoreTrack(), FLAG_PARSE_TRACK);
                 trackCommand.setRestoreCommand(command);
             }
@@ -1161,7 +1153,7 @@ public final class Cartrofit {
         Get get = (flag & FLAG_PARSE_GET) != 0 ? key.getAnnotation(Get.class) : null;
         if (get != null) {
             CommandGet command = new CommandGet();
-            command.init(record, get, key);
+            command.init(get, key);
             return command;
         }
 
@@ -1169,12 +1161,12 @@ public final class Cartrofit {
         if (track != null) {
             CommandTrack command = new CommandTrack();
             if (!key.isCallbackEntry && track.restoreSet() != 0) {
-                command.setRestoreCommand(getOrCreateCommandById(record, track.restoreSet(),
+                command.setRestoreCommand(getOrCreateCommandById(key.record, track.restoreSet(),
                         FLAG_PARSE_SET));
             } else {
-                setupCallbackEntryCommandIfNeeded(record, command, key);
+                setupCallbackEntryCommandIfNeeded(command, key);
             }
-            command.init(record, track, key);
+            command.init(track, key);
             if (!command.isStickyOn() && command.restoreCommand != null) {
                 throw new CartrofitGrammarException("Must declare sticky On if you specify restore command" + key);
             }
@@ -1185,15 +1177,15 @@ public final class Cartrofit {
         if (unregister != null) {
             CommandUnregister command = new CommandUnregister();
             final int targetTrack = unregister.value();
-            command.setTrackCommand((UnTrackable) getOrCreateCommandById(record, targetTrack,
-                    FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE | FLAG_PARSE_REGISTER));
-            command.init(record, unregister, key);
+            command.setTrackCommand((UnTrackable) getOrCreateCommandById(key.record, targetTrack,
+                    FLAG_PARSE_REGISTER));
+            command.init(unregister, key);
             return command;
         }
 
         Inject inject = (flag & FLAG_PARSE_INJECT) != 0 ? key.getAnnotation(Inject.class) : null;
         if (inject != null) {
-            return createInjectCommand(0, record, key);
+            return createInjectCommand(0, key);
         }
 
         Combine combine = (flag & FLAG_PARSE_COMBINE) != 0 ? key.getAnnotation(Combine.class) : null;
@@ -1205,11 +1197,11 @@ public final class Cartrofit {
                         + key + " elements:" + Arrays.toString(elements));
             }
             for (int element : elements) {
-                CommandImpl childCommand = getOrCreateCommandById(record, element,
+                CommandImpl childCommand = getOrCreateCommandById(key.record, element,
                         FLAG_PARSE_GET | FLAG_PARSE_TRACK | FLAG_PARSE_COMBINE);
                 command.addChildCommand(childCommand);
             }
-            command.init(record, combine, key);
+            command.init(combine, key);
             return command;
         }
 
@@ -1232,7 +1224,7 @@ public final class Cartrofit {
                             if (i == command.key.trackReceiveArgIndex) {
                                 outCommandList.add(null);
                             } else {
-                                outCommandList.add(createInjectCommand(i, record, command.key));
+                                outCommandList.add(createInjectCommand(i, command.key));
                             }
                         }
                         commandRegister.addChildCommand(command, outCommandList);
@@ -1240,33 +1232,32 @@ public final class Cartrofit {
             if (commandRegister.childrenCommand.size() == 0) {
                 throw new CartrofitGrammarException("Failed to resolve callback entry point in " + targetClass);
             }
-            commandRegister.init(record, register, key);
+            commandRegister.init(register, key);
             return commandRegister;
         }
 
         Delegate delegate = key.getAnnotation(Delegate.class);
         if (delegate != null) {
-            CommandImpl delegateTarget = getOrCreateCommandById(record, delegate.value(),
+            CommandImpl delegateTarget = getOrCreateCommandById(key.record, delegate.value(),
                     flag, false);
             if (delegateTarget != null) {
                 CommandDelegate command = new CommandDelegate();
                 command.setTargetCommand(delegateTarget);
                 if (!key.isCallbackEntry && delegate.restoreId() != 0) {
-                    command.restoreCommand = getOrCreateCommandById(record,
+                    command.restoreCommand = getOrCreateCommandById(key.record,
                             delegate.restoreId(), FLAG_PARSE_SET | FLAG_PARSE_TRACK);
                 } else if (delegateTarget instanceof CommandFlow) {
                     command.restoreCommand = ((CommandFlow) delegateTarget).restoreCommand;
-                    setupCallbackEntryCommandIfNeeded(record, command, key);
+                    setupCallbackEntryCommandIfNeeded(command, key);
                 }
-                command.init(record, delegate, key);
+                command.init(delegate, key);
                 return command;
             }
         }
         return null;
     }
 
-    private CommandInject createInjectCommand(int parameterIndex,
-                                              ApiRecord<?> parentRecord, Key key) {
+    private CommandInject createInjectCommand(int parameterIndex, Key key) {
         Class<?> targetClass;
         if (key.method != null) {
             targetClass = key.method.getParameterTypes()[parameterIndex];
@@ -1286,22 +1277,22 @@ public final class Cartrofit {
             throw new CartrofitGrammarException("Failed to parse Inject command from type:"
                     + targetClass);
         }
-        commandReflect.init(reflectRecord, null, null);
-        command.init(parentRecord, null, key);
+        commandReflect.init(null, null);
+        command.init(null, key);
         return command;
     }
 
-    private void setupCallbackEntryCommandIfNeeded(ApiRecord<?> record, CommandFlow entryCommand, Key key) {
+    private void setupCallbackEntryCommandIfNeeded(CommandFlow entryCommand, Key key) {
         if (key.isCallbackEntry) {
             CommandImpl returnCommand = null;
             Set set = key.getAnnotation(Set.class);
             if (set != null) {
                 returnCommand = new CommandSet();
-                returnCommand.init(record, set, key);
+                returnCommand.init(set, key);
             }
             Delegate returnDelegate = returnCommand == null ? key.getAnnotation(Delegate.class) : null;
             if (returnDelegate != null && returnDelegate._return() != 0) {
-                CommandImpl delegateTarget = getOrCreateCommandById(record,
+                CommandImpl delegateTarget = getOrCreateCommandById(key.record,
                         returnDelegate._return(), FLAG_PARSE_SET);
                 CommandDelegate returnDelegateCommand = new CommandDelegate();
                 returnDelegateCommand.setTargetCommand(delegateTarget);

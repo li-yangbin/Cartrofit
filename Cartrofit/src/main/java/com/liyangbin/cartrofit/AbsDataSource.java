@@ -1,19 +1,30 @@
 package com.liyangbin.cartrofit;
 
-public abstract class AbsDataSource {
+import java.lang.annotation.Annotation;
 
-    public abstract ScopeInfo getScopeInfo(Class<?> scopeClass);
+public abstract class AbsDataSource<SCOPE, DESC extends AbsDataSource.Description> {
 
-    public abstract Command onCreateCommand(Cartrofit.Key key);
+    public static final int CATEGORY_SET = 1;
+    public static final int CATEGORY_GET = 1 << 1;
+    public static final int CATEGORY_TRACK = 1 << 2;
 
-    protected final Command inflateCommand(int commandId) {
-        Cartrofit.getDefault().getOrCreateCommandById()
-    }
+    public abstract SCOPE getScopeInfo(Class<?> scopeClass);
 
-    private class InflateSession {
-        Cartrofit.ApiRecord<?> record;
-    }
+    public abstract DESC onCreateCommandHandle(SCOPE scope, Cartrofit.Key key, int category);
 
-    public abstract static class ScopeInfo {
+    public abstract Object perform(DESC handle, Object arg);
+
+    public abstract boolean isInterested(SCOPE scope);
+
+    public abstract boolean hasCategory(DESC handle, int category);
+
+    public abstract Class<?> extractValueType(DESC arg);
+
+    public static class Description {
+        public final Annotation annotation;
+
+        Description(Annotation annotation) {
+            this.annotation = annotation;
+        }
     }
 }

@@ -7,7 +7,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-public abstract class CommandImpl<A extends Annotation> implements Command, Cloneable {
+public abstract class CommandImpl implements Command, Cloneable {
     Cartrofit.ConverterStore store;
     InterceptorChain chain;
 //    DataSource source;
@@ -17,7 +17,7 @@ public abstract class CommandImpl<A extends Annotation> implements Command, Clon
 
     int id;
 
-    final void init(A annotation, Cartrofit.Key key) {
+    final void init(AbsDataSource.Description description, Cartrofit.Key key) {
 //        if (this.source == null && requireSource()) {
 //            throw new CartrofitGrammarException("Declare Scope in your api class:" + record.clazz);
 //        }
@@ -35,14 +35,14 @@ public abstract class CommandImpl<A extends Annotation> implements Command, Clon
                 key.field.setAccessible(true);
             }
         }
-        onInit(annotation);
+        onInit(description.annotation);
     }
 
     boolean requireSource() {
         return true;
     }
 
-    void onInit(A annotation) {
+    void onInit(Annotation annotation) {
     }
 
     void copyFrom(CommandImpl owner) {
