@@ -85,6 +85,10 @@ class CommandStickyGet extends CommandBase {
     }
 }
 
+interface UnTrackable {
+    void untrack(Object callback);
+}
+
 @SuppressWarnings("unchecked")
 abstract class CommandFlow extends CommandBase implements UnTrackable {
     private static final Timer sTimeOutTimer = new Timer("timeout-tracker");
@@ -97,7 +101,6 @@ abstract class CommandFlow extends CommandBase implements UnTrackable {
     StickyType stickyType;
 
     private boolean registerTrack;
-    ArrayList<CommandBase> childrenCommand = new ArrayList<>();
 
     CommandBase restoreCommand;
     CommandBase returnCommand;
@@ -215,11 +218,6 @@ abstract class CommandFlow extends CommandBase implements UnTrackable {
         }
     }
 
-    // used for CommandCombine
-    void addChildCommand(CommandBase command) {
-        childrenCommand.add(command);
-    }
-
     void setReturnCommand(CommandBase command) {
         returnCommand = command;
     }
@@ -260,7 +258,7 @@ abstract class CommandFlow extends CommandBase implements UnTrackable {
     }
 
     @Override
-    void onInit(Annotation annotation) {
+    void onInit(CallAdapter<?, ?>.Call call) {
         if (key.isCallbackEntry) {
             registerTrack = true;
             mapFlowSuppressed = true;
@@ -294,16 +292,21 @@ abstract class CommandFlow extends CommandBase implements UnTrackable {
     }
 
     @Override
+    boolean isReturnFlow() {
+        return call.isTrackable();
+    }
+
+    @Override
     public Object invoke(Object parameter) {
         if (isReturnFlow() && registerTrack) {
             if (trackingFlow == null) {
-                trackingFlow = (Flow<Object>) doInvoke();
+                trackingFlow = (Flow<Object>) doInvoke(parameter);
             }
             Consumer<Object> consumer = (Consumer<Object>) parameter;
             trackingFlow.addObserver(consumer);
             return null;
         } else {
-            return doInvoke();
+            return doInvoke(parameter);
         }
     }
 
@@ -314,7 +317,7 @@ abstract class CommandFlow extends CommandBase implements UnTrackable {
         }
     }
 
-    abstract Object doInvoke();
+    abstract Object doInvoke(Object parameter);
 
     @Override
     String toCommandString() {
@@ -371,8 +374,8 @@ class CommandUnregister extends CommandBase {
 class CommandCombine extends CommandFlow {
 
     CombineFlow combineFlow;
+    ArrayList<CommandBase> childrenCommand = new ArrayList<>();
 
-    @Override
     void addChildCommand(CommandBase command) {
         CommandBase childCopy = command.shallowCopy();
         childrenCommand.add(childCopy);

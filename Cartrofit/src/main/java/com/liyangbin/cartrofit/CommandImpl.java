@@ -1,9 +1,15 @@
 package com.liyangbin.cartrofit;
 
-public class CommandImpl extends CommandBase {
+public class CommandImpl extends CommandFlow {
+
     @Override
-    public Object invoke(Object parameter) {
-        return null;
+    void onInit(CallAdapter<?, ?>.Call call) {
+        super.onInit(call);
+    }
+
+    @Override
+    Object doInvoke(Object parameter) {
+        return call.invoke(parameter);
     }
 
     @Override

@@ -8,7 +8,7 @@ public class CommandSet extends CommandPropertyOperation<Set> {
     BuildInValue buildInValue;
     Converter<Object, ?> argConverter;
 
-    CommandSet(CarPropertyDataSource propertyDataSource) {
+    CommandSet(CarPropertyAdapter propertyDataSource) {
         this.source = Objects.requireNonNull(propertyDataSource);
     }
 

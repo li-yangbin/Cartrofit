@@ -101,10 +101,6 @@ public final class Cartrofit {
                 "Call setDefault() before calling from()").fromInternal(api);
     }
 
-    static Cartrofit getDefault() {
-        return sDefault;
-    }
-
     public static final class DummyOnCreate implements ApiCallback {
         @Override
         public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
@@ -865,7 +861,7 @@ public final class Cartrofit {
         return command;
     }
 
-    static class Key {
+    public static class Key {
         private static final Class<? extends Annotation>[] QUALIFY_CHECK =
                 new Class[]{Get.class, Set.class, Delegate.class,
                         Combine.class, Inject.class, Register.class};
@@ -891,6 +887,7 @@ public final class Cartrofit {
         }
 
         Key(ApiRecord<?> record, Field field) {
+            this.record = record;
             this.field = field;
             this.isCallbackEntry = false;
         }
@@ -984,12 +981,12 @@ public final class Cartrofit {
             }
         }
 
-        <T extends Annotation> T getAnnotation(Class<T> annotationClass) {
+        public <T extends Annotation> T getAnnotation(Class<T> annotationClass) {
             return method != null ? method.getDeclaredAnnotation(annotationClass)
                     : field.getDeclaredAnnotation(annotationClass);
         }
 
-        <T extends Annotation> boolean isAnnotationPresent(Class<T> annotationClass) {
+        public <T extends Annotation> boolean isAnnotationPresent(Class<T> annotationClass) {
             return method != null ? method.isAnnotationPresent(annotationClass)
                     : field.isAnnotationPresent(annotationClass);
         }
