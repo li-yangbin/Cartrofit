@@ -643,9 +643,9 @@ class MediatorFlow<FROM, TO> implements Flow<TO>, Consumer<FROM> {
         }
     }
 
-    void addMediator(Function<TO, TO> mediator) {
-        this.mediator = this.mediator != null ? this.mediator.andThen(mediator)
-                : (Function<FROM, TO>) mediator;
+    void addMediator(Function<TO, ?> mediator) {
+        this.mediator = (Function<FROM, TO>) (this.mediator != null ?
+                this.mediator.andThen(mediator) : mediator);
     }
 
     @Override
