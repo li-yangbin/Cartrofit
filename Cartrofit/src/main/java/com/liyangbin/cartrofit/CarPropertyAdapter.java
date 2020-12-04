@@ -62,9 +62,9 @@ public abstract class CarPropertyAdapter extends CallAdapter<Scope, CarPropertyA
                 Flow<CarPropertyValue<?>> flow = track(call.propertyId, call.areaId);
                 switch (call.carType) {
                     case VALUE:
-                        return Flow.cast(flow, CarPropertyValue::getValue);
+                        return Flow.map(flow, CarPropertyValue::getValue);
                     case AVAILABILITY:
-                        return Flow.cast(flow, value -> value != null
+                        return Flow.map(flow, value -> value != null
                                 && value.getStatus() == CarPropertyValue.STATUS_AVAILABLE);
                     default:
                         return flow;

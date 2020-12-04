@@ -26,7 +26,7 @@ class CommandReceive extends CommandBase {
 
     @Override
     public Object invoke(Object parameter) {
-        flowWrapper.superHandleResult(this, parameter);
+        flowWrapper.onReceiveComplete(this, parameter);
         return null;
     }
 
@@ -182,6 +182,33 @@ abstract class CommandFlow extends CommandBase implements UnTrackable {
         return commandStickyGet;
     }
 
+    Flow<?> installFlowWithCommand(Flow<?> flow) {
+        final boolean callEvent = call.isEvent();
+        if (!callEvent && isStickyOn()) {
+            if (flow instanceof StickyFlowImpl) {
+                ((StickyFlowImpl<?>) flow).addCommandStickyGet(getCommandStickyGet());
+            } else {
+                flow = new StickyFlowImpl<>(flow,
+                        stickyType == StickyType.ON, getCommandStickyGet());
+            }
+        }
+
+        if (callEvent && !(flow instanceof EmptyFlowWrapper)) {
+            return new EmptyFlowWrapper(flow, createCommandReceive());
+        }
+
+        if (flow instanceof FlowWrapper) {
+            ((FlowWrapper<?>) flow).addCommandReceiver(createCommandReceive());
+        } else {
+            flow = new FlowWrapper<>(flow, createCommandReceive());
+        }
+        return flow;
+    }
+
+    private static Flow<?> install(Flow<?> flow, CommandStickyGet receive) {
+
+    }
+
     void restoreDispatch() {
         ArrayList<WeakReference<CommandReceive>> commandReceiveList;
         synchronized (sTimeOutTimer) {
@@ -298,15 +325,16 @@ abstract class CommandFlow extends CommandBase implements UnTrackable {
 
     @Override
     public Object invoke(Object parameter) {
-        if (isReturnFlow() && registerTrack) {
+        boolean isFlowInvoke = isReturnFlow();
+        if (isFlowInvoke && registerTrack) {
             if (trackingFlow == null) {
-                trackingFlow = (Flow<Object>) doInvoke(parameter);
+                trackingFlow = (Flow<Object>) doInvoke(true, parameter);
             }
             Consumer<Object> consumer = (Consumer<Object>) parameter;
             trackingFlow.addObserver(consumer);
             return null;
         } else {
-            return doInvoke(parameter);
+            return doInvoke(isFlowInvoke, parameter);
         }
     }
 
@@ -317,7 +345,7 @@ abstract class CommandFlow extends CommandBase implements UnTrackable {
         }
     }
 
-    abstract Object doInvoke(Object parameter);
+    abstract Object doInvoke(boolean isFlowInvoke, Object parameter);
 
     @Override
     String toCommandString() {
@@ -672,8 +700,8 @@ class EmptyFlowWrapper extends FlowWrapper<Void> implements Flow.EmptyFlow {
 
     private final HashMap<Runnable, InnerObserver> mObserverMap = new HashMap<>();
 
-    EmptyFlowWrapper(Flow<Void> base, CommandReceive command) {
-        super(base, command);
+    EmptyFlowWrapper(Flow<?> base, CommandReceive command) {
+        super((Flow<Void>) base, command);
     }
 
     @Override
@@ -739,7 +767,7 @@ class FlowWrapper<T> extends MediatorFlow<T, T> {
         }
     }
 
-    void superHandleResult(CommandReceive receiver, T t) {
+    void onReceiveComplete(CommandReceive receiver, T t) {
         CommandReceive nextReceiver = null;
         synchronized (this) {
             for (int i = 0; i < receiverList.size() - 1; i++) {

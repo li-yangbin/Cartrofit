@@ -7,7 +7,7 @@ public interface Flow<T> {
     void addObserver(Consumer<T> consumer);
     void removeObserver(Consumer<T> consumer);
 
-    static <T, R> Flow<R> cast(Flow<T> flow, Function<T, R> function) {
+    static <T, R> Flow<R> map(Flow<T> flow, Function<T, R> function) {
         if (flow instanceof MediatorFlow) {
             ((MediatorFlow<T, T>) flow).addMediator(function);
             return (Flow<R>) flow;
