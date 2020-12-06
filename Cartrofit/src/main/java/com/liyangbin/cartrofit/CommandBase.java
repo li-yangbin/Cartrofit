@@ -39,6 +39,10 @@ public abstract class CommandBase implements Command, Cloneable {
         return true;
     }
 
+    boolean hasCategory(int category) {
+        return false;
+    }
+
     void onInit(CallAdapter<?, ?>.Call call) {
     }
 

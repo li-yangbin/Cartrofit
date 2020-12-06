@@ -140,6 +140,11 @@ class CommandDelegate extends CommandFlow {
     }
 
     @Override
+    boolean hasCategory(int category) {
+        return targetCommand.hasCategory(category);
+    }
+
+    @Override
     String toCommandString() {
         return super.toCommandString() + " Delegate{" + targetCommand.toCommandString() + "}";
     }

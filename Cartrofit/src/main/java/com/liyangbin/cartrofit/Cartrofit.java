@@ -991,6 +991,17 @@ public final class Cartrofit {
                     : field.isAnnotationPresent(annotationClass);
         }
 
+        public Class<?>[] getInputType() {
+            if (method != null) {
+                Annotation[][] annotationMatrix = method.getParameterAnnotations();
+            }
+            return method != null ? method.getParameterTypes() : new Class<?>[] {field.getType()};
+        }
+
+        public Class<?> getOutputType() {
+            return null;
+        }
+
         Class<?> getGetClass() {
             if (field != null) {
                 return field.getType();
