@@ -18,12 +18,11 @@ public abstract class CarPropertyAdapter extends CallAdapter<Scope, CarPropertyA
 
     @Override
     public Scope getScopeInfo(Class<?> scopeClass) {
-        return scopeClass.getDeclaredAnnotation(Scope.class);
-    }
-
-    @Override
-    public boolean isInterested(Scope scope) {
-        return scope.value().equals(this.key);
+        Scope scope = scopeClass.getDeclaredAnnotation(Scope.class);
+        if (scope != null && scope.value().equals(key)) {
+            return scope;
+        }
+        return null;
     }
 
     @Override

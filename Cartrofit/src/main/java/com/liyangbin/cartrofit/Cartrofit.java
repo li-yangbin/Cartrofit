@@ -69,6 +69,7 @@ public final class Cartrofit {
 
     private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
     private final HashMap<Key, CommandBase> mCommandCache = new HashMap<>();
+    private ArrayList<CallAdapter<?, ?>> mCallAdapterList = new ArrayList<>();
     private DataSourceFactory mDefaultFactory = CommonCarDataSource::create;
 
     static {
@@ -103,7 +104,7 @@ public final class Cartrofit {
 
     public static final class DummyOnCreate implements ApiCallback {
         @Override
-        public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
+        public void onApiCreate(Class<?> apiClass, CommandBuilder builder) {
             throw new IllegalStateException("impossible call");
         }
     }
@@ -195,7 +196,7 @@ public final class Cartrofit {
         return source;
     }
 
-    class ApiRecord<T> extends ApiBuilder {
+    class ApiRecord<T, SCOPE> extends CommandBuilder {
         private static final String ID_SUFFIX = "Id";
 
         Class<T> clazz;
@@ -207,7 +208,7 @@ public final class Cartrofit {
 
         ArrayList<Key> childrenKey;
 
-        ArrayList<ApiRecord<?>> parentApi;
+//        ArrayList<ApiRecord<?>> parentApi;
 
         HashMap<Integer, Method> selfDependency = new HashMap<>();
         HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
@@ -215,10 +216,15 @@ public final class Cartrofit {
         InterceptorManager interceptorManager = new InterceptorManager();
 
         Interceptor tempInterceptor;
-        AbsConverterBuilder converterBuilder;
+        ConvertSolution converterBuilder;
 
-        ApiRecord(Class<T> clazz) {
+        CallAdapter<SCOPE, ?> adapter;
+        SCOPE scopeInfo;
+
+        ApiRecord(CallAdapter<SCOPE, ?> adapter, SCOPE scopeInfo, Class<T> clazz) {
             this.clazz = clazz;
+            this.adapter = adapter;
+            this.scopeInfo = scopeInfo;
 
             if (clazz.isAnnotationPresent(GenerateId.class)) {
                 try {
@@ -258,6 +264,11 @@ public final class Cartrofit {
             }
         }
 
+        CommandImpl createAdapterCommand(Key key, int category) {
+            CallAdapter<SCOPE, ?>.Call call = adapter.onCreateCall(scopeInfo, key, category);
+            return null;
+        }
+
         int loadId(CommandBase command) {
             if (command.key.method == null) {
                 return 0;
@@ -276,7 +287,7 @@ public final class Cartrofit {
         }
 
         @Override
-        public ApiBuilder intercept(Interceptor interceptor) {
+        public CommandBuilder intercept(Interceptor interceptor) {
             if (tempInterceptor != null) {
                 throw new CartrofitGrammarException("Call intercept(Interceptor) only once before apply");
             }
@@ -285,7 +296,7 @@ public final class Cartrofit {
         }
 
         @Override
-        ApiBuilder convert(AbsConverterBuilder builder) {
+        CommandBuilder convert(ConvertSolution builder) {
             if (converterBuilder != null) {
                 throw new CartrofitGrammarException("Call convert(Converter) only once before apply");
             }
@@ -370,11 +381,11 @@ public final class Cartrofit {
             }
         }
 
-        private final class ConverterManager extends AbstractManager<AbsConverterBuilder, ConverterStore> {
+        private final class ConverterManager extends AbstractManager<ConvertSolution, ConverterStore> {
             HashMap<Constraint, ConverterStore> constraintMapper = new HashMap<>();
 
             @Override
-            void add(Constraint constraint, AbsConverterBuilder builder) {
+            void add(Constraint constraint, ConvertSolution builder) {
                 ConverterStore store = constraintMapper.get(constraint);
                 if (store == null) {
                     store = new ConverterStore();
@@ -462,23 +473,23 @@ public final class Cartrofit {
             return result;
         }
 
-        ArrayList<ApiRecord<?>> getParentApi() {
-            if (parentApi != null) {
-                return parentApi;
-            }
-            ArrayList<ApiRecord<?>> result = new ArrayList<>();
-            if (!clazz.isInterface()) {
-                if (clazz.isAnnotationPresent(ConsiderSuper.class)) {
-                    Class<?> superClass = clazz.getSuperclass();
-                    if (superClass != null && superClass != Object.class) {
-                        ApiRecord<?> record = getApi(clazz);
-                        result.add(record);
-                    }
-                }
-            }
-            parentApi = result;
-            return result;
-        }
+//        ArrayList<ApiRecord<?>> getParentApi() {
+//            if (parentApi != null) {
+//                return parentApi;
+//            }
+//            ArrayList<ApiRecord<?>> result = new ArrayList<>();
+//            if (!clazz.isInterface()) {
+//                if (clazz.isAnnotationPresent(ConsiderSuper.class)) {
+//                    Class<?> superClass = clazz.getSuperclass();
+//                    if (superClass != null && superClass != Object.class) {
+//                        ApiRecord<?> record = getApi(clazz);
+//                        result.add(record);
+//                    }
+//                }
+//            }
+//            parentApi = result;
+//            return result;
+//        }
 
         @Override
         public String toString() {
@@ -638,39 +649,6 @@ public final class Cartrofit {
             return parentStore != null ? parentStore.findWithoutCommand(from, to) : null;
         }
 
-        private static boolean classEquals(Class<?> a, Class<?> b) {
-            if (a.equals(b)) {
-                return true;
-            }
-            boolean aIsPrimitive = a.isPrimitive();
-            boolean bIsPrimitive = b.isPrimitive();
-            if (aIsPrimitive != bIsPrimitive) {
-                if (aIsPrimitive && boxTypeOf(a).equals(b)) {
-                    return true;
-                }
-                if (bIsPrimitive && boxTypeOf(b).equals(a)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private static Class<?> boxTypeOf(Class<?> primitive) {
-            if (primitive == int.class) {
-                return Integer.class;
-            } else if (primitive == float.class) {
-                return Float.class;
-            } else if (primitive == byte.class) {
-                return Byte.class;
-            } else if (primitive == boolean.class) {
-                return Boolean.class;
-            } else if (primitive == long.class) {
-                return Long.class;
-            } else {
-                return primitive;
-            }
-        }
-
         Converter<?, ?> find(CommandBase command, Class<?> from, Class<?> to) {
             Converter<?, ?> converter = findWithoutCommand(from, to);
             if (converter != null || classEquals(from, to)) {
@@ -683,6 +661,39 @@ public final class Cartrofit {
 
         private static String toClassString(Class<?> clazz) {
             return clazz.isArray() ? clazz.getComponentType() + "[]" : clazz.toString();
+        }
+    }
+
+    static boolean classEquals(Class<?> a, Class<?> b) {
+        if (a.equals(b)) {
+            return true;
+        }
+        boolean aIsPrimitive = a.isPrimitive();
+        boolean bIsPrimitive = b.isPrimitive();
+        if (aIsPrimitive != bIsPrimitive) {
+            if (aIsPrimitive && boxTypeOf(a).equals(b)) {
+                return true;
+            }
+            if (bIsPrimitive && boxTypeOf(b).equals(a)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Class<?> boxTypeOf(Class<?> primitive) {
+        if (primitive == int.class) {
+            return Integer.class;
+        } else if (primitive == float.class) {
+            return Float.class;
+        } else if (primitive == byte.class) {
+            return Byte.class;
+        } else if (primitive == boolean.class) {
+            return Boolean.class;
+        } else if (primitive == long.class) {
+            return Long.class;
+        } else {
+            return primitive;
         }
     }
 
@@ -771,7 +782,7 @@ public final class Cartrofit {
     }
 
     private <T> T fromInternal(Class<T> api) {
-        ApiRecord<T> record = getApi(api, true);
+        ApiRecord<T, ?> record = getApi(api, true);
         if (record.apiObj != null) {
             return record.apiObj;
         }
@@ -789,25 +800,32 @@ public final class Cartrofit {
                             throw new UnsupportedOperationException(
                                     "Do not declare any method with multiple parameters");
                         }
-                        return getOrCreateCommand(new Key(record, method, false))
+                        return getOrCreateCommand(record, new Key(record, method, false))
                                 .invokeWithChain(args != null ? args[0] : null);
                     });
         }
         return record.apiObj;
     }
 
-    private <T> ApiRecord<T> getApi(Class<T> api) {
+    private <T> ApiRecord<T, ?> getApi(Class<T> api) {
         return getApi(api, false);
     }
 
-    private <T> ApiRecord<T> getApi(Class<T> api, boolean throwIfNotDeclareScope) {
+    private <T> ApiRecord<T, ?> getApi(Class<T> api, boolean throwIfNotDeclareScope) {
         synchronized (mApiCache) {
-            ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
+            ApiRecord<T, Object> record = (ApiRecord<T, Object>) mApiCache.get(api);
             if (record == null) {
-                if (api.isAnnotationPresent(Scope.class) || !throwIfNotDeclareScope) {
-                    record = new ApiRecord<>(api);
-                    mApiCache.put(api, record);
-                } else {
+
+                for (int i = mCallAdapterList.size() - 1; i >= 0; i--) {
+                    CallAdapter<Object, ?> adapter = (CallAdapter<Object, ?>) mCallAdapterList.get(i);
+                    Object scopeInfo = adapter.getScopeInfo(api);
+                    if (scopeInfo != null) {
+                        record = new ApiRecord<>(adapter, scopeInfo, api);
+                        mApiCache.put(api, record);
+                        break;
+                    }
+                }
+                if (record == null && throwIfNotDeclareScope) {
                     throw new CartrofitGrammarException("Do declare CarApi annotation in class:" + api);
                 }
             }
@@ -815,19 +833,19 @@ public final class Cartrofit {
         }
     }
 
-    private CommandBase getOrCreateCommand(Key key) {
-        CommandBase command = getOrCreateCommand(key, FLAG_PARSE_ALL);
+    private CommandBase getOrCreateCommand(ApiRecord<?, ?> record, Key key) {
+        CommandBase command = getOrCreateCommand(record, key, FLAG_PARSE_ALL);
         if (command == null) {
             throw new CartrofitGrammarException("Can not parse command from:" + key);
         }
         return command;
     }
 
-    CommandBase getOrCreateCommandById(ApiRecord<?> record, int id, int flag) {
+    CommandBase getOrCreateCommandById(ApiRecord<?, ?> record, int id, int flag) {
         return getOrCreateCommandById(record, id, flag, true);
     }
 
-    private CommandBase getOrCreateCommandById(ApiRecord<?> record, int id, int flag,
+    private CommandBase getOrCreateCommandById(ApiRecord<?, ?> record, int id, int flag,
                                                boolean throwIfNotFound) {
         Method method = record.selfDependency.get(id);
         if (method == null) {
@@ -837,7 +855,7 @@ public final class Cartrofit {
             }
             return getOrCreateCommandById(getApi(apiClass, true), id, flag, throwIfNotFound);
         }
-        CommandBase command = getOrCreateCommand(new Key(record, method, false), flag);
+        CommandBase command = getOrCreateCommand(record, new Key(record, method, false), flag);
         if (throwIfNotFound && command == null) {
             throw new CartrofitGrammarException("Can not resolve target Id:" + id
                     + " in specific type from:" + this);
@@ -845,7 +863,7 @@ public final class Cartrofit {
         return command;
     }
 
-    private CommandBase getOrCreateCommand(Key key, int flag) {
+    private CommandBase getOrCreateCommand(ApiRecord<?, ?> record, Key key, int flag) {
         CommandBase command;
         synchronized (mApiCache) {
             command = mCommandCache.get(key);
@@ -853,7 +871,7 @@ public final class Cartrofit {
                 return command;
             }
             key.doQualifyCheck();
-            command = createCommand(key, flag);
+            command = createCommand(record, key, flag);
             if (command != null) {
                 mCommandCache.put(key, command);
             }
@@ -878,15 +896,15 @@ public final class Cartrofit {
 
         Field field;
 
-        ApiRecord<?> record;
+        ApiRecord<?, ?> record;
 
-        Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
+        Key(ApiRecord<?, ?> record, Method method, boolean isCallbackEntry) {
             this.record = record;
             this.method = method;
             this.isCallbackEntry = isCallbackEntry;
         }
 
-        Key(ApiRecord<?> record, Field field) {
+        Key(ApiRecord<?, ?> record, Field field) {
             this.record = record;
             this.field = field;
             this.isCallbackEntry = false;
@@ -991,15 +1009,66 @@ public final class Cartrofit {
                     : field.isAnnotationPresent(annotationClass);
         }
 
-        public Class<?>[] getInputType() {
-            if (method != null) {
-                Annotation[][] annotationMatrix = method.getParameterAnnotations();
-            }
-            return method != null ? method.getParameterTypes() : new Class<?>[] {field.getType()};
+        private CommandBuilder.AnnotatedType[] getInputType() {
+//            if (method != null) {
+//                Annotation[][] annotationMatrix = method.getParameterAnnotations();
+//            }
+//            return method != null ? method.getParameterTypes() : new Class<?>[] {field.getType()};
+            return null;
         }
 
-        public Class<?> getOutputType() {
+        private Class<? extends Annotation>[] getInputAnnotationType() {
+//            if (method != null) {
+//                Annotation[][] annotationMatrix = method.getParameterAnnotations();
+//            }
+//            return method != null ? method.getParameterTypes() : new Class<?>[] {field.getType()};
             return null;
+        }
+
+//        private static class AnnotatedType {
+//            Class<? extends Annotation>[] annotationType;
+//            Class<?> valueType;
+//        }
+
+        private CommandBuilder.AnnotatedType[] getOutputType() {
+            return null;
+        }
+
+        ArrayList<CommandBuilder.ConvertSolution> converterBuilders = new ArrayList<>();
+
+        public Converter<?, ?> getInputConverter() {
+            CommandBuilder.AnnotatedType<?, ?>[] annotatedTypes = getInputType();
+            for (int i = 0; i < converterBuilders.size(); i++) {
+                Converter<?, ?> result = converterBuilders.get(i).findInputConverterByType(annotatedTypes);
+                if (result != null) {
+                    return result;
+                }
+            }
+            return null;
+        }
+
+        public Converter<?, ?> getOutputConverter() {
+            CommandBuilder.AnnotatedType<?, ?>[] annotatedTypes = getInputType();
+            for (int i = 0; i < converterBuilders.size(); i++) {
+                Converter<?, ?> result = converterBuilders.get(i).findOutputConverterByType();
+                if (result != null) {
+                    return result;
+                }
+            }
+            return null;
+        }
+
+        public boolean applyInput(Object[] input) {
+            if (resolvedConverter == null && converterBuilders.size() > 0) {
+                AnnotatedType[] userInputTypes = getInputType();
+                if (userInputTypes != null && userInputTypes.length > 0) {
+                    int[] inputIndex = new int[userInputTypes.length];
+                    for (int i = 0; i < converterBuilders.size(); i++) {
+                        CommandBuilder.ConvertSolution builder = converterBuilders.get(i);
+                    }
+                }
+            }
+            return false;
         }
 
         Class<?> getGetClass() {
@@ -1145,41 +1214,54 @@ public final class Cartrofit {
         }
     }
 
-    private CommandBase createCommand(Key key, int flag) {
-        Set set = (flag & FLAG_PARSE_SET) != 0 ? key.getAnnotation(Set.class) : null;
-        if (set != null) {
-            CommandSet command = new CommandSet();
-            command.init(set, key);
+    private CommandBase createCommand(ApiRecord<?, ?> record, Key key, int flag) {
+
+        CommandImpl commandFromAdapter = record.createAdapterCommand(key, flag);
+        if (commandFromAdapter != null) {
+            commandFromAdapter.init(set, key);
             if (set.restoreTrack() != 0) {
                 CommandTrack trackCommand = (CommandTrack) getOrCreateCommandById(key.record,
                         set.restoreTrack(), FLAG_PARSE_TRACK);
                 trackCommand.setRestoreCommand(command);
             }
-            return command;
+            setupCallbackEntryCommandIfNeeded(commandFromAdapter, key);
+            return commandFromAdapter;
         }
 
-        Get get = (flag & FLAG_PARSE_GET) != 0 ? key.getAnnotation(Get.class) : null;
-        if (get != null) {
-            CommandGet command = new CommandGet();
-            command.init(get, key);
-            return command;
-        }
-
-        Track track = (flag & FLAG_PARSE_TRACK) != 0 ? key.getAnnotation(Track.class) : null;
-        if (track != null) {
-            CommandTrack command = new CommandTrack();
-            if (!key.isCallbackEntry && track.restoreSet() != 0) {
-                command.setRestoreCommand(getOrCreateCommandById(key.record, track.restoreSet(),
-                        FLAG_PARSE_SET));
-            } else {
-                setupCallbackEntryCommandIfNeeded(command, key);
-            }
-            command.init(track, key);
-            if (!command.isStickyOn() && command.restoreCommand != null) {
-                throw new CartrofitGrammarException("Must declare sticky On if you specify restore command" + key);
-            }
-            return command;
-        }
+//        Set set = (flag & FLAG_PARSE_SET) != 0 ? key.getAnnotation(Set.class) : null;
+//        if (set != null) {
+//            CommandSet command = new CommandSet();
+//            command.init(set, key);
+//            if (set.restoreTrack() != 0) {
+//                CommandTrack trackCommand = (CommandTrack) getOrCreateCommandById(key.record,
+//                        set.restoreTrack(), FLAG_PARSE_TRACK);
+//                trackCommand.setRestoreCommand(command);
+//            }
+//            return command;
+//        }
+//
+//        Get get = (flag & FLAG_PARSE_GET) != 0 ? key.getAnnotation(Get.class) : null;
+//        if (get != null) {
+//            CommandGet command = new CommandGet();
+//            command.init(get, key);
+//            return command;
+//        }
+//
+//        Track track = (flag & FLAG_PARSE_TRACK) != 0 ? key.getAnnotation(Track.class) : null;
+//        if (track != null) {
+//            CommandTrack command = new CommandTrack();
+//            if (!key.isCallbackEntry && track.restoreSet() != 0) {
+//                command.setRestoreCommand(getOrCreateCommandById(key.record, track.restoreSet(),
+//                        FLAG_PARSE_SET));
+//            } else {
+//                setupCallbackEntryCommandIfNeeded(command, key);
+//            }
+//            command.init(track, key);
+//            if (!command.isStickyOn() && command.restoreCommand != null) {
+//                throw new CartrofitGrammarException("Must declare sticky On if you specify restore command" + key);
+//            }
+//            return command;
+//        }
 
         Unregister unregister = (flag & FLAG_PARSE_UN_REGISTER) != 0 ? key.getAnnotation(Unregister.class) : null;
         if (unregister != null) {
@@ -1322,10 +1404,10 @@ public final class Cartrofit {
                 commandReceiver.accept(command);
             }
         }
-        ArrayList<ApiRecord<?>> parentRecordList = record.getParentApi();
-        for (int i = 0; i < parentRecordList.size(); i++) {
-            searchAndCreateChildCommand(parentRecordList.get(i), commandReceiver, flag);
-        }
+//        ArrayList<ApiRecord<?>> parentRecordList = record.getParentApi();
+//        for (int i = 0; i < parentRecordList.size(); i++) {
+//            searchAndCreateChildCommand(parentRecordList.get(i), commandReceiver, flag);
+//        }
     }
 
     private static boolean hasUnresolvableType(Type type) {
@@ -1377,7 +1459,7 @@ public final class Cartrofit {
         }
 
         Converter<?, ?> asConverter(Class<?> from, Class<?> to) {
-            if (ConverterStore.classEquals(fromClass, from) && ConverterStore.classEquals(toClass, to)) {
+            if (classEquals(fromClass, from) && classEquals(toClass, to)) {
                 return oneWayConverter;
             } else if (twoWayConverter != null && toClass.equals(from) && fromClass.equals(to)) {
                 return this;

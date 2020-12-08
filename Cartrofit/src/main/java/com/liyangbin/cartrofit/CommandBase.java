@@ -2,6 +2,7 @@ package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Category;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
@@ -12,13 +13,13 @@ public abstract class CommandBase implements Command, Cloneable {
     Class<?> userDataClass;
     String[] category;
     Cartrofit.Key key;
-    CallAdapter<?, ?>.Call call;
+    Annotation annotation;
 
     int id;
 
-    final void init(CallAdapter<?, ?>.Call call, Cartrofit.Key key) {
+    final void init(Annotation annotation, Cartrofit.Key key) {
         this.key = key;
-        this.call = call;
+        this.annotation = annotation;
 
         if (getType() != CommandType.INJECT) {
             this.id = key.record.loadId(this);
@@ -32,7 +33,7 @@ public abstract class CommandBase implements Command, Cloneable {
                 key.field.setAccessible(true);
             }
         }
-        onInit(call);
+        onInit(annotation);
     }
 
     boolean requireSource() {
@@ -43,7 +44,7 @@ public abstract class CommandBase implements Command, Cloneable {
         return false;
     }
 
-    void onInit(CallAdapter<?, ?>.Call call) {
+    void onInit(Annotation annotation) {
     }
 
     void copyFrom(CommandBase owner) {

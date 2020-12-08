@@ -10,12 +10,6 @@ public class CommandImpl extends CommandFlow {
     Converter<Object, ?> argConverter;
 
     @Override
-    void onInit(CallAdapter<?, ?>.Call call) {
-        super.onInit(call);
-
-    }
-
-    @Override
     Object doInvoke(boolean isFlowInvoke, Object parameter) {
         Object result = call.invoke(argConverter != null ?
                 argConverter.apply(parameter) : parameter);

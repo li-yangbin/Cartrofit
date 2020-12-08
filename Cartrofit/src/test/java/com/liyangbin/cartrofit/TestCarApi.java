@@ -141,7 +141,7 @@ public interface TestCarApi {
 
 class CreateHelper implements ApiCallback {
     @Override
-    public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
+    public void onApiCreate(Class<?> apiClass, CommandBuilder builder) {
         builder.convert(int.class)
                 .to(boolean.class)
                 .by(value -> value > 0)
