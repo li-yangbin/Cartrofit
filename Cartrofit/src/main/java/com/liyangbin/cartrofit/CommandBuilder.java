@@ -5,6 +5,7 @@ import com.liyangbin.cartrofit.funtion.Function2;
 import com.liyangbin.cartrofit.funtion.Function3;
 import com.liyangbin.cartrofit.funtion.Function4;
 import com.liyangbin.cartrofit.funtion.Function5;
+import com.liyangbin.cartrofit.funtion.FunctionalConsumer;
 
 import java.lang.annotation.Annotation;
 import java.util.function.BiConsumer;
@@ -97,9 +98,9 @@ public abstract class CommandBuilder {
         Class<?>[] concernedTypes;
         Class<?> classTo;
 
-        Class<?> classReverseFrom;
+        Class<?> classFrom;
         Converter converter;
-        Consumer converterReverse;
+        Consumer2 converterReverse;
 
         Class<? extends Annotation>[] concernedAnnotations;
 
@@ -153,10 +154,14 @@ public abstract class CommandBuilder {
         }
 
         Converter<?, ?> findOutputConverterByType(Class<?> outputType) {
-            if (concernedTypes.length == 1 && concernedTypes[0] == outputType) {
+            if (outputType != null && concernedTypes.length == 1 && concernedTypes[0] == outputType) {
                 return converter;
             }
             return null;
+        }
+
+        Consumer2<?, ?> findOutputConsumerByType(Class<?> outputType) {
+            return converterReverse;
         }
 
         @SafeVarargs
@@ -198,6 +203,7 @@ public abstract class CommandBuilder {
                 out.value = value;
 
                 sPool = out.next;
+                sSize--;
                 return out;
             }
         }
@@ -231,9 +237,9 @@ public abstract class CommandBuilder {
         T get();
     }
 
-    public final class ConverterBuilder<FROM> extends ConvertSolution {
+    public final class ConverterBuilder<TARGET> extends ConvertSolution {
 
-        private ConverterBuilder(Class<FROM> fromClazz) {
+        private ConverterBuilder(Class<TARGET> fromClazz) {
             super(fromClazz);
         }
 
@@ -242,34 +248,56 @@ public abstract class CommandBuilder {
             return new ConverterBuilderTo<>();
         }
 
-        public <TO> ConverterBuilderTo<TO> from(Class<TO> clazz) {
-            classReverseFrom = clazz;
-            return new ConverterBuilderTo<>();
+        public <FROM> ConverterBuilderFrom<FROM> from(Class<FROM> clazz) {
+            classFrom = clazz;
+            return new ConverterBuilderFrom<>();
         }
 
         public class ConverterBuilderTo<TO> {
 
-            public <FROM_A extends Annotation> AnnotatedBuilderTo<FROM_A, TO> with(Class<FROM_A> clazz) {
+            public <TARGET_A extends Annotation> AnnotatedBuilderTo<TARGET_A, TO> with(Class<TARGET_A> clazz) {
                 ConverterBuilder.this.saveAnnotation(clazz);
                 return new AnnotatedBuilderTo<>();
             }
 
-            public CommandBuilder by(Converter<FROM, TO> converter) {
-                if (classReverseFrom != null) {
-                    throw new CartrofitGrammarException("invalid input " + classReverseFrom);
-                }
+            public CommandBuilder by(Converter<TARGET, TO> converter) {
                 ConverterBuilder.this.converter = converter;
                 return CommandBuilder.this.convert(ConverterBuilder.this);
             }
         }
 
-        public final class AnnotatedBuilderTo<FROM_A extends Annotation, TO> {
-            public CommandBuilder by(Converter<AnnotatedValue<FROM_A, FROM>, TO> converter) {
+        public class ConverterBuilderFrom<FROM> {
+
+            public <TARGET_A extends Annotation> AnnotatedBuilderFrom<TARGET_A, FROM> with(Class<TARGET_A> clazz) {
+                ConverterBuilder.this.saveAnnotation(clazz);
+                return new AnnotatedBuilderFrom<>();
+            }
+
+            public CommandBuilder by(Converter<FROM, TARGET> converter) {
+                ConverterBuilder.this.converter = converter;
+                return CommandBuilder.this.convert(ConverterBuilder.this);
+            }
+        }
+
+        public final class AnnotatedBuilderTo<TARGET_A extends Annotation, TO> {
+            public CommandBuilder by(Converter<AnnotatedValue<TARGET_A, TARGET>, TO> converter) {
                 ConverterBuilder.this.converter = converter;
                 return CommandBuilder.this.convert(ConverterBuilder.this);
             }
 
-            public CommandBuilder by(BiConsumer<TO, AnnotatedValue<FROM_A, FROM>> converterReverse) {
+//            public CommandBuilder apply(Consumer2<TO, AnnotatedValue<FROM_A, FROM>> converterReverse) {
+//                ConverterBuilder.this.converterReverse = converterReverse;
+//                return CommandBuilder.this.convert(ConverterBuilder.this);
+//            }
+        }
+
+        public final class AnnotatedBuilderFrom<TARGET_A extends Annotation, FROM> {
+//            public CommandBuilder by(Consumer2<AnnotatedValue<TARGET_A, TARGET>, FROM> converter) {
+//                ConverterBuilder.this.converter = converter;
+//                return CommandBuilder.this.convert(ConverterBuilder.this);
+//            }
+
+            public CommandBuilder apply(Consumer2<FROM, AnnotatedValue<TARGET_A, TARGET>> converterReverse) {
                 ConverterBuilder.this.converterReverse = converterReverse;
                 return CommandBuilder.this.convert(ConverterBuilder.this);
             }

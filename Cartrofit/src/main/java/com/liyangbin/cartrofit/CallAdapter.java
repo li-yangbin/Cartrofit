@@ -36,6 +36,10 @@ public abstract class CallAdapter<SCOPE, CALL extends CallAdapter<SCOPE, CALL>.C
             return CallAdapter.this.invoke((CALL) this, arg);
         }
 
+        Object getOutputParameter(Object[] input) {
+            return null;
+        }
+
         final boolean isTrackable() {
             return CallAdapter.this.hasCategory((CALL) this, CATEGORY_TRACK);
         }
