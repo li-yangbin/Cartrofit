@@ -4,6 +4,7 @@ import android.car.hardware.CarPropertyValue;
 
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Track;
+import com.liyangbin.cartrofit.funtion.Converter;
 
 import java.lang.annotation.Annotation;
 

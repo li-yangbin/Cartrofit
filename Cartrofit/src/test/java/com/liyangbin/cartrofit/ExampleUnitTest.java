@@ -7,6 +7,8 @@ import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.Inject;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
+import com.liyangbin.cartrofit.funtion.Converter;
+import com.liyangbin.cartrofit.funtion.TwoWayConverter;
 
 import org.junit.AfterClass;
 import org.junit.BeforeClass;

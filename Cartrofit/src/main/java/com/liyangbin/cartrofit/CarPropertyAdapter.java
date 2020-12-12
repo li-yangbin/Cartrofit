@@ -8,17 +8,17 @@ import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
 
-public abstract class CarPropertyAdapter extends CallAdapter<Scope, CarPropertyAdapter.PropertyCall> {
+public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarPropertyAdapter.PropertyCall> {
 
     private final String key;
 
-    protected CarPropertyAdapter(String key) {
+    public CarPropertyAdapter(String key) {
         this.key = key;
     }
 
     @Override
-    public Scope getScopeInfo(Class<?> scopeClass) {
-        Scope scope = scopeClass.getDeclaredAnnotation(Scope.class);
+    public Scope extractTypedScope(Class<?> apiClass, ConverterFactory factory) {
+        Scope scope = findScopeByClass(Scope.class, apiClass);
         if (scope != null && scope.value().equals(key)) {
             return scope;
         }
@@ -26,60 +26,26 @@ public abstract class CarPropertyAdapter extends CallAdapter<Scope, CarPropertyA
     }
 
     @Override
-    public PropertyCall onCreateCall(Scope scope, Cartrofit.Key key, int category) {
+    public PropertyCall onCreateTypedCall(Scope scope, Cartrofit.Key key, int category) {
         if ((category & CallAdapter.CATEGORY_GET) != 0) {
             Get get = key.getAnnotation(Get.class);
             if (get != null) {
-                return new PropertyCall(scope, get);
+                return new PropertyCall(key, scope, get);
             }
         }
         if ((category & CallAdapter.CATEGORY_SET) != 0) {
             Set set = key.getAnnotation(Set.class);
             if (set != null) {
-                return new PropertyCall(scope, set);
+                return new PropertyCall(key, scope, set);
             }
         }
         if ((category & CallAdapter.CATEGORY_TRACK) != 0) {
             Track track = key.getAnnotation(Track.class);
             if (track != null) {
-                return new PropertyCall(scope, track);
+                return new PropertyCall(key, scope, track);
             }
         }
         return null;
-    }
-
-    @Override
-    public Object invoke(PropertyCall call, Object arg) {
-        switch (call.type) {
-            case PropertyCall.TYPE_GET:
-                return get(call.propertyId, call.areaId, call.carType);
-            case PropertyCall.TYPE_SET:
-                set(call.propertyId, call.areaId,
-                        call.buildInSetValue != null ? call.buildInSetValue : arg);
-                return null;
-            case PropertyCall.TYPE_TRACK:
-                Flow<CarPropertyValue<?>> flow = track(call.propertyId, call.areaId);
-                switch (call.carType) {
-                    case VALUE:
-                        return Flow.map(flow, CarPropertyValue::getValue);
-                    case AVAILABILITY:
-                        return Flow.map(flow, value -> value != null
-                                && value.getStatus() == CarPropertyValue.STATUS_AVAILABLE);
-                    default:
-                        return flow;
-                }
-        }
-        throw new RuntimeException("impossible situation. type:" + call.type);
-    }
-
-    @Override
-    public boolean hasCategory(PropertyCall call, int category) {
-        return (call.category & category) != 0;
-    }
-
-    @Override
-    public Class<?> extractValueType(PropertyCall call) {
-        return extractValueType(call.type);
     }
 
     public abstract Object get(int propertyId, int area, CarType type);
@@ -173,7 +139,7 @@ public abstract class CarPropertyAdapter extends CallAdapter<Scope, CarPropertyA
         }
     }
 
-    public class PropertyCall extends CallAdapter<Scope, PropertyCall>.Call {
+    public class PropertyCall extends CallAdapter.Call {
         static final int TYPE_SET = 0;
         static final int TYPE_GET = 1;
         static final int TYPE_TRACK = 2;
@@ -181,47 +147,71 @@ public abstract class CarPropertyAdapter extends CallAdapter<Scope, CarPropertyA
         int type;
         int propertyId;
         int areaId;
-        int category;
         Object buildInSetValue;
 
         CarType carType;
 
-        PropertyCall(Scope scope, Set set) {
-            super(set);
+        PropertyCall(Cartrofit.Key key, Scope scope, Set set) {
+            super(key);
             this.type = TYPE_SET;
             this.propertyId = set.id();
             this.areaId = resolveArea(set.area(), scope.area());
             this.carType = CarType.VALUE;
-            this.category = CallAdapter.CATEGORY_SET;
             BuildInValue buildInValue = BuildInValue.build(set.value());
             if (buildInValue != null) {
                 buildInSetValue = buildInValue.extractValue(extractValueType(propertyId));
             }
+            addCategory(CATEGORY_SET);
         }
 
-        PropertyCall(Scope scope, Get get) {
-            super(get);
+        PropertyCall(Cartrofit.Key key, Scope scope, Get get) {
+            super(key);
             this.type = TYPE_GET;
             this.propertyId = get.id();
             this.areaId = resolveArea(get.area(), scope.area());
             this.carType = get.type();
-            this.category = CallAdapter.CATEGORY_GET;
+            addCategory(CATEGORY_GET);
         }
 
-        PropertyCall(Scope scope, Track track) {
-            super(track);
+        PropertyCall(Cartrofit.Key key, Scope scope, Track track) {
+            super(key);
             this.type = TYPE_TRACK;
             this.propertyId = track.id();
             this.areaId = resolveArea(track.area(), scope.area());
             this.carType = track.type();
-            this.category = CallAdapter.CATEGORY_TRACK;
             if (carType == CarType.NONE) {
-                this.category |= CallAdapter.CATEGORY_TRACK_EVENT;
+                addCategory(CallAdapter.CATEGORY_TRACK_EVENT);
+            } else {
+                addCategory(CallAdapter.CATEGORY_TRACK);
             }
         }
 
         private int resolveArea(int handleArea, int scopeArea) {
             return handleArea == Scope.DEFAULT_AREA_ID ? scopeArea : handleArea;
+        }
+
+        @Override
+        public Object invoke(Object arg) {
+            switch (type) {
+                case PropertyCall.TYPE_GET:
+                    return get(propertyId, areaId, carType);
+                case PropertyCall.TYPE_SET:
+                    set(propertyId, areaId,
+                            buildInSetValue != null ? buildInSetValue : arg);
+                    return null;
+                case PropertyCall.TYPE_TRACK:
+                    Flow<CarPropertyValue<?>> flow = track(propertyId, areaId);
+                    switch (carType) {
+                        case VALUE:
+                            return Flow.map(flow, CarPropertyValue::getValue);
+                        case AVAILABILITY:
+                            return Flow.map(flow, value -> value != null
+                                    && value.getStatus() == CarPropertyValue.STATUS_AVAILABLE);
+                        default:
+                            return flow;
+                    }
+            }
+            throw new RuntimeException("impossible situation. type:" + type);
         }
     }
 }

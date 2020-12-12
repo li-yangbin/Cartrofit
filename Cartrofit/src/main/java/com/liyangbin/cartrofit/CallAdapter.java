@@ -1,54 +1,54 @@
 package com.liyangbin.cartrofit;
 
 import java.lang.annotation.Annotation;
-import java.util.HashMap;
 
-public abstract class CallAdapter<SCOPE, CALL extends CallAdapter<SCOPE, CALL>.Call> {
+public abstract class CallAdapter {
 
     public static final int CATEGORY_SET = 1;
     public static final int CATEGORY_GET = 1 << 1;
     public static final int CATEGORY_TRACK = 1 << 2;
     public static final int CATEGORY_TRACK_EVENT = CATEGORY_TRACK | (1 << 3);
 
-    public abstract SCOPE getScopeInfo(Class<?> scopeClass);
+    public abstract Annotation extractScope(Class<?> scopeClass, ConverterFactory factory);
 
-    public abstract CALL onCreateCall(SCOPE scope, Cartrofit.Key key, int category);
+    public abstract Call onCreateCall(Annotation scope, Cartrofit.Key key, int category);
 
-    public abstract Object invoke(CALL call, Object arg);
+    public static <A extends Annotation> A findScopeByClass(Class<A> annotationClazz, Class<?> clazz) {
+        A scope = clazz.getDeclaredAnnotation(annotationClazz);
+        if (scope != null) {
+            return scope;
+        }
+        Class<?> enclosingClass = clazz.getEnclosingClass();
+        while (enclosingClass != null) {
+            scope = enclosingClass.getDeclaredAnnotation(annotationClazz);
+            if (scope != null) {
+                return scope;
+            }
+            enclosingClass = enclosingClass.getEnclosingClass();
+        }
+        return null;
+    }
 
-    public abstract boolean hasCategory(CALL call, int category);
+    public static abstract class Call {
 
-    public abstract Class<?> extractValueType(CALL arg);
+        protected Cartrofit.Key key;
+        protected int category;
 
-    @SuppressWarnings("unchecked")
-    public abstract class Call {
-        private final Annotation annotation;
-
-        public Call(Annotation annotation) {
-            this.annotation = annotation;
+        protected Call(Cartrofit.Key key) {
+            this.key = key;
         }
 
-        public <A extends Annotation> A getAnnotation() {
-            return (A) annotation;
+        protected final void addCategory(int category) {
+            this.category |= category;
         }
 
-        final Object invoke(Object arg) {
-            return CallAdapter.this.invoke((CALL) this, arg);
+        public abstract Object invoke(Object arg);
+
+        public void buildConvertSolution(ConverterFactory factory) {
         }
 
-        Object getOutputParameter(Object[] input) {
-            return null;
-        }
-
-        final boolean isTrackable() {
-            return CallAdapter.this.hasCategory((CALL) this, CATEGORY_TRACK);
-        }
-
-        void getConvertSolutionList(CommandBuilder builder) {
-        }
-
-        final boolean isEvent() {
-            return CallAdapter.this.hasCategory((CALL) this, CATEGORY_TRACK_EVENT);
+        public final boolean hasCategory(int category) {
+            return (this.category & category) != 0;
         }
     }
 }

@@ -1,12 +1,10 @@
 package com.liyangbin.cartrofit;
 
 import android.car.hardware.CarPropertyValue;
-import android.content.Context;
 import android.os.Build;
 
 import com.liyangbin.cartrofit.annotation.CarValue;
 import com.liyangbin.cartrofit.annotation.Combine;
-import com.liyangbin.cartrofit.annotation.ConsiderSuper;
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.Get;
@@ -19,10 +17,11 @@ import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
 import com.liyangbin.cartrofit.annotation.Unregister;
 import com.liyangbin.cartrofit.annotation.WrappedData;
-import com.liyangbin.cartrofit.funtion.FunctionalCombinator;
+import com.liyangbin.cartrofit.funtion.Converter;
+import com.liyangbin.cartrofit.funtion.FunctionalConverter;
+import com.liyangbin.cartrofit.funtion.TwoWayConverter;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
@@ -42,7 +41,7 @@ import java.util.function.Consumer;
 @SuppressWarnings("unchecked")
 public final class Cartrofit {
 
-    private static final ConverterStore GLOBAL_CONVERTER = new ConverterStore();
+    private static final ArrayList<FlowConverter<?>> GLOBAL_CONVERTER = new ArrayList<>();
     private static Cartrofit sDefault;
 
     private static final int FLAG_FIRST_BIT = 1;
@@ -60,17 +59,14 @@ public final class Cartrofit {
             | FLAG_PARSE_UN_REGISTER | FLAG_PARSE_INJECT | FLAG_PARSE_COMBINE | FLAG_PARSE_REGISTER;
 
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
-    private static final HashMap<Class<? extends ApiCallback>, ApiCallback> ON_CREATE_OBJ_CACHE = new HashMap<>();
     private static final Router ID_ROUTER = new Router();
 
-    private final HashMap<String, DataSource> mDataMap = new HashMap<>();
     private InterceptorChain mChainHead;
-    private final ArrayList<ApiCallback> mApiCallback = new ArrayList<>();
 
     private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
     private final HashMap<Key, CommandBase> mCommandCache = new HashMap<>();
-    private ArrayList<CallAdapter<?, ?>> mCallAdapterList = new ArrayList<>();
-    private DataSourceFactory mDefaultFactory = CommonCarDataSource::create;
+    private final ArrayList<CallAdapter> mCallAdapterList = new ArrayList<>();
+    private final ArrayList<FlowConverter<?>> mFlowConverters = new ArrayList<>();
 
     static {
         RxJavaConverter.addSupport();
@@ -79,18 +75,18 @@ public final class Cartrofit {
     }
 
     private Cartrofit() {
+        mFlowConverters.addAll(GLOBAL_CONVERTER);
     }
 
     private void append(Builder builder) {
-        mDataMap.putAll(builder.dataMap);
+        mCallAdapterList.addAll(builder.dataAdapterList);
+        mFlowConverters.addAll(builder.flowConverters);
         for (int i = 0; i < builder.interceptors.size(); i++) {
             if (mChainHead == null) {
                 mChainHead = new InterceptorChain();
             }
             mChainHead.addInterceptor(builder.interceptors.get(i));
         }
-        mApiCallback.addAll(builder.apiCallbacks);
-        mDefaultFactory = OffshoreDataSourceFactory.get(builder.factory, mDefaultFactory);
     }
 
     public static Builder builder() {
@@ -100,29 +96,6 @@ public final class Cartrofit {
     public static <T> T from(Class<T> api) {
         return Objects.requireNonNull(sDefault,
                 "Call setDefault() before calling from()").fromInternal(api);
-    }
-
-    public static final class DummyOnCreate implements ApiCallback {
-        @Override
-        public void onApiCreate(Class<?> apiClass, CommandBuilder builder) {
-            throw new IllegalStateException("impossible call");
-        }
-    }
-
-    private static Scope findScopeByClass(Class<?> clazz) {
-        Scope scope = clazz.getDeclaredAnnotation(Scope.class);
-        if (scope != null) {
-            return scope;
-        }
-        Class<?> enclosingClass = clazz.getEnclosingClass();
-        while (enclosingClass != null) {
-            scope = enclosingClass.getDeclaredAnnotation(Scope.class);
-            if (scope != null) {
-                return scope;
-            }
-            enclosingClass = enclosingClass.getEnclosingClass();
-        }
-        return null;
     }
 
     private static class Router {
@@ -183,20 +156,7 @@ public final class Cartrofit {
         }
     }
 
-    private DataSource acquireDataSource(String scope) {
-        DataSource source = mDataMap.get(scope);
-        if (source == null) {
-            source = mDefaultFactory.createDataSource(scope);
-            if (source == null) {
-                throw new IllegalStateException("Invalid scope:" + scope +
-                        ". Make sure use a valid scope presented in Builder.addDataSourceAPI");
-            }
-            mDataMap.put(scope, source);
-        }
-        return source;
-    }
-
-    class ApiRecord<T, SCOPE> extends CommandBuilder {
+    class ApiRecord<T> {
         private static final String ID_SUFFIX = "Id";
 
         Class<T> clazz;
@@ -212,19 +172,21 @@ public final class Cartrofit {
 
         HashMap<Integer, Method> selfDependency = new HashMap<>();
         HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
-        ConverterManager converterManager = new ConverterManager();
+//        ConverterManager converterManager = new ConverterManager();
         InterceptorManager interceptorManager = new InterceptorManager();
 
         Interceptor tempInterceptor;
-        ConvertSolution converterBuilder;
+        ConverterFactory scopeFactory;
+//        ConvertSolution converterBuilder;
 
-        CallAdapter<SCOPE, ?> adapter;
-        SCOPE scopeInfo;
+        CallAdapter adapter;
+        Annotation scope;
 
-        ApiRecord(CallAdapter<SCOPE, ?> adapter, SCOPE scopeInfo, Class<T> clazz) {
+        ApiRecord(CallAdapter adapter, Annotation scope, ConverterFactory scopeConverterFactory, Class<T> clazz) {
             this.clazz = clazz;
             this.adapter = adapter;
-            this.scopeInfo = scopeInfo;
+            this.scope = scope;
+            this.scopeFactory = scopeConverterFactory;
 
             if (clazz.isAnnotationPresent(GenerateId.class)) {
                 try {
@@ -234,38 +196,10 @@ public final class Cartrofit {
                     throw new IllegalStateException("impossible", impossible);
                 }
             }
-
-            Scope carScope = findScopeByClass(clazz);
-            if (carScope != null) {
-                this.dataScope = carScope.value();
-
-                this.source = acquireDataSource(dataScope);
-
-                Class<? extends ApiCallback> createHelper = carScope.onCreate();
-                if (!createHelper.equals(DummyOnCreate.class)) {
-                    ApiCallback singleton = ON_CREATE_OBJ_CACHE.get(createHelper);
-                    if (singleton == null) {
-                        try {
-                            Constructor<? extends ApiCallback> constructor
-                                    = createHelper.getDeclaredConstructor();
-                            constructor.setAccessible(true);
-                            singleton = constructor.newInstance();
-                            ON_CREATE_OBJ_CACHE.put(createHelper, singleton);
-                        } catch (ReflectiveOperationException illegal) {
-                            throw new IllegalArgumentException(illegal);
-                        }
-                    }
-                    singleton.onApiCreate(clazz, this);
-                }
-
-                for (int i = 0; i < mApiCallback.size(); i++) {
-                    mApiCallback.get(i).onApiCreate(clazz, this);
-                }
-            }
         }
 
         CommandImpl createAdapterCommand(Key key, int category) {
-            CallAdapter<SCOPE, ?>.Call call = adapter.onCreateCall(scopeInfo, key, category);
+            CallAdapter.Call call = adapter.onCreateCall(scope, key, category);
             return null;
         }
 
@@ -276,52 +210,52 @@ public final class Cartrofit {
             return selfDependencyReverse.getOrDefault(command.key.method, 0);
         }
 
-        @Override
-        public void setDefaultAreaId(int areaId) {
-            apiArea = areaId;
-        }
+//        @Override
+//        public void setDefaultAreaId(int areaId) {
+//            apiArea = areaId;
+//        }
+//
+//        @Override
+//        public void setDefaultStickyType(StickyType stickyType) {
+//            this.stickyType = stickyType;
+//        }
+//
+//        @Override
+//        public ConverterBuilder intercept(Interceptor interceptor) {
+//            if (tempInterceptor != null) {
+//                throw new CartrofitGrammarException("Call intercept(Interceptor) only once before apply");
+//            }
+//            tempInterceptor = interceptor;
+//            return this;
+//        }
+//
+//        @Override
+//        ConverterBuilder convert(ConvertSolution builder) {
+//            if (converterBuilder != null) {
+//                throw new CartrofitGrammarException("Call convert(Converter) only once before apply");
+//            }
+//            converterBuilder = builder;
+//            return this;
+//        }
 
-        @Override
-        public void setDefaultStickyType(StickyType stickyType) {
-            this.stickyType = stickyType;
-        }
-
-        @Override
-        public CommandBuilder intercept(Interceptor interceptor) {
-            if (tempInterceptor != null) {
-                throw new CartrofitGrammarException("Call intercept(Interceptor) only once before apply");
-            }
-            tempInterceptor = interceptor;
-            return this;
-        }
-
-        @Override
-        CommandBuilder convert(ConvertSolution builder) {
-            if (converterBuilder != null) {
-                throw new CartrofitGrammarException("Call convert(Converter) only once before apply");
-            }
-            converterBuilder = builder;
-            return this;
-        }
-
-        @Override
-        public void apply(Constraint... constraints) {
-            if (constraints == null || constraints.length == 0) {
-                return;
-            }
-            if (tempInterceptor != null) {
-                for (Constraint constraint : constraints) {
-                    interceptorManager.add(constraint, tempInterceptor);
-                }
-                tempInterceptor = null;
-            }
-            if (converterBuilder != null) {
-                for (Constraint constraint : constraints) {
-                    converterManager.add(constraint, converterBuilder);
-                }
-                converterBuilder = null;
-            }
-        }
+//        @Override
+//        public void apply(Constraint... constraints) {
+//            if (constraints == null || constraints.length == 0) {
+//                return;
+//            }
+//            if (tempInterceptor != null) {
+//                for (Constraint constraint : constraints) {
+//                    interceptorManager.add(constraint, tempInterceptor);
+//                }
+//                tempInterceptor = null;
+//            }
+//            if (converterBuilder != null) {
+//                for (Constraint constraint : constraints) {
+//                    converterManager.add(constraint, converterBuilder);
+//                }
+//                converterBuilder = null;
+//            }
+//        }
 
         private abstract class AbstractManager<ELEMENT, GROUP> {
             ArrayList<Constraint> constraintList = new ArrayList<>();
@@ -381,40 +315,40 @@ public final class Cartrofit {
             }
         }
 
-        private final class ConverterManager extends AbstractManager<ConvertSolution, ConverterStore> {
-            HashMap<Constraint, ConverterStore> constraintMapper = new HashMap<>();
-
-            @Override
-            void add(Constraint constraint, ConvertSolution builder) {
-                ConverterStore store = constraintMapper.get(constraint);
-                if (store == null) {
-                    store = new ConverterStore();
-                    constraintMapper.put(constraint, store);
-                }
-                builder.apply(store);
-                addConstraint(constraint);
-            }
-
-            @Override
-            ConverterStore get(CommandBase command) {
-                ConverterStore current = null;
-                for (int i = constraintList.size() - 1; i >= 0; i--) {
-                    Constraint constraint = constraintList.get(i);
-                    if (constraint.check(command)) {
-                        ConverterStore node = constraintMapper.get(constraint);
-                        if (node != null) {
-                            node = node.copy();
-                            if (current != null) {
-                                current.addParentToEnd(node);
-                            } else {
-                                current = node;
-                            }
-                        }
-                    }
-                }
-                return current;
-            }
-        }
+//        private final class ConverterManager extends AbstractManager<ConvertSolution, ConverterStore> {
+//            HashMap<Constraint, ConverterStore> constraintMapper = new HashMap<>();
+//
+//            @Override
+//            void add(Constraint constraint, ConvertSolution builder) {
+//                ConverterStore store = constraintMapper.get(constraint);
+//                if (store == null) {
+//                    store = new ConverterStore();
+//                    constraintMapper.put(constraint, store);
+//                }
+//                builder.apply(store);
+//                addConstraint(constraint);
+//            }
+//
+//            @Override
+//            ConverterStore get(CommandBase command) {
+//                ConverterStore current = null;
+//                for (int i = constraintList.size() - 1; i >= 0; i--) {
+//                    Constraint constraint = constraintList.get(i);
+//                    if (constraint.check(command)) {
+//                        ConverterStore node = constraintMapper.get(constraint);
+//                        if (node != null) {
+//                            node = node.copy();
+//                            if (current != null) {
+//                                current.addParentToEnd(node);
+//                            } else {
+//                                current = node;
+//                            }
+//                        }
+//                    }
+//                }
+//                return current;
+//            }
+//        }
 
         InterceptorChain getInterceptorByKey(CommandBase command) {
             InterceptorChain chain = interceptorManager.get(command);
@@ -428,15 +362,15 @@ public final class Cartrofit {
             return chain;
         }
 
-        ConverterStore getConverterByKey(CommandBase command) {
-            ConverterStore store = converterManager.get(command);
-            if (store != null) {
-                store.addParentToEnd(GLOBAL_CONVERTER);
-                return store;
-            } else {
-                return GLOBAL_CONVERTER;
-            }
-        }
+//        ConverterStore getConverterByKey(CommandBase command) {
+//            ConverterStore store = converterManager.get(command);
+//            if (store != null) {
+//                store.addParentToEnd(GLOBAL_CONVERTER);
+//                return store;
+//            } else {
+//                return GLOBAL_CONVERTER;
+//            }
+//        }
 
         void importDependency(Class<?> target) {
             try {
@@ -570,7 +504,7 @@ public final class Cartrofit {
             } else if (converter instanceof FlowConverter) {
                 lookingFor = FlowConverter.class;
             } else {
-                if (converter instanceof FunctionalCombinator) {
+                if (converter instanceof FunctionalConverter) {
                     lookingFor = converter.getClass().getInterfaces()[0];
                 } else {
                     lookingFor = Converter.class;
@@ -594,7 +528,7 @@ public final class Cartrofit {
                         if (lookingFor == FlowConverter.class) {
                             convertFrom = Flow.class;
                             convertTo = getClassFromType(converterDeclaredType[0]);
-                        } else if (FunctionalCombinator.class.isAssignableFrom(lookingFor)) {
+                        } else if (FunctionalConverter.class.isAssignableFrom(lookingFor)) {
                             convertFrom = Object[].class;
                             convertTo = getClassFromType(converterDeclaredType[converterDeclaredType.length - 1]);
                         } else {
@@ -697,59 +631,17 @@ public final class Cartrofit {
         }
     }
 
-    public interface DataSourceFactory {
-        DataSource createDataSource(String scope);
-    }
-
-    private static final class OffshoreDataSourceFactory implements DataSourceFactory {
-
-        private DataSourceFactory upStreamFactory;
-        private DataSourceFactory delegateFactory;
-
-        static DataSourceFactory get(DataSourceFactory delegate, DataSourceFactory upStream) {
-            if (delegate == null) {
-                return upStream;
-            }
-            OffshoreDataSourceFactory factory = new OffshoreDataSourceFactory();
-            factory.upStreamFactory = upStream;
-            factory.delegateFactory = delegate;
-            return factory;
-        }
-
-        @Override
-        public DataSource createDataSource(String scope) {
-            DataSource source = delegateFactory.createDataSource(scope);
-            return source != null || upStreamFactory == null ? source
-                    : upStreamFactory.createDataSource(scope);
-        }
-    }
-
     public static final class Builder {
 
-        private final HashMap<String, DataSource> dataMap = new HashMap<>();
+        private final ArrayList<CallAdapter> dataAdapterList = new ArrayList<>();
         private final ArrayList<Interceptor> interceptors = new ArrayList<>();
-        private final ArrayList<ApiCallback> apiCallbacks = new ArrayList<>();
-        private DataSourceFactory factory;
+        private final ArrayList<FlowConverter<?>> flowConverters = new ArrayList<>();
 
         private Builder() {
         }
 
-        public Builder connectCarService(Context context) {
-            ConnectHelper.ensureConnect(context);
-            return this;
-        }
-
-        public Builder addDataSource(DataSource source) {
-            Scope sourceScope = findScopeByClass(source.getClass());
-            if (sourceScope == null) {
-                throw new CartrofitGrammarException("Declare data scope in :" + source.getClass());
-            }
-            dataMap.put(sourceScope.value(), source);
-            return this;
-        }
-
-        public Builder addDataSourceFactory(DataSourceFactory factory) {
-            this.factory = OffshoreDataSourceFactory.get(factory, this.factory);
+        public Builder addCallAdapter(CallAdapter callAdapter) {
+            dataAdapterList.add(callAdapter);
             return this;
         }
 
@@ -758,8 +650,8 @@ public final class Cartrofit {
             return this;
         }
 
-        public Builder addApiCallback(ApiCallback callback) {
-            apiCallbacks.add(callback);
+        public <T> Builder addFlowConverter(FlowConverter<T> converter) {
+            flowConverters.add(converter);
             return this;
         }
 
@@ -768,21 +660,17 @@ public final class Cartrofit {
                 sDefault = new Cartrofit();
             }
             sDefault.append(this);
-            dataMap.clear();
             interceptors.clear();
-            apiCallbacks.clear();
-            factory = null;
+            flowConverters.clear();
         }
     }
 
-    public static void addGlobalConverter(Converter<?, ?>... converters) {
-        for (Converter<?, ?> converter : converters) {
-            GLOBAL_CONVERTER.addConverter(converter);
-        }
+    public static void addGlobalConverter(FlowConverter<?>... converters) {
+        GLOBAL_CONVERTER.addAll(Arrays.asList(converters));
     }
 
     private <T> T fromInternal(Class<T> api) {
-        ApiRecord<T, ?> record = getApi(api, true);
+        ApiRecord<T> record = getApi(api, true);
         if (record.apiObj != null) {
             return record.apiObj;
         }
@@ -807,20 +695,21 @@ public final class Cartrofit {
         return record.apiObj;
     }
 
-    private <T> ApiRecord<T, ?> getApi(Class<T> api) {
+    private <T> ApiRecord<T> getApi(Class<T> api) {
         return getApi(api, false);
     }
 
-    private <T> ApiRecord<T, ?> getApi(Class<T> api, boolean throwIfNotDeclareScope) {
+    private <T> ApiRecord<T> getApi(Class<T> api, boolean throwIfNotDeclareScope) {
         synchronized (mApiCache) {
-            ApiRecord<T, Object> record = (ApiRecord<T, Object>) mApiCache.get(api);
+            ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
             if (record == null) {
 
+                ConverterFactory scopeFactory = new ConverterFactory();
                 for (int i = mCallAdapterList.size() - 1; i >= 0; i--) {
-                    CallAdapter<Object, ?> adapter = (CallAdapter<Object, ?>) mCallAdapterList.get(i);
-                    Object scopeInfo = adapter.getScopeInfo(api);
-                    if (scopeInfo != null) {
-                        record = new ApiRecord<>(adapter, scopeInfo, api);
+                    CallAdapter adapter = mCallAdapterList.get(i);
+                    Annotation scope = adapter.extractScope(api, scopeFactory);
+                    if (scope != null) {
+                        record = new ApiRecord<>(adapter, scope, scopeFactory, api);
                         mApiCache.put(api, record);
                         break;
                     }
@@ -833,7 +722,7 @@ public final class Cartrofit {
         }
     }
 
-    private CommandBase getOrCreateCommand(ApiRecord<?, ?> record, Key key) {
+    private CommandBase getOrCreateCommand(ApiRecord<?> record, Key key) {
         CommandBase command = getOrCreateCommand(record, key, FLAG_PARSE_ALL);
         if (command == null) {
             throw new CartrofitGrammarException("Can not parse command from:" + key);
@@ -841,11 +730,11 @@ public final class Cartrofit {
         return command;
     }
 
-    CommandBase getOrCreateCommandById(ApiRecord<?, ?> record, int id, int flag) {
+    CommandBase getOrCreateCommandById(ApiRecord<?> record, int id, int flag) {
         return getOrCreateCommandById(record, id, flag, true);
     }
 
-    private CommandBase getOrCreateCommandById(ApiRecord<?, ?> record, int id, int flag,
+    private CommandBase getOrCreateCommandById(ApiRecord<?> record, int id, int flag,
                                                boolean throwIfNotFound) {
         Method method = record.selfDependency.get(id);
         if (method == null) {
@@ -863,7 +752,7 @@ public final class Cartrofit {
         return command;
     }
 
-    private CommandBase getOrCreateCommand(ApiRecord<?, ?> record, Key key, int flag) {
+    private CommandBase getOrCreateCommand(ApiRecord<?> record, Key key, int flag) {
         CommandBase command;
         synchronized (mApiCache) {
             command = mCommandCache.get(key);
@@ -896,15 +785,15 @@ public final class Cartrofit {
 
         Field field;
 
-        ApiRecord<?, ?> record;
+        ApiRecord<?> record;
 
-        Key(ApiRecord<?, ?> record, Method method, boolean isCallbackEntry) {
+        Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
             this.record = record;
             this.method = method;
             this.isCallbackEntry = isCallbackEntry;
         }
 
-        Key(ApiRecord<?, ?> record, Field field) {
+        Key(ApiRecord<?> record, Field field) {
             this.record = record;
             this.field = field;
             this.isCallbackEntry = false;
@@ -1009,11 +898,31 @@ public final class Cartrofit {
                     : field.isAnnotationPresent(annotationClass);
         }
 
-        private CommandBuilder.AnnotatedType[] getInputType() {
-//            if (method != null) {
-//                Annotation[][] annotationMatrix = method.getParameterAnnotations();
-//            }
-//            return method != null ? method.getParameterTypes() : new Class<?>[] {field.getType()};
+        public Class<?>[] getParameterType() {
+            return method != null ? method.getParameterTypes() : new Class<?>[] {field.getType()};
+        }
+
+        public Class<?> getReturnType() {
+            return method != null ? method.getReturnType() : field.getType();
+        }
+
+        public boolean isAnnotationPresent(int parameterIndex, Class<? extends Annotation> annotationClass) {
+            return getAnnotation(parameterIndex, annotationClass) != null;
+        }
+
+        public Annotation getAnnotation(int parameterIndex, Class<? extends Annotation> annotationClass) {
+            if (method != null) {
+                Annotation[][] annotations = method.getParameterAnnotations();
+                if (parameterIndex >= 0 && parameterIndex < annotations.length) {
+                    for (Annotation annotation : annotations[parameterIndex]) {
+                        if (annotationClass.isInstance(annotation)) {
+                            return annotation;
+                        }
+                    }
+                }
+            } else if (parameterIndex == 0) {
+                return field.getDeclaredAnnotation(annotationClass);
+            }
             return null;
         }
 
@@ -1023,52 +932,6 @@ public final class Cartrofit {
 //            }
 //            return method != null ? method.getParameterTypes() : new Class<?>[] {field.getType()};
             return null;
-        }
-
-//        private static class AnnotatedType {
-//            Class<? extends Annotation>[] annotationType;
-//            Class<?> valueType;
-//        }
-
-        private CommandBuilder.AnnotatedType[] getOutputType() {
-            return null;
-        }
-
-        ArrayList<CommandBuilder.ConvertSolution> converterBuilders = new ArrayList<>();
-
-        public Converter<?, ?> getInputConverter() {
-            CommandBuilder.AnnotatedType<?, ?>[] annotatedTypes = getInputType();
-            for (int i = 0; i < converterBuilders.size(); i++) {
-                Converter<?, ?> result = converterBuilders.get(i).findInputConverterByType(annotatedTypes);
-                if (result != null) {
-                    return result;
-                }
-            }
-            return null;
-        }
-
-        public Converter<?, ?> getOutputConverter() {
-            CommandBuilder.AnnotatedType<?, ?>[] annotatedTypes = getInputType();
-            for (int i = 0; i < converterBuilders.size(); i++) {
-                Converter<?, ?> result = converterBuilders.get(i).findOutputConverterByType();
-                if (result != null) {
-                    return result;
-                }
-            }
-            return null;
-        }
-
-        public boolean applyInput(Object[] input) {
-            if (resolvedConverter == null && converterBuilders.size() > 0) {
-                AnnotatedType[] userInputTypes = getInputType();
-                if (userInputTypes != null && userInputTypes.length > 0) {
-                    int[] inputIndex = new int[userInputTypes.length];
-                    for (int i = 0; i < converterBuilders.size(); i++) {
-                        CommandBuilder.ConvertSolution builder = converterBuilders.get(i);
-                    }
-                }
-            }
-            return false;
         }
 
         Class<?> getGetClass() {
@@ -1214,7 +1077,7 @@ public final class Cartrofit {
         }
     }
 
-    private CommandBase createCommand(ApiRecord<?, ?> record, Key key, int flag) {
+    private CommandBase createCommand(ApiRecord<?> record, Key key, int flag) {
 
         CommandImpl commandFromAdapter = record.createAdapterCommand(key, flag);
         if (commandFromAdapter != null) {

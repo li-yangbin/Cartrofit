@@ -2,7 +2,7 @@ package com.liyangbin.cartrofit.funtion;
 
 import com.liyangbin.cartrofit.CartrofitGrammarException;
 
-public interface Consumer3<T1, T2, T3> extends FunctionalConsumer {
+public interface Consumer3<T1, T2, T3> extends Consumer<Object[]> {
 
     @Override
     default void apply(Object[] objects) {

@@ -1,7 +1,8 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Combine;
-import com.liyangbin.cartrofit.funtion.FunctionalCombinator;
+import com.liyangbin.cartrofit.funtion.Converter;
+import com.liyangbin.cartrofit.funtion.FunctionalConverter;
 
 import java.lang.annotation.Annotation;
 import java.lang.ref.WeakReference;
@@ -495,9 +496,9 @@ class CommandCombine extends CommandFlow {
         Object result;
         if (isReturnFlow()) {
             Flow<Object> flow;
-            if (mapConverter instanceof FunctionalCombinator) {
+            if (mapConverter instanceof FunctionalConverter) {
                 flow = new MediatorFlow<>(combineFlow,
-                        data -> ((FunctionalCombinator) mapConverter)
+                        data -> ((FunctionalConverter) mapConverter)
                                 .apply(data.effectIndex, data.trackingObj));
             } else {
                 flow = new MediatorFlow<>(combineFlow,

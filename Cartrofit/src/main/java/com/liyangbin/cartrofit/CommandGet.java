@@ -2,6 +2,7 @@ package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.Scope;
+import com.liyangbin.cartrofit.funtion.Converter;
 
 import java.lang.annotation.Annotation;
 

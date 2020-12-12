@@ -5,7 +5,7 @@ import android.car.hardware.CarPropertyValue;
 import androidx.annotation.Nullable;
 
 import com.liyangbin.cartrofit.annotation.Scope;
-import com.liyangbin.cartrofit.funtion.Function2;
+import com.liyangbin.cartrofit.funtion.Converter2;
 
 import java.util.HashMap;
 import java.util.Random;
@@ -118,7 +118,7 @@ public class TestCarManager extends CarManager2 {
 //        }
 //    }
 
-    Function2<String, Boolean, String> combinator_aa = new Function2<String, Boolean, String>() {
+    Converter2<String, Boolean, String> combinator_aa = new Converter2<String, Boolean, String>() {
 
         @Override
         public String apply(String value1, Boolean value2) {
@@ -126,7 +126,7 @@ public class TestCarManager extends CarManager2 {
         }
     };
 
-    Function2<String, String, String> combinator_bb = new Function2<String, String, String>() {
+    Converter2<String, String, String> combinator_bb = new Converter2<String, String, String>() {
 
         @Override
         public String apply(String value1, String value2) {

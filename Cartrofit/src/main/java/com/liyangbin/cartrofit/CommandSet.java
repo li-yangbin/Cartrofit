@@ -1,6 +1,7 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Set;
+import com.liyangbin.cartrofit.funtion.Converter;
 
 import java.util.Objects;
 
