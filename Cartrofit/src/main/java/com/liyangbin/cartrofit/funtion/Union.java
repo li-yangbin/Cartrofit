@@ -6,7 +6,7 @@ import java.util.Arrays;
 
 @SuppressWarnings("unchecked")
 public class Union<T> {
-    private static final int LIMIT = 5;
+    static final int LIMIT = 5;
     static Union<?> sPool;
     static int sSize;
 
@@ -41,12 +41,15 @@ public class Union<T> {
         }
     }
 
-    public static Union<?> of(Object[] array) {
+    public static Union<?> of(Object... array) {
         if (array == null || array.length == 0) {
             return null;
         }
         switch (array.length) {
             case 1:
+                if (array[0] instanceof Union) {
+                    return (Union<?>) array[0];
+                }
                 synchronized (Union.class) {
                     if (Union.sPool == null) {
                         return new Union<>(array[0]);
@@ -55,6 +58,7 @@ public class Union<T> {
                     out.value1 = array[0];
 
                     Union.sPool = out.next;
+                    out.next = null;
                     Union.sSize--;
                     return out;
                 }
@@ -81,6 +85,7 @@ public class Union<T> {
             out.value2 = t2;
 
             Union2.sPool2 = (Union2<?, ?>) out.next;
+            out.next = null;
             Union2.sSize2--;
             return out;
         }
@@ -97,6 +102,7 @@ public class Union<T> {
             out.value3 = t3;
 
             Union3.sPool3 = (Union3<?, ?, ?>) out.next;
+            out.next = null;
             Union3.sSize3--;
             return out;
         }
@@ -114,6 +120,7 @@ public class Union<T> {
             out.value4 = t4;
 
             Union4.sPool4 = (Union4<?, ?, ?, ?>) out.next;
+            out.next = null;
             Union4.sSize4--;
             return out;
         }
@@ -132,162 +139,9 @@ public class Union<T> {
             out.value5 = t5;
 
             Union5.sPool5 = (Union5<?, ?, ?, ?, ?>) out.next;
+            out.next = null;
             Union5.sSize5--;
             return out;
-        }
-    }
-
-    public static class Union2<T1, T2> extends Union<T1> {
-
-        static Union2<?, ?> sPool2;
-        static int sSize2;
-
-        public T2 value2;
-
-        Union2(T1 value1, T2 value2) {
-            super(value1);
-            this.value2 = value2;
-        }
-
-        @Override
-        public int getCount() {
-            return 2;
-        }
-
-        @Override
-        public Object get(int index) {
-            return index == 1 ? value2 : super.get(index);
-        }
-
-        @Override
-        public void recycle() {
-            value1 = null;
-            value2 = null;
-
-            synchronized (Union2.class) {
-                if (sSize2 < LIMIT) {
-                    next = sPool2;
-                    sPool2 = this;
-                    sSize2++;
-                }
-            }
-        }
-    }
-
-    public static class Union3<T1, T2, T3> extends Union2<T1, T2> {
-
-        static Union3<?, ?, ?> sPool3;
-        static int sSize3;
-
-        public T3 value3;
-
-        Union3(T1 value1, T2 value2, T3 value3) {
-            super(value1, value2);
-            this.value3 = value3;
-        }
-
-        @Override
-        public int getCount() {
-            return 3;
-        }
-
-        @Override
-        public Object get(int index) {
-            return index == 2 ? value3 : super.get(index);
-        }
-
-        @Override
-        public void recycle() {
-            value1 = null;
-            value2 = null;
-            value3 = null;
-
-            synchronized (Union3.class) {
-                if (sSize3 < LIMIT) {
-                    next = sPool3;
-                    sPool3 = this;
-                    sSize3++;
-                }
-            }
-        }
-    }
-
-    public static class Union4<T1, T2, T3, T4> extends Union3<T1, T2, T3> {
-
-        static Union4<?, ?, ?, ?> sPool4;
-        static int sSize4;
-
-        public T4 value4;
-
-        Union4(T1 value1, T2 value2, T3 value3, T4 value4) {
-            super(value1, value2, value3);
-            this.value4 = value4;
-        }
-
-        @Override
-        public int getCount() {
-            return 4;
-        }
-
-        @Override
-        public Object get(int index) {
-            return index == 3 ? value4 : super.get(index);
-        }
-
-        @Override
-        public void recycle() {
-            value1 = null;
-            value2 = null;
-            value3 = null;
-            value4 = null;
-
-            synchronized (Union4.class) {
-                if (sSize4 < LIMIT) {
-                    next = sPool4;
-                    sPool4 = this;
-                    sSize4++;
-                }
-            }
-        }
-    }
-
-    public static class Union5<T1, T2, T3, T4, T5> extends Union4<T1, T2, T3, T4> {
-
-        static Union5<?, ?, ?, ?, ?> sPool5;
-        static int sSize5;
-
-        public T5 value5;
-
-        Union5(T1 value1, T2 value2, T3 value3, T4 value4, T5 value5) {
-            super(value1, value2, value3, value4);
-            this.value5 = value5;
-        }
-
-        @Override
-        public int getCount() {
-            return 5;
-        }
-
-        @Override
-        public Object get(int index) {
-            return index == 4 ? value5 : super.get(index);
-        }
-
-        @Override
-        public void recycle() {
-            value1 = null;
-            value2 = null;
-            value3 = null;
-            value4 = null;
-            value5 = null;
-
-            synchronized (Union5.class) {
-                if (sSize5 < LIMIT) {
-                    next = sPool5;
-                    sPool5 = this;
-                    sSize5++;
-                }
-            }
         }
     }
 }

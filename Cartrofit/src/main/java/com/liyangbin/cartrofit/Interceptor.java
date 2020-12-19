@@ -1,15 +1,67 @@
 package com.liyangbin.cartrofit;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-
-import androidx.annotation.NonNull;
-
 public interface Interceptor {
-    Object process(Command command, Object parameter);
 
-    default boolean checkCommand(Command command) {
-        return true;
+    Object process(InvokeSession session, Object parameter);
+
+    class InvokeSession {
+        ChainNode current;
+        final CallAdapter.Call call;
+        boolean cancelled;
+
+        InvokeSession(CallAdapter.Call call) {
+            this.call = call;
+        }
+
+        public final Object invoke(Object parameter) {
+            if (cancelled) {
+                throw new RuntimeException("Illegal invoke after cancel");
+            }
+            onInterceptPass(current.interceptor, parameter);
+            current = current.previous;
+            if (current != null) {
+                return current.doProcess(this, parameter);
+            } else {
+                onInterceptComplete(parameter);
+                return call.doInvoke(parameter);
+            }
+        }
+
+        public final void cancel() {
+            if (!cancelled) {
+                cancelled = true;
+                onInterceptCancel();
+            }
+        }
+
+        public CallAdapter.Call getCall() {
+            return this.call;
+        }
+
+        public void onInterceptStart(Object transact) {
+        }
+
+        public void onInterceptPass(Interceptor interceptor, Object transact) {
+        }
+
+        public void onInterceptCancel() {
+        }
+
+        public void onInterceptComplete(Object transact) {
+        }
+    }
+}
+
+class ChainNode {
+    final Interceptor interceptor;
+    ChainNode previous;
+
+    ChainNode(Interceptor interceptor) {
+        this.interceptor = interceptor;
+    }
+
+    Object doProcess(Interceptor.InvokeSession session, Object parameter) {
+        return interceptor.process(session, parameter);
     }
 }
 
@@ -49,84 +101,12 @@ class InterceptorChain {
         }
     }
 
-    Object doProcess(Command command, Object parameter) {
-        return top != null ? top.doProcess(command, parameter) : command.invoke(parameter);
-    }
-
-    private static class ChainNode implements Command {
-        private final Interceptor interceptor;
-        private ChainNode previous;
-        private Command command;
-
-        ChainNode(Interceptor interceptor) {
-            this.interceptor = interceptor;
+    Object doProcess(Interceptor.InvokeSession session, Object parameter) {
+        if (top != null) {
+            session.current = top;
+            session.onInterceptStart(parameter);
+            return top.doProcess(session, parameter);
         }
-
-        Object doProcess(Command command, Object parameter) {
-            this.command = command;
-            return interceptor.process(this, parameter);
-        }
-
-        @Override
-        public Object invoke(Object parameter) {
-            return previous != null ? previous.doProcess(this.command, parameter)
-                    : this.command.invoke(parameter);
-        }
-
-        @Override
-        public int getId() {
-            return command.getId();
-        }
-
-        @Override
-        public int getPropertyId() {
-            return command.getPropertyId();
-        }
-
-        @Override
-        public int getArea() {
-            return command.getArea();
-        }
-
-        @Override
-        public CommandType getType() {
-            return command.getType();
-        }
-
-        @Override
-        public String[] getCategory() {
-            return previous.getCategory();
-        }
-
-        @Override
-        public Method getMethod() {
-            return command.getMethod();
-        }
-
-        @Override
-        public Field getField() {
-            return command.getField();
-        }
-
-        @Override
-        public String getName() {
-            return command.getName();
-        }
-
-        @Override
-        public Class<?> getOutputType() {
-            return command.getOutputType();
-        }
-
-        @Override
-        public Class<?> getInputType() {
-            return command.getInputType();
-        }
-
-        @NonNull
-        @Override
-        public String toString() {
-            return command.toString();
-        }
+        return session.call.doInvoke(parameter);
     }
 }

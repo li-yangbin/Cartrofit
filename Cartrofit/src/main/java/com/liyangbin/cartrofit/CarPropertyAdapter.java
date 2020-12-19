@@ -30,19 +30,19 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
         if ((category & CallAdapter.CATEGORY_GET) != 0) {
             Get get = key.getAnnotation(Get.class);
             if (get != null) {
-                return new PropertyCall(key, scope, get);
+                return new PropertyCall(scope, get);
             }
         }
         if ((category & CallAdapter.CATEGORY_SET) != 0) {
             Set set = key.getAnnotation(Set.class);
             if (set != null) {
-                return new PropertyCall(key, scope, set);
+                return new PropertyCall(scope, set);
             }
         }
         if ((category & CallAdapter.CATEGORY_TRACK) != 0) {
             Track track = key.getAnnotation(Track.class);
             if (track != null) {
-                return new PropertyCall(key, scope, track);
+                return new PropertyCall(scope, track);
             }
         }
         return null;
@@ -139,7 +139,7 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
         }
     }
 
-    public class PropertyCall extends CallAdapter.Call {
+    public class PropertyCall extends CallAdapter.Call implements CallAdapter.FieldAccessible {
         static final int TYPE_SET = 0;
         static final int TYPE_GET = 1;
         static final int TYPE_TRACK = 2;
@@ -151,8 +151,7 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
 
         CarType carType;
 
-        PropertyCall(Cartrofit.Key key, Scope scope, Set set) {
-            super(key);
+        PropertyCall(Scope scope, Set set) {
             this.type = TYPE_SET;
             this.propertyId = set.id();
             this.areaId = resolveArea(set.area(), scope.area());
@@ -164,8 +163,7 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
             addCategory(CATEGORY_SET);
         }
 
-        PropertyCall(Cartrofit.Key key, Scope scope, Get get) {
-            super(key);
+        PropertyCall(Scope scope, Get get) {
             this.type = TYPE_GET;
             this.propertyId = get.id();
             this.areaId = resolveArea(get.area(), scope.area());
@@ -173,8 +171,7 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
             addCategory(CATEGORY_GET);
         }
 
-        PropertyCall(Cartrofit.Key key, Scope scope, Track track) {
-            super(key);
+        PropertyCall(Scope scope, Track track) {
             this.type = TYPE_TRACK;
             this.propertyId = track.id();
             this.areaId = resolveArea(track.area(), scope.area());
@@ -191,16 +188,16 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
         }
 
         @Override
-        public Object invoke(Object arg) {
+        public Object doInvoke(Object arg) {
             switch (type) {
                 case PropertyCall.TYPE_GET:
-                    return get(propertyId, areaId, carType);
+                    return CarPropertyAdapter.this.get(propertyId, areaId, carType);
                 case PropertyCall.TYPE_SET:
-                    set(propertyId, areaId,
+                    CarPropertyAdapter.this.set(propertyId, areaId,
                             buildInSetValue != null ? buildInSetValue : arg);
                     return null;
                 case PropertyCall.TYPE_TRACK:
-                    Flow<CarPropertyValue<?>> flow = track(propertyId, areaId);
+                    Flow<CarPropertyValue<?>> flow = CarPropertyAdapter.this.track(propertyId, areaId);
                     switch (carType) {
                         case VALUE:
                             return Flow.map(flow, CarPropertyValue::getValue);
@@ -212,6 +209,21 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
                     }
             }
             throw new RuntimeException("impossible situation. type:" + type);
+        }
+
+        @Override
+        public FieldAccessible asFieldAccessible() {
+            return this;
+        }
+
+        @Override
+        public void set(Object target, Object value) throws IllegalAccessException {
+            key.field.set(target, value);
+        }
+
+        @Override
+        public Object get(Object target) throws IllegalAccessException {
+            return key.field.get(target);
         }
     }
 }

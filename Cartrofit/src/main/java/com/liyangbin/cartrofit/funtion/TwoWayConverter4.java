@@ -1,9 +1,9 @@
 package com.liyangbin.cartrofit.funtion;
 
-public interface TwoWayConverter4<T1, T2, T3, T4, R> extends TwoWayConverter<Union.Union4<T1, T2, T3, T4>, R> {
+public interface TwoWayConverter4<T1, T2, T3, T4, R> extends TwoWayConverter<Union4<T1, T2, T3, T4>, R> {
 
     @Override
-    default R convert(Union.Union4<T1, T2, T3, T4> union) {
+    default R convert(Union4<T1, T2, T3, T4> union) {
         return convert(union.value1, union.value2, union.value3, union.value4);
     }
 

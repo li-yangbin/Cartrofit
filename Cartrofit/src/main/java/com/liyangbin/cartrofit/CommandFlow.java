@@ -741,22 +741,19 @@ class EmptyFlowWrapper extends FlowWrapper<Void> implements Flow.EmptyFlow {
 @SuppressWarnings("unchecked")
 class FlowWrapper<T> extends MediatorFlow<T, T> {
 
-    ArrayList<CommandReceive> receiverList = new ArrayList<>();
+    ArrayList<OnReceiveCall> receiverList = new ArrayList<>();
 
-    FlowWrapper(Flow<T> base, CommandReceive command) {
+    FlowWrapper(Flow<T> base, OnReceiveCall command) {
         this(base, null, command);
     }
 
-    FlowWrapper(Flow<T> base, Function<?, ?> function, CommandReceive receiver) {
+    FlowWrapper(Flow<T> base, Function<?, ?> function, OnReceiveCall receiver) {
         super(base, (Function<T, T>) function);
         addCommandReceiver(receiver);
     }
 
-    void addCommandReceiver(CommandReceive receiver) {
-        if (receiver != null) {
-            receiverList.add(receiver);
-            receiver.flowWrapper = (FlowWrapper<Object>) this;
-        }
+    void addCommandReceiver(OnReceiveCall receiver) {
+        receiverList.add(receiver);
     }
 
     @Override
@@ -764,12 +761,12 @@ class FlowWrapper<T> extends MediatorFlow<T, T> {
         if (receiverList.size() == 0) {
             super.handleResult(t);
         } else {
-            receiverList.get(0).invokeWithChain(t);
+            receiverList.get(0).invokeWithFlow((FlowWrapper<Object>) this, t);
         }
     }
 
-    void onReceiveComplete(CommandReceive receiver, T t) {
-        CommandReceive nextReceiver = null;
+    void onReceiveComplete(OnReceiveCall receiver, T t) {
+        OnReceiveCall nextReceiver = null;
         synchronized (this) {
             for (int i = 0; i < receiverList.size() - 1; i++) {
                 if (receiverList.get(i) == receiver) {
@@ -779,7 +776,7 @@ class FlowWrapper<T> extends MediatorFlow<T, T> {
             }
         }
         if (nextReceiver != null) {
-            nextReceiver.invokeWithChain(t);
+            nextReceiver.invokeWithFlow((FlowWrapper<Object>) this, t);
             return;
         }
         super.handleResult(t);
