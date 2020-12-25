@@ -11,6 +11,10 @@ import com.liyangbin.cartrofit.funtion.TwoWayConverter3;
 import com.liyangbin.cartrofit.funtion.TwoWayConverter4;
 import com.liyangbin.cartrofit.funtion.TwoWayConverter5;
 import com.liyangbin.cartrofit.funtion.Union;
+import com.liyangbin.cartrofit.funtion.Union2;
+import com.liyangbin.cartrofit.funtion.Union3;
+import com.liyangbin.cartrofit.funtion.Union4;
+import com.liyangbin.cartrofit.funtion.Union5;
 
 import java.lang.annotation.Annotation;
 
@@ -79,9 +83,21 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             return twoWayConverter != null ? twoWayConverter : converterIn;
         }
 
-        Converter<SERIALIZATION, ?> findOutputConverterByKey(Cartrofit.Key key) {
+        Converter<SERIALIZATION, ?> findOutputConverterByKey(Cartrofit.Key key, boolean flowMap) {
             if (key.isCallbackEntry) {
-
+                Class<?>[] inputTypes = key.getParameterType();
+                if (concernedTypes.length == inputTypes.length) {
+                    for (int i = 0; i < concernedTypes.length; i++) {
+                        if (!Cartrofit.classEquals(concernedTypes[i], inputTypes[i])) {
+                            return null;
+                        }
+                    }
+                }
+                return twoWayConverter != null ? twoWayConverter.reverseConverter() : converterOut;
+            } else if (flowMap) {
+                if (concernedTypes.length == 1 && concernedTypes[0] == key.getUserConcernClass()) {
+                    return twoWayConverter != null ? twoWayConverter.reverseConverter() : converterOut;
+                }
             } else {
                 if (concernedTypes.length == 1 && concernedTypes[0] == key.getReturnType()) {
                     return twoWayConverter != null ? twoWayConverter.reverseConverter() : converterOut;
@@ -134,7 +150,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             ConverterBuilder.this.onCommit(ConverterBuilder2.this);
         }
 
-        public void out(Converter<SERIALIZATION, Union.Union2<TARGET1, TARGET2>> converter) {
+        public void out(Converter<SERIALIZATION, Union2<TARGET1, TARGET2>> converter) {
             ConverterBuilder2.this.converterOut = converter;
             ConverterBuilder.this.onCommit(ConverterBuilder2.this);
         }
@@ -157,7 +173,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             ConverterBuilder.this.onCommit(ConverterBuilder3.this);
         }
 
-        public void out(Converter<SERIALIZATION, Union.Union3<TARGET1, TARGET2, TARGET3>> converter) {
+        public void out(Converter<SERIALIZATION, Union3<TARGET1, TARGET2, TARGET3>> converter) {
             ConverterBuilder3.this.converterOut = converter;
             ConverterBuilder.this.onCommit(ConverterBuilder3.this);
         }
@@ -180,7 +196,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             ConverterBuilder.this.onCommit(ConverterBuilder4.this);
         }
 
-        public void out(Converter<SERIALIZATION, Union.Union4<TARGET1, TARGET2, TARGET3, TARGET4>> converter) {
+        public void out(Converter<SERIALIZATION, Union4<TARGET1, TARGET2, TARGET3, TARGET4>> converter) {
             ConverterBuilder4.this.converterOut = converter;
             ConverterBuilder.this.onCommit(ConverterBuilder4.this);
         }
@@ -204,7 +220,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             ConverterBuilder.this.onCommit(ConverterBuilder5.this);
         }
 
-        public void out(Converter<SERIALIZATION, Union.Union5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5>> converter) {
+        public void out(Converter<SERIALIZATION, Union5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5>> converter) {
             ConverterBuilder5.this.converterOut = converter;
             ConverterBuilder.this.onCommit(ConverterBuilder5.this);
         }

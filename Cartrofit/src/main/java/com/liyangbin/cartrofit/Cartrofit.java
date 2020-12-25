@@ -66,9 +66,9 @@ public final class Cartrofit {
     private InterceptorChain mChainHead;
 
     private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
+    private final HashMap<Class<?>, FlowConverter<?>> mFlowConverterMap = new HashMap<>();
     private final HashMap<Key, CallAdapter.Call> mCallCache = new HashMap<>();
     private final ArrayList<CallAdapter> mCallAdapterList = new ArrayList<>();
-    private final ArrayList<FlowConverter<?>> mFlowConverters = new ArrayList<>();
     private final CallInflater mInflater = new CallInflater() {
         @Override
         public CallAdapter.Call inflateByIdIfThrow(Key key, int id, int category) {
@@ -107,7 +107,12 @@ public final class Cartrofit {
     }
 
     private Cartrofit() {
-        mFlowConverters.addAll(GLOBAL_CONVERTER);
+        for (int i = 0; i < GLOBAL_CONVERTER.size(); i++) {
+            FlowConverter<?> flowConverter = GLOBAL_CONVERTER.get(i);
+            Class<?> targetClass = findFlowConverterTarget(flowConverter);
+            mFlowConverterMap.put(targetClass, flowConverter);
+        }
+        mCallAdapterList.add(new BuildInCallAdapter());
     }
 
     private void append(Builder builder) {
@@ -116,7 +121,11 @@ public final class Cartrofit {
             adapter.setCallInflater(mInflater);
             mCallAdapterList.add(adapter);
         }
-        mFlowConverters.addAll(builder.flowConverters);
+        for (int i = 0; i < builder.flowConverters.size(); i++) {
+            FlowConverter<?> flowConverter = builder.flowConverters.get(i);
+            Class<?> targetClass = findFlowConverterTarget(flowConverter);
+            mFlowConverterMap.put(targetClass, flowConverter);
+        }
         for (int i = 0; i < builder.interceptors.size(); i++) {
             if (mChainHead == null) {
                 mChainHead = new InterceptorChain();
@@ -183,19 +192,13 @@ public final class Cartrofit {
         return null;
     }
 
-    private static int getParameterCount(Method method) {
+    static int getParameterCount(Method method) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             Class<?>[] classArray = method.getParameterTypes();
             return classArray != null ? classArray.length : 0;
         } else {
             return method.getParameterCount();
         }
-    }
-
-    static class InterestedAdapter {
-        CallAdapter adapter;
-        Object scopeObj;
-        ConverterFactory scopeConverterFactory
     }
 
     class ApiRecord<T> {
@@ -529,7 +532,36 @@ public final class Cartrofit {
         }
     }
 
+    FlowConverter<?> findFlowConverter(Class<?> target) {
+        return mFlowConverterMap.get(target);
+    }
+
+    static Class<?> findFlowConverterTarget(FlowConverter<?> converter) {
+        Objects.requireNonNull(converter);
+        Class<?> implementsBy = lookUp(converter.getClass(), FlowConverter.class);
+        if (implementsBy == null) {
+            throw new CartrofitGrammarException("invalid input converter:" + converter.getClass());
+        }
+        if (implementsBy.isSynthetic()) {
+            throw new CartrofitGrammarException("Do not use lambda expression in addConverter()");
+        }
+        Type[] ifTypes = implementsBy.getGenericInterfaces();
+        for (Type type : ifTypes) {
+            if (type instanceof ParameterizedType) {
+                ParameterizedType parameterizedType = (ParameterizedType) type;
+                if (parameterizedType.getRawType() == FlowConverter.class) {
+                    Type[] converterDeclaredType = parameterizedType.getActualTypeArguments();
+                    return getClassFromType(converterDeclaredType[0]);
+                }
+            }
+        }
+
+        throw new CartrofitGrammarException("invalid converter class:" + implementsBy
+                + " type:" + Arrays.toString(ifTypes));
+    }
+
     static class ConverterStore implements Cloneable {
+
         ArrayList<ConverterWrapper<?, ?>> converterWrapperList = new ArrayList<>();
         ConverterStore parentStore;
 
@@ -724,7 +756,7 @@ public final class Cartrofit {
         }
     }
 
-    public static void addGlobalConverter(FlowConverter<?>... converters) {
+    static void addGlobalConverter(FlowConverter<?>... converters) {
         GLOBAL_CONVERTER.addAll(Arrays.asList(converters));
     }
 
@@ -743,12 +775,13 @@ public final class Cartrofit {
                             throw new UnsupportedOperationException(
                                 "Do not declare any default method in Cartrofit interface");
                         }
-                        if (args != null && args.length > 1) {
-                            throw new UnsupportedOperationException(
-                                    "Do not declare any method with multiple parameters");
+                        final Union<?> parameter = Union.of(args);
+                        try {
+                            return getOrCreateCall(record, new Key(record, method, false))
+                                    .invoke(parameter);
+                        } finally {
+                            parameter.recycle();
                         }
-                        return getOrCreateCall(record, new Key(record, method, false))
-                                .invoke(args != null ? args[0] : null);
                     });
         }
         return record.apiObj;
@@ -764,13 +797,13 @@ public final class Cartrofit {
             if (record == null) {
 
                 ArrayList<Union3<CallAdapter, Object, ConverterFactory>> providerList = new ArrayList<>();
-                ConverterFactory scopeFactory = new ConverterFactory();
+                ConverterFactory scopeFactory = new ConverterFactory(this);
                 for (int i = 0; i < mCallAdapterList.size(); i++) {
                     CallAdapter adapter = mCallAdapterList.get(i);
                     Object scope = adapter.extractScope(api, scopeFactory);
                     if (scope != null) {
                         providerList.add(Union.of(adapter, scope, scopeFactory));
-                        scopeFactory = new ConverterFactory();
+                        scopeFactory = new ConverterFactory(this);
                     }
                 }
                 if (providerList.size() > 0) {
@@ -863,8 +896,6 @@ public final class Cartrofit {
         int trackReceiveArgIndex = -1;
 
         public final Field field;
-
-        public final Class<?> injectClass;
 
         ApiRecord<?> record;
 
@@ -1085,10 +1116,6 @@ public final class Cartrofit {
         }
 
         Class<?> getUserConcernClass() {
-            if (isCallbackEntry) {
-                Class<?>[] parameterClassArray = method.getParameterTypes();
-                return trackReceiveArgIndex > -1 ? parameterClassArray[trackReceiveArgIndex] : null;
-            }
             Type originalType = getTrackType();
             if (hasUnresolvableType(originalType)) {
                 throw new CartrofitGrammarException("Can not parse type:" + originalType + " from:" + this);

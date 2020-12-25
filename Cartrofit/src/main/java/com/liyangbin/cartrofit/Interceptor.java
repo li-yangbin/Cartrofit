@@ -23,7 +23,7 @@ public interface Interceptor {
                 return current.doProcess(this, parameter);
             } else {
                 onInterceptComplete(parameter);
-                return call.doInvoke(parameter);
+                return call.mapInvoke(parameter);
             }
         }
 
@@ -107,6 +107,6 @@ class InterceptorChain {
             session.onInterceptStart(parameter);
             return top.doProcess(session, parameter);
         }
-        return session.call.doInvoke(parameter);
+        return session.call.mapInvoke(parameter);
     }
 }

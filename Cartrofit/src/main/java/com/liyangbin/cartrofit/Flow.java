@@ -1,5 +1,7 @@
 package com.liyangbin.cartrofit;
 
+import com.liyangbin.cartrofit.funtion.Converter;
+
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -7,7 +9,7 @@ public interface Flow<T> {
     void addObserver(Consumer<T> consumer);
     void removeObserver(Consumer<T> consumer);
 
-    static <T, R> Flow<R> map(Flow<T> flow, Function<T, R> function) {
+    static <T, R> Flow<R> map(Flow<T> flow, Converter<T, R> function) {
         if (flow instanceof MediatorFlow) {
             ((MediatorFlow<T, T>) flow).addMediator(function);
             return (Flow<R>) flow;

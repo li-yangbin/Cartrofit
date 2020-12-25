@@ -1,42 +1,117 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.funtion.Union;
-import com.liyangbin.cartrofit.funtion.Union2;
 
-public class InjectGroupCall extends CallGroup<Union2<InjectCall, InjectCall.InjectInfo>> {
+public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
+
+    private final Entry[] parameterInject;
+
+    InjectGroupCall(int parameterCount) {
+        parameterInject = new Entry[parameterCount];
+    }
 
     void addChildInjectCall(int parameterIndex, InjectCall call, boolean doSet, boolean doGet) {
         if (doGet || doSet) {
             InjectCall.InjectInfo info = new InjectCall.InjectInfo();
             info.get = doGet;
             info.set = doSet;
-            info.parameterIndex = parameterIndex;
-            addChildCall(Union.of(call, info));
+            addChildCall(new Entry(parameterIndex, call, info));
         }
     }
 
     @Override
-    protected Object doInvoke(Object arg) {
+    public void addChildCall(Entry call) {
+        super.addChildCall(call);
+        parameterInject[call.parameterIndex] = call;
+    }
+
+    @Override
+    public void removeChildCall(Entry call) {
+        super.removeChildCall(call);
+        parameterInject[call.parameterIndex] = null;
+    }
+
+    void suppressGetAndExecute(Object object) {
+        final int childCount = getChildCount();
+        final boolean[] oldGet = new boolean[childCount];
+        for (int i = 0; i < childCount; i++) {
+            Entry entry = getChildAt(i);
+            oldGet[i] = entry.info.get;
+            entry.info.get = false;
+        }
+
+        invoke(object);
+
+        for (int i = 0; i < childCount; i++) {
+            Entry entry = getChildAt(i);
+            entry.info.get = oldGet[i];
+        }
+    }
+
+    void suppressSetAndExecute(Object object) {
+        final int childCount = getChildCount();
+        final boolean[] oldSet = new boolean[childCount];
+        for (int i = 0; i < childCount; i++) {
+            Entry entry = getChildAt(i);
+            oldSet[i] = entry.info.set;
+            entry.info.set = false;
+        }
+
+        invoke(object);
+
+        for (int i = 0; i < childCount; i++) {
+            Entry entry = getChildAt(i);
+            entry.info.set = oldSet[i];
+        }
+    }
+
+    InjectCall findInjectCallAtParameterIndex(int parameterIndex) {
+        InjectGroupCall.Entry entry = parameterIndex >= 0
+                && parameterIndex < parameterInject.length ? parameterInject[parameterIndex] : null;
+        return entry != null ? entry.call : null;
+    }
+
+    static class Entry {
+        InjectCall.InjectInfo info;
+        InjectCall call;
+        int parameterIndex;
+
+        Entry(int index, InjectCall call, InjectCall.InjectInfo info) {
+            this.info = info;
+            this.call = call;
+            this.parameterIndex = index;
+        }
+    }
+
+    @Override
+    protected Object doInvoke(Object parameter) {
         final int elementCount = getChildCount();
-        if (elementCount > 1 && arg instanceof Union) {
-            Union<?> union = (Union<?>) arg;
-            if (elementCount != union.getCount()) {
-                throw new RuntimeException("input parameter count doesn't match expected count"
-                        + elementCount + " arg:" + arg);
+        boolean invoke = false;
+        if (parameter instanceof Union) {
+            Union<?> union = (Union<?>) parameter;
+            for (int i = 0; i < union.getCount(); i++) {
+                Entry unit = parameterInject[i];
+                if (unit != null && (unit.info.get || unit.info.set)) {
+                    unit.info.target = union.get(i);
+                    unit.call.invoke(unit.info);
+                    unit.info.target = null;
+                    invoke = true;
+                }
             }
-            for (int i = 0; i < elementCount; i++) {
-                Union2<InjectCall, InjectCall.InjectInfo> unit = getChildAt(i);
-                unit.value2.target = arg;
-                unit.value1.invoke(unit.value2);
+        } else if (elementCount == 1 && !(parameter instanceof Union)) {
+            Entry unit = parameterInject[0];
+            if (unit != null && (unit.info.get || unit.info.set)) {
+                unit.info.target = parameter;
+                unit.call.invoke(unit.info);
+                unit.info.target = null;
+                invoke = true;
             }
-        } else if (elementCount == 1 && !(arg instanceof Union)) {
-            Union2<InjectCall, InjectCall.InjectInfo> unit = getChildAt(0);
-            unit.value2.target = arg;
-            unit.value1.invoke(unit.value2);
-            unit.value2.target = null;
         } else {
             throw new RuntimeException("impossible situation elementCount:"
-                    + elementCount + " arg:" + arg);
+                    + elementCount + " parameter:" + parameter);
+        }
+        if (!invoke) {
+            throw new RuntimeException("Invalid input parameter:" + parameter);
         }
         return null;
     }

@@ -8,12 +8,15 @@ public final class ConverterFactory {
 
     private final ArrayList<ConverterBuilder<?>.ConvertSolution> mSolutionList = new ArrayList<>();
     private ConverterFactory mParentFactory;
+    private final Cartrofit mCartrofit;
 
-    ConverterFactory() {
+    ConverterFactory(Cartrofit cartrofit) {
+        mCartrofit = cartrofit;
     }
 
     ConverterFactory(ConverterFactory parentFactory) {
         mParentFactory = parentFactory;
+        mCartrofit = parentFactory.mCartrofit;
     }
 
     public <SERIAL_TYPE> ConverterBuilder<SERIAL_TYPE> builder(Class<SERIAL_TYPE> serialTypeClass) {
@@ -35,13 +38,20 @@ public final class ConverterFactory {
         return mParentFactory != null ? mParentFactory.findInputConverterByKey(key) : null;
     }
 
-    Converter<?, ?> findOutputConverterByKey(Cartrofit.Key key) {
+    Converter<?, ?> findOutputConverterByKey(Cartrofit.Key key, boolean flowMap) {
         for (int i = 0; i < mSolutionList.size(); i++) {
-            Converter<?, ?> converter = mSolutionList.get(i).findOutputConverterByKey(key);
+            Converter<?, ?> converter = mSolutionList.get(i).findOutputConverterByKey(key, flowMap);
             if (converter != null) {
                 return converter;
             }
         }
-        return mParentFactory != null ? mParentFactory.findOutputConverterByKey(key) : null;
+        return mParentFactory != null ? mParentFactory.findOutputConverterByKey(key, flowMap) : null;
+    }
+
+    FlowConverter<?> findFlowConverter(Cartrofit.Key key) {
+        if (key.isCallbackEntry) {
+            return null;
+        }
+        return mCartrofit.findFlowConverter(key.getReturnType());
     }
 }

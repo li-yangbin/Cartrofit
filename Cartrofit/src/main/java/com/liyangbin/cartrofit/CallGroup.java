@@ -3,7 +3,7 @@ package com.liyangbin.cartrofit;
 import java.util.ArrayList;
 
 public abstract class CallGroup<T> extends CallAdapter.Call {
-    private final ArrayList<T> childrenCallList = new ArrayList<>();
+    ArrayList<T> childrenCallList = new ArrayList<>();
 
     public void addChildCall(T call) {
         childrenCallList.add(call);

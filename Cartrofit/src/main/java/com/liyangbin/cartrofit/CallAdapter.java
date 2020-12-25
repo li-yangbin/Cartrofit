@@ -29,7 +29,7 @@ public abstract class CallAdapter {
         mCallInflater = callInflater;
     }
 
-    public abstract Object extractScope(Class<?> scopeClass, ConverterFactory factory);
+    public abstract Object extractScope(Class<?> scopeClass, ConverterFactory scopeConverterSolutionFactory);
 
     public abstract Call onCreateCall(Object scopeObj, Cartrofit.Key key, int category);
 
@@ -63,6 +63,7 @@ public abstract class CallAdapter {
         InterceptorChain interceptorChain;
         private ConverterFactory converterFactory;
         protected Converter inputConverter;
+        protected FlowConverter<?> flowOutputConverter;
         protected Converter outputConverter;
 
         private ArrayList<Call> restoreSchedulerList = new ArrayList<>();
@@ -83,8 +84,19 @@ public abstract class CallAdapter {
 
             onInit(converterFactory = new ConverterFactory(scopeFactory));
 
-            inputConverter = converterFactory.findInputConverterByKey(key);
-            outputConverter = converterFactory.findInputConverterByKey(key);
+            if (hasCategory(CATEGORY_SET)) {
+                inputConverter = converterFactory.findInputConverterByKey(key);
+            }
+            boolean isGet = hasCategory(CATEGORY_GET);
+            boolean flowTrack = hasCategory(CATEGORY_TRACK);
+            if (isGet || flowTrack) {
+                if (flowTrack) {
+                    outputConverter = converterFactory.findOutputConverterByKey(key, true);
+                    flowOutputConverter = converterFactory.findFlowConverter(key);
+                } else {
+                    outputConverter = converterFactory.findOutputConverterByKey(key, false);
+                }
+            }
         }
 
         void setRestoreTarget(Call targetCall) {
@@ -150,9 +162,24 @@ public abstract class CallAdapter {
 
         public final Object invoke(Object arg) {
             if (interceptorChain != null) {
+                // TODO let sub-class override session creation
                 return interceptorChain.doProcess(new Interceptor.InvokeSession(this), arg);
             } else {
-                return doInvoke(arg);
+                return mapInvoke(arg);
+            }
+        }
+
+        public final Object mapInvoke(Object parameter) {
+            parameter = parameter != null && inputConverter != null ?
+                    inputConverter.convert(parameter) : parameter;
+            final Object result = doInvoke(parameter);
+            if (result instanceof Flow) {
+                Flow<?> flowResult = outputConverter != null ?
+                        Flow.map((Flow<?>)result, outputConverter) : (Flow<?>) result;
+                return flowOutputConverter != null ? flowOutputConverter.convert((Flow<Object>) flowResult) : flowResult;
+            } else {
+                return result != null && outputConverter != null ?
+                        outputConverter.convert(result) : result;
             }
         }
 

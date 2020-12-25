@@ -1,9 +1,7 @@
 package com.liyangbin.cartrofit;
 
-import java.lang.annotation.Annotation;
-
 @SuppressWarnings("unchecked")
-public abstract class TypedCallAdapter<SCOPE extends Annotation, CALL extends CallAdapter.Call> extends CallAdapter {
+public abstract class TypedCallAdapter<SCOPE, CALL extends CallAdapter.Call> extends CallAdapter {
 
     @Override
     public final Object extractScope(Class<?> scopeClass, ConverterFactory factory) {

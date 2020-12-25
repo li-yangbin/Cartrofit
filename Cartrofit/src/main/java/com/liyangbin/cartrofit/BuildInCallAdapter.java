@@ -26,11 +26,10 @@ public class BuildInCallAdapter extends CallAdapter {
     public Call onCreateCall(Object scopeObj, Cartrofit.Key key, int category) {
         Unregister unregister = category == CATEGORY_DEFAULT ? key.getAnnotation(Unregister.class) : null;
         if (unregister != null) {
-            CommandUnregister command = new CommandUnregister();
-            final int targetTrack = unregister.value();
-            command.setTrackCommand((UnTrackable) mCallInflater.inflateByIdIfThrow(key, targetTrack, category));
-            command.init(unregister, key);
-            return command;
+            UnregisterCall unregisterCall = new UnregisterCall();
+            unregisterCall.setRegisterCall((RegisterCall) mCallInflater
+                    .inflateByIdIfThrow(key, unregister.value(), CATEGORY_TRACK));
+            return unregisterCall;
         }
 
         Inject inject = (category & CATEGORY_INJECT) != 0 ? key.getAnnotation(Inject.class) : null;
@@ -41,18 +40,18 @@ public class BuildInCallAdapter extends CallAdapter {
         Combine combine = (category & (CATEGORY_TRACK | CATEGORY_GET)) != 0
                 ? key.getAnnotation(Combine.class) : null;
         if (combine != null) {
-            CommandCombine command = new CommandCombine();
+            CombineCall combineCall = new CombineCall();
             int[] elements = combine.elements();
             if (elements.length <= 1) {
                 throw new CartrofitGrammarException("Must declare more than one element on Combine:"
                         + key + " elements:" + Arrays.toString(elements));
             }
             for (int element : elements) {
-                CommandBase childCommand = mCallInflater.inflateByIdIfThrow(key, element, category);
-                command.addChildCommand(childCommand);
+                Call childCall = mCallInflater.inflateByIdIfThrow(key, element,
+                        CATEGORY_TRACK | CATEGORY_GET);
+                combineCall.addChildCall(childCall);
             }
-            command.init(combine, key);
-            return command;
+            return combineCall;
         }
 
         Register register = category == CATEGORY_DEFAULT ? key.getAnnotation(Register.class) : null;
@@ -64,7 +63,7 @@ public class BuildInCallAdapter extends CallAdapter {
             final RegisterCall registerCall = new RegisterCall();
             mCallInflater.inflateCallback(targetClass, CATEGORY_TRACK, call -> {
                 Call returnCall = mCallInflater.inflate(call.key, CATEGORY_RETURN);
-                Call parameterCall = mCallInflater.inflate(call.key, CATEGORY_INJECT);
+                Call parameterCall = createInjectCommand(key);
                 registerCall.addChildCall(call, returnCall, parameterCall);
             });
             if (registerCall.getChildCount() == 0) {
@@ -98,14 +97,19 @@ public class BuildInCallAdapter extends CallAdapter {
         if (key.method != null) {
             Class<?>[] parameterTypes = key.method.getParameterTypes();
             Annotation[][] annotationMatrix = key.method.getParameterAnnotations();
-            InjectGroupCall injectGroupCall = new InjectGroupCall();
+            InjectGroupCall injectGroupCall = null;
             for (int i = 0; i < parameterTypes.length; i++) {
                 boolean inDeclared = !key.isCallbackEntry && contains(annotationMatrix[i], In.class);
                 boolean outDeclared = contains(annotationMatrix[i], Out.class);
+
                 if (inDeclared || outDeclared) {
                     Class<?> targetClass = key.method.getParameterTypes()[i];
-
                     InjectCall injectCall = getOrCreateInjectCallByClass(targetClass);
+
+                    if (injectGroupCall == null) {
+                        injectGroupCall = new InjectGroupCall(parameterTypes.length);
+                    }
+
                     if (key.isCallbackEntry) {
                         injectGroupCall.addChildInjectCall(i, injectCall, true, false);
                     } else {
@@ -127,11 +131,10 @@ public class BuildInCallAdapter extends CallAdapter {
         }
         InjectCall injectCall = mInjectCallCache.get(clazz);
         if (injectCall == null) {
-            ReflectCall reflectCall = new ReflectCall();
-            injectCall = new InjectCall(0, reflectCall);
+            injectCall = new InjectCall(clazz);
             mCallInflater.inflateCallback(clazz, CATEGORY_SET | CATEGORY_GET | CATEGORY_TRACK,
-                    reflectCall::addChildCall);
-            if (reflectCall.getChildCount() == 0) {
+                    injectCall::addChildCall);
+            if (injectCall.getChildCount() == 0) {
                 throw new CartrofitGrammarException("Failed to parse Inject command from type:"
                         + clazz);
             }
@@ -140,20 +143,20 @@ public class BuildInCallAdapter extends CallAdapter {
         return injectCall;
     }
 
-    private void setupCallbackEntryCommandIfNeeded(Call entryCall, Cartrofit.Key key) {
-        if (key.isCallbackEntry) {
-            Call returnCall = mCallInflater.inflate(key, CATEGORY_RETURN);
-            Delegate returnDelegate = returnCommand == null ? key.getAnnotation(Delegate.class) : null;
-            if (returnDelegate != null && returnDelegate._return() != 0) {
-                CommandBase delegateTarget = mCallInflater.inflateById(key,
-                        returnDelegate._return(), CATEGORY_SET);
-                CommandDelegate returnDelegateCommand = new CommandDelegate();
-                returnDelegateCommand.setTargetCommand(delegateTarget);
-                returnCommand = returnDelegateCommand;
-            }
-            if (returnCommand != null) {
-                entryCommand.setReturnCommand(returnCommand);
-            }
-        }
-    }
+//    private void setupCallbackEntryCommandIfNeeded(Call entryCall, Cartrofit.Key key) {
+//        if (key.isCallbackEntry) {
+//            Call returnCall = mCallInflater.inflate(key, CATEGORY_RETURN);
+//            Delegate returnDelegate = returnCommand == null ? key.getAnnotation(Delegate.class) : null;
+//            if (returnDelegate != null && returnDelegate._return() != 0) {
+//                CommandBase delegateTarget = mCallInflater.inflateById(key,
+//                        returnDelegate._return(), CATEGORY_SET);
+//                CommandDelegate returnDelegateCommand = new CommandDelegate();
+//                returnDelegateCommand.setTargetCommand(delegateTarget);
+//                returnCommand = returnDelegateCommand;
+//            }
+//            if (returnCommand != null) {
+//                entryCommand.setReturnCommand(returnCommand);
+//            }
+//        }
+//    }
 }

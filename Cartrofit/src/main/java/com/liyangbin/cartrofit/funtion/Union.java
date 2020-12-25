@@ -10,6 +10,23 @@ public class Union<T> {
     static Union<?> sPool;
     static int sSize;
 
+    private static final Union<Void> NULL_UNION = new Union<Void>(null) {
+        @Override
+        public Object get(int index) {
+            throw new RuntimeException("impossible call");
+        }
+
+        @Override
+        public int getCount() {
+            return 0;
+        }
+
+        @Override
+        public void recycle() {
+            // ignore
+        }
+    };
+
     public T value1;
 
     Union<?> next;
@@ -29,7 +46,7 @@ public class Union<T> {
         return value1;
     }
 
-    void recycle() {
+    public void recycle() {
         value1 = null;
 
         synchronized (Union.class) {
@@ -41,27 +58,32 @@ public class Union<T> {
         }
     }
 
+    public static Union<?> of(Object obj) {
+        if (obj instanceof Union) {
+            return (Union<?>) obj;
+        } else {
+            synchronized (Union.class) {
+                if (Union.sPool == null) {
+                    return new Union<>(obj);
+                }
+                Union<Object> out = (Union<Object>) Union.sPool;
+                out.value1 = obj;
+
+                Union.sPool = out.next;
+                out.next = null;
+                Union.sSize--;
+                return out;
+            }
+        }
+    }
+
     public static Union<?> of(Object... array) {
         if (array == null || array.length == 0) {
-            return null;
+            return NULL_UNION;
         }
         switch (array.length) {
             case 1:
-                if (array[0] instanceof Union) {
-                    return (Union<?>) array[0];
-                }
-                synchronized (Union.class) {
-                    if (Union.sPool == null) {
-                        return new Union<>(array[0]);
-                    }
-                    Union<Object> out = (Union<Object>) Union.sPool;
-                    out.value1 = array[0];
-
-                    Union.sPool = out.next;
-                    out.next = null;
-                    Union.sSize--;
-                    return out;
-                }
+                return of(array[0]);
             case 2:
                 return of(array[0], array[1]);
             case 3:

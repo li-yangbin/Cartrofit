@@ -9,7 +9,7 @@ import java.util.HashMap;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-public class RegisterCall extends CallGroup<RegisterCall.Entry> implements UnTrackable {
+public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
     private final HashMap<Object, RegisterCallbackWrapper> callbackWrapperMapper = new HashMap<>();
 
@@ -22,6 +22,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> implements UnTra
         CallAdapter.Call call;
         CallAdapter.Call returnCall;
         InjectGroupCall injectCall;
+        Flow<Object> registeredCall;
 
         Entry(CallAdapter.Call call, CallAdapter.Call returnCall, InjectGroupCall injectCall) {
             this.call = call;
@@ -47,8 +48,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> implements UnTra
 //        return CommandType.REGISTER;
 //    }
 
-    @Override
-    public void untrack(Object callback) {
+    void untrack(Object callback) {
         RegisterCallbackWrapper wrapper = callbackWrapperMapper.remove(callback);
         if (wrapper != null) {
             wrapper.unregister();
@@ -71,7 +71,10 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> implements UnTra
                 Entry entry = getChildAt(i);
                 InnerObserver observer = new InnerObserver(entry, callbackObj);
                 commandObserverList.add(observer);
-                entry.call.invoke(observer);
+                if (entry.registeredCall == null) {
+                    entry.registeredCall = (Flow<Object>) entry.call.invoke(null);
+                }
+                entry.registeredCall.addObserver(observer);
             }
         }
 
@@ -79,8 +82,8 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> implements UnTra
             for (int i = 0; i < commandObserverList.size(); i++) {
                 Entry entry = getChildAt(i);
                 InnerObserver observer = commandObserverList.get(i);
-                if (observer != null) {
-                    ((UnTrackable) entry.call).untrack(observer);
+                if (observer != null && entry.registeredCall != null) {
+                    entry.registeredCall.removeObserver(observer);
                 }
             }
             commandObserverList.clear();
@@ -109,39 +112,34 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> implements UnTra
             if (dispatchProcessing) {
                 throw new IllegalStateException("Recursive invocation from:" + flowCall);
             }
-            Object result;
+            Union<?> union = Union.of(o);
             dispatchProcessing = true;
             try {
-                // TODO
-                final int parameterCount = outParameterList.size();
-                Object[] parameters = new Object[parameterCount];
-                for (int i = 0; i < parameterCount; i++) {
-                    CommandInject inject = outParameterList.get(i);
-                    if (inject != null) {
+                int parameterCount = Cartrofit.getParameterCount(method);
+                int injectCount = parameterInject != null ? parameterInject.getChildCount() : 0;
+                Object[] parameters = new Object[parameterCount + injectCount];
+                for (int i = 0, j = 0; i < parameters.length; i++) {
+                    InjectCall injectCall = parameterInject != null ?
+                            parameterInject.findInjectCallAtParameterIndex(i) : null;
+                    if (injectCall != null) {
                         try {
-                            parameters[i] = inject.getInputType().newInstance();
+                            parameters[i] = injectCall.targetClass.newInstance();
                         } catch (InstantiationException e) {
-                            throw new RuntimeException(e);
+                            e.printStackTrace();
                         }
                     } else {
-                        parameters[i] = o;
+                        parameters[i] = union.get(j++);
                     }
                 }
 
-                for (int i = 0; i < parameterCount; i++) {
-                    CommandInject inject = outParameterList.get(i);
-                    if (inject != null) {
-                        inject.suppressSetAndExecute(parameters[i]);
-                    }
+                if (parameterInject != null) {
+                    parameterInject.suppressSetAndExecute(union);
                 }
 
-                result = method.invoke(callbackObj, parameters);
+                Object result = method.invoke(callbackObj, parameters);
 
-                for (int i = 0; i < parameterCount; i++) {
-                    CommandInject inject = outParameterList.get(i);
-                    if (inject != null) {
-                        inject.suppressGetAndExecute(parameters[i]);
-                    }
+                if (parameterInject != null) {
+                    parameterInject.suppressGetAndExecute(union);
                 }
 
                 if (returnCall != null) {
