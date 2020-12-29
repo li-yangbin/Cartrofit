@@ -3,15 +3,15 @@ package com.liyangbin.cartrofit.call;
 import com.liyangbin.cartrofit.CallAdapter;
 
 public class DelegateCall extends Call {
-    Call targetCall;
+    private Call targetCall;
+
+    DelegateCall(Call targetCall) {
+        this.targetCall = targetCall.copyByHost(this);
+    }
 
     @Override
     public boolean hasCategory(int category) {
         return targetCall.hasCategory(category);
-    }
-
-    void setTargetCall(Call targetCall) {
-        this.targetCall = targetCall.copyByHost(this);
     }
 
     @Override

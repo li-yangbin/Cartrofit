@@ -3,6 +3,9 @@ package com.liyangbin.cartrofit;
 import com.liyangbin.cartrofit.call.Call;
 
 import java.lang.annotation.Annotation;
+import java.util.ArrayList;
+import java.util.function.BiFunction;
+import java.util.function.IntPredicate;
 
 public abstract class CallAdapter {
 
@@ -11,11 +14,11 @@ public abstract class CallAdapter {
     public static final int CATEGORY_TRACK = 1 << 2;
     public static final int CATEGORY_TRACK_EVENT = CATEGORY_TRACK | (1 << 3);
 
-    public static final int CATEGORY_REGISTER = 1 << 4;
-    public static final int CATEGORY_RETURN = 1 << 5;
-    public static final int CATEGORY_INJECT_IN = 1 << 6;
-    public static final int CATEGORY_INJECT_OUT = 1 << 7;
-    public static final int CATEGORY_INJECT = CATEGORY_INJECT_IN | CATEGORY_INJECT_OUT;
+//    public static final int CATEGORY_REGISTER = 1 << 4;
+//    public static final int CATEGORY_RETURN = 1 << 5;
+//    public static final int CATEGORY_INJECT_IN = 1 << 6;
+//    public static final int CATEGORY_INJECT_OUT = 1 << 7;
+//    public static final int CATEGORY_INJECT = CATEGORY_INJECT_IN | CATEGORY_INJECT_OUT;
 
     public static final int CATEGORY_DEFAULT = 0xffffffff;
 
@@ -25,9 +28,28 @@ public abstract class CallAdapter {
         mCallInflater = callInflater;
     }
 
+    public final class CallSolutionBuilder {
+        CallSolutionBuilder takeIf(IntPredicate intPredicate) {
+            return this;
+        }
+
+        <A extends Annotation> CallSolutionBuilder provide(Class<A> annotationClass,
+                                                           BiFunction<A, Cartrofit.Key, Call> provider) {
+            return provide(annotationClass, provider, false);
+        }
+
+        <A extends Annotation> CallSolutionBuilder provide(Class<A> annotationClass,
+                                                           BiFunction<A, Cartrofit.Key, Call> provider,
+                                                           boolean keepSearchingIfProvideNull) {
+            return this;
+        }
+    }
+
     public abstract Object extractScope(Class<?> scopeClass, ConverterFactory scopeConverterSolutionFactory);
 
     public abstract Call onCreateCall(Object scopeObj, Cartrofit.Key key, int category);
+
+    public abstract void getAnnotationCandidates(int category, ArrayList<Class<? extends Annotation>> outCandidates);
 
     public static <A extends Annotation> A findScopeByClass(Class<A> annotationClazz, Class<?> clazz) {
         A scope = clazz.getDeclaredAnnotation(annotationClazz);
@@ -49,208 +71,4 @@ public abstract class CallAdapter {
         void set(Object target, Object value) throws IllegalAccessException;
         Object get(Object target) throws IllegalAccessException;
     }
-
-//    public static abstract class Call implements Cloneable {
-//        private static final Timer sTimeOutTimer = new Timer("timeout-tracker");
-//        private static final long TIMEOUT_DELAY = 1500;
-//
-//        protected Cartrofit.Key key;
-//        protected int category;
-//        InterceptorChain interceptorChain;
-//        private ConverterFactory converterFactory;
-//        protected Converter inputConverter;
-//        protected FlowConverter<?> flowOutputConverter;
-//        protected Converter outputConverter;
-//
-//        private ArrayList<Call> restoreSchedulerList = new ArrayList<>();
-//        private Call restoreReceiver;
-//        private TimerTask task;
-//        private OnReceiveCall onReceiveCall;
-//        private boolean stickyTrackSupport;
-//        private Object mTag;
-//        private int id;
-//
-//        final void init(Cartrofit.Key key, ConverterFactory scopeFactory) {
-//            this.key = key;
-//
-//            if (hasCategory(CATEGORY_TRACK)) {
-//                onReceiveCall = new OnReceiveCall(this);
-//            }
-//
-//            if (key.field != null) {
-//                key.field.setAccessible(true);
-//            }
-//            id = key.record.loadId(key);
-//
-//            onInit(converterFactory = new ConverterFactory(scopeFactory));
-//
-//            if (hasCategory(CATEGORY_SET)) {
-//                inputConverter = converterFactory.findInputConverterByKey(key);
-//            }
-//            boolean isGet = hasCategory(CATEGORY_GET);
-//            boolean flowTrack = hasCategory(CATEGORY_TRACK);
-//            if (isGet || flowTrack) {
-//                if (flowTrack) {
-//                    outputConverter = converterFactory.findOutputConverterByKey(key, true);
-//                    flowOutputConverter = converterFactory.findFlowConverter(key);
-//                } else {
-//                    outputConverter = converterFactory.findOutputConverterByKey(key, false);
-//                }
-//            }
-//        }
-//
-//        void enableStickyTrack() {
-//            if (onReceiveCall != null) {
-//                stickyTrackSupport = true;
-//                onReceiveCall.enableSaveLatestData();
-//            }
-//        }
-//
-//        boolean isStickyTrackEnable() {
-//            return stickyTrackSupport;
-//        }
-//
-//        void setRestoreTarget(Call targetCall) {
-//            if (targetCall.hasCategory(CATEGORY_SET) && hasCategory(CATEGORY_TRACK)) {
-//                attachScheduler(targetCall);
-//                targetCall.attachReceiver(this);
-//            } else if (targetCall.hasCategory(CATEGORY_TRACK) && hasCategory(CATEGORY_SET)) {
-//                attachReceiver(targetCall);
-//                targetCall.attachScheduler(this);
-//            }
-//        }
-//
-//        void attachScheduler(Call restoreScheduler) {
-//            if (!restoreSchedulerList.contains(restoreScheduler)) {
-//                restoreSchedulerList.add(restoreScheduler);
-//                if (restoreSchedulerList.size() == 1) {
-//                    onReceiveCall.enableSaveLatestData();
-//                    onReceiveCall.addInterceptor((command, parameter) -> {
-//                        synchronized (Call.this) {
-//                            if (task != null) {
-//                                task.cancel();
-//                                task = null;
-//                            }
-//                        }
-//                        return command.invoke(parameter);
-//                    }, false);
-//                }
-//                restoreScheduler.addInterceptor((command, parameter) -> {
-//                    if (onReceiveCall.hasHistoricalData()) {
-//                        synchronized (Call.this) {
-//                            if (task != null) {
-//                                task.cancel();
-//                            }
-//                            sTimeOutTimer.schedule(task = new TimerTask() {
-//                                @Override
-//                                public void run() {
-//                                    synchronized (Call.this) {
-//                                        onReceiveCall.restoreDispatch();
-//                                    }
-//                                }
-//                            }, TIMEOUT_DELAY);
-//                        }
-//                    }
-//                    return command.invoke(parameter);
-//                }, true);
-//            }
-//        }
-//
-//        void attachReceiver(Call restoreReceiver) {
-//            this.restoreReceiver = restoreReceiver;
-//        }
-//
-//        public void onInit(ConverterFactory scopeFactory) {
-//        }
-//
-//        protected final void addCategory(int category) {
-//            this.category |= category;
-//        }
-//
-//        public FieldAccessible asFieldAccessible() {
-//            return null;
-//        }
-//
-//        public Object onLoadStickyValue() {
-//            return null;
-//        }
-//
-//        public final Object invoke(Object arg) {
-//            if (interceptorChain != null) {
-//                return interceptorChain.doProcess(onCreateInvokeSession(), arg);
-//            } else {
-//                return mapInvoke(arg);
-//            }
-//        }
-//
-//        @SuppressWarnings("unchecked")
-//        Object mapInvoke(Object parameter) {
-//            parameter = parameter != null && inputConverter != null ?
-//                    inputConverter.convert(parameter) : parameter;
-//            final Object result = doInvoke(parameter);
-//            if (result instanceof Flow) {
-//                Flow<?> flowResult = (Flow<?>) result;
-//                if (stickyTrackSupport) {
-//                    flowResult = flowResult.sticky();
-//                }
-//                flowResult = flowResult.untilReceive(onReceiveCall);
-//                flowResult = outputConverter != null ? flowResult.map(outputConverter) : flowResult;
-//                return flowOutputConverter != null ?
-//                        flowOutputConverter.convert((Flow<Object>) flowResult) : flowResult;
-//            } else {
-//                return result != null && outputConverter != null ?
-//                        outputConverter.convert(result) : result;
-//            }
-//        }
-//
-//        protected abstract Object doInvoke(Object arg);
-//
-//        protected Interceptor.InvokeSession onCreateInvokeSession() {
-//            return new Interceptor.InvokeSession(this);
-//        }
-//
-//        public Call copyByHost(Call host) {
-//            try {
-//                Call call = (Call) clone();
-//                call.inputConverter = null;
-//                call.outputConverter = null;
-//                return call;
-//            } catch (CloneNotSupportedException error) {
-//                throw new RuntimeException(error);
-//            }
-//        }
-//
-//        public final Method getMethod() {
-//            return key.method;
-//        }
-//
-//        void addInterceptor(Interceptor interceptor, boolean toBottom) {
-//            if (interceptorChain != null) {
-//                if (toBottom) {
-//                    interceptorChain.addInterceptorToBottom(interceptor);
-//                } else {
-//                    interceptorChain.addInterceptor(interceptor);
-//                }
-//            } else {
-//                interceptorChain = new InterceptorChain(interceptor);
-//            }
-//        }
-//
-//        public boolean hasCategory(int category) {
-//            return (this.category & category) != 0;
-//        }
-//
-//        public void setTag(Object obj) {
-//            mTag = obj;
-//        }
-//
-//        @SuppressWarnings("unchecked")
-//        public <T> T getTag() {
-//            return (T) mTag;
-//        }
-//
-//        public final int getId() {
-//            return id;
-//        }
-//    }
 }

@@ -2,24 +2,24 @@ package com.liyangbin.cartrofit.call;
 
 public interface Interceptor {
 
-    Object process(InvokeSession session, Object parameter);
+    Object process(InvokeSession session, Object transact);
 
     class InvokeSession {
         ChainNode current;
         final Call call;
         boolean cancelled;
 
-        public final Object invoke(Object parameter) {
+        public final Object invoke(Object transact) {
             if (cancelled) {
                 throw new RuntimeException("Illegal invoke after cancel");
             }
-            onInterceptPass(current.interceptor, parameter);
+            onInterceptPass(current.interceptor, transact);
             current = current.previous;
             if (current != null) {
-                return current.doProcess(this, parameter);
+                return current.doProcess(this, transact);
             } else {
-                onInterceptComplete(parameter);
-                return call.mapInvoke(parameter);
+                onInterceptComplete(transact);
+                return call.mapInvoke(transact);
             }
         }
 
@@ -38,7 +38,7 @@ public interface Interceptor {
             return false;
         }
 
-        public Call getCall() {
+        public final Call getCall() {
             return this.call;
         }
 
@@ -64,8 +64,8 @@ class ChainNode {
         this.interceptor = interceptor;
     }
 
-    Object doProcess(Interceptor.InvokeSession session, Object parameter) {
-        return interceptor.process(session, parameter);
+    Object doProcess(Interceptor.InvokeSession session, Object transact) {
+        return interceptor.process(session, transact);
     }
 }
 
@@ -102,12 +102,12 @@ class InterceptorChain {
         }
     }
 
-    Object doProcess(Interceptor.InvokeSession session, Object parameter) {
+    Object doProcess(Interceptor.InvokeSession session, Object transact) {
         if (top != null) {
             session.current = top;
-            session.onInterceptStart(parameter);
-            return top.doProcess(session, parameter);
+            session.onInterceptStart(transact);
+            return top.doProcess(session, transact);
         }
-        return session.call.mapInvoke(parameter);
+        return session.call.mapInvoke(transact);
     }
 }

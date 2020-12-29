@@ -31,7 +31,7 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
         parameterInject[call.parameterIndex] = null;
     }
 
-    void suppressGetAndExecute(Object object) {
+    void suppressGetAndInvoke(Object object) {
         final int childCount = getChildCount();
         final boolean[] oldGet = new boolean[childCount];
         for (int i = 0; i < childCount; i++) {
@@ -48,7 +48,7 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
         }
     }
 
-    void suppressSetAndExecute(Object object) {
+    void suppressSetAndInvoke(Object object) {
         final int childCount = getChildCount();
         final boolean[] oldSet = new boolean[childCount];
         for (int i = 0; i < childCount; i++) {
@@ -98,7 +98,7 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
                     invoke = true;
                 }
             }
-        } else if (elementCount == 1 && !(parameter instanceof Union)) {
+        } else if (elementCount == 1) {
             Entry unit = parameterInject[0];
             if (unit != null && (unit.info.get || unit.info.set)) {
                 unit.info.target = parameter;

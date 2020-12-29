@@ -5,6 +5,5 @@ public enum CarType {
     AVAILABILITY, // CarPropertyValue.getStatus() == CarPropertyValue.STATUS_AVAILABLE
     ALL, // CarPropertyValue
     CONFIG, // CarPropertyConfig
-    NONE,
-    NO_SET
+    NONE
 }

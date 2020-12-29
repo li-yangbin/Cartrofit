@@ -145,13 +145,13 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
                 }
 
                 if (parameterInject != null) {
-                    parameterInject.suppressSetAndExecute(union);
+                    parameterInject.suppressSetAndInvoke(union);
                 }
 
                 Object result = method.invoke(callbackObj, parameters);
 
                 if (parameterInject != null) {
-                    parameterInject.suppressGetAndExecute(union);
+                    parameterInject.suppressGetAndInvoke(union);
                 }
 
                 if (returnCall != null) {

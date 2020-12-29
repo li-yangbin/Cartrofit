@@ -4,6 +4,7 @@ import com.liyangbin.cartrofit.CallAdapter;
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.ConverterFactory;
+import com.liyangbin.cartrofit.annotation.Category;
 import com.liyangbin.cartrofit.annotation.Combine;
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.In;
@@ -13,6 +14,7 @@ import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Unregister;
 
 import java.lang.annotation.Annotation;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 
@@ -36,7 +38,7 @@ public class BuildInCallAdapter extends CallAdapter {
             return unregisterCall;
         }
 
-        Inject inject = (category & CATEGORY_INJECT) != 0 ? key.getAnnotation(Inject.class) : null;
+        Inject inject = category == CATEGORY_DEFAULT ? key.getAnnotation(Inject.class) : null;
         if (inject != null) {
             return createInjectCommand(key);
         }
@@ -52,7 +54,7 @@ public class BuildInCallAdapter extends CallAdapter {
             }
             for (int element : elements) {
                 Call childCall = mCallInflater.inflateByIdIfThrow(key, element,
-                        CATEGORY_TRACK | CATEGORY_GET);
+                        category & (CATEGORY_TRACK | CATEGORY_GET));
                 combineCall.addChildCall(childCall);
             }
             return combineCall;
@@ -66,7 +68,7 @@ public class BuildInCallAdapter extends CallAdapter {
             }
             final RegisterCall registerCall = new RegisterCall();
             mCallInflater.inflateCallback(targetClass, CATEGORY_TRACK, call -> {
-                Call returnCall = mCallInflater.inflate(call.key, CATEGORY_RETURN);
+                Call returnCall = mCallInflater.inflate(call.key, CATEGORY_SET);
                 Call parameterCall = createInjectCommand(key);
                 registerCall.addChildCall(call, returnCall, parameterCall);
             });
@@ -80,9 +82,7 @@ public class BuildInCallAdapter extends CallAdapter {
         if (delegate != null) {
             Call delegateTarget = mCallInflater.inflateById(key, delegate.value(), category);
             if (delegateTarget != null) {
-                DelegateCall call = new DelegateCall();
-                call.setTargetCall(delegateTarget);
-                return call;
+                return new DelegateCall(delegateTarget);
             }
         }
         return null;
@@ -139,7 +139,7 @@ public class BuildInCallAdapter extends CallAdapter {
             mCallInflater.inflateCallback(clazz, CATEGORY_SET | CATEGORY_GET | CATEGORY_TRACK,
                     injectCall::addChildCall);
             if (injectCall.getChildCount() == 0) {
-                throw new CartrofitGrammarException("Failed to parse Inject command from type:"
+                throw new CartrofitGrammarException("Failed to parse Inject call from type:"
                         + clazz);
             }
             mInjectCallCache.put(clazz, injectCall);
@@ -147,7 +147,20 @@ public class BuildInCallAdapter extends CallAdapter {
         return injectCall;
     }
 
-//    private void setupCallbackEntryCommandIfNeeded(Call entryCall, Cartrofit.Key key) {
+    @Override
+    public void getAnnotationCandidates(int category, ArrayList<Class<? extends Annotation>> outCandidates) {
+        outCandidates.add(Delegate.class);
+        if (category == CATEGORY_DEFAULT) {
+            outCandidates.add(Register.class);
+            outCandidates.add(Unregister.class);
+            outCandidates.add(Inject.class);
+        }
+        if ((category & (CATEGORY_TRACK | CATEGORY_GET)) != 0) {
+            outCandidates.add(Combine.class);
+        }
+    }
+
+    //    private void setupCallbackEntryCommandIfNeeded(Call entryCall, Cartrofit.Key key) {
 //        if (key.isCallbackEntry) {
 //            Call returnCall = mCallInflater.inflate(key, CATEGORY_RETURN);
 //            Delegate returnDelegate = returnCommand == null ? key.getAnnotation(Delegate.class) : null;

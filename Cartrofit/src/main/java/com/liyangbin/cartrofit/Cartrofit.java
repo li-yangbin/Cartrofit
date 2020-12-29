@@ -24,7 +24,6 @@ import com.liyangbin.cartrofit.call.Call;
 import com.liyangbin.cartrofit.call.Interceptor;
 import com.liyangbin.cartrofit.funtion.Consumer;
 import com.liyangbin.cartrofit.funtion.Union;
-import com.liyangbin.cartrofit.funtion.Union3;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
@@ -57,6 +56,7 @@ public final class Cartrofit {
     private final HashMap<Key, Call> mCallCache = new HashMap<>();
     private final ArrayList<CallAdapter> mCallAdapterList = new ArrayList<>();
     private final HashMap<String, ArrayList<Interceptor>> mInterceptorByCategory = new HashMap<>();
+    private final BuildInCallAdapter mBuildInCallAdapter = new BuildInCallAdapter();
     private final CallInflater mInflater = new CallInflater() {
         @Override
         public Call inflateByIdIfThrow(Key key, int id, int category) {
@@ -100,7 +100,7 @@ public final class Cartrofit {
             Class<?> targetClass = findFlowConverterTarget(flowConverter);
             mFlowConverterMap.put(targetClass, flowConverter);
         }
-        mCallAdapterList.add(new BuildInCallAdapter());
+        mBuildInCallAdapter.setCallInflater(mInflater);
     }
 
     private void append(Builder builder) {
@@ -206,11 +206,15 @@ public final class Cartrofit {
         HashMap<Integer, Method> selfDependency = new HashMap<>();
         HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
 
-        ArrayList<Union3<CallAdapter, Object, ConverterFactory>> providerList;
+        CallAdapter callAdapter;
+        Object scopeObj;
+        ConverterFactory scopeFactory;
 
-        ApiRecord(ArrayList<Union3<CallAdapter, Object, ConverterFactory>> providerList, Class<T> clazz) {
+        ApiRecord(CallAdapter adapter, Object scopeObj, ConverterFactory scopeFactory, Class<T> clazz) {
+            this.callAdapter = adapter;
+            this.scopeObj = scopeObj;
+            this.scopeFactory = scopeFactory;
             this.clazz = clazz;
-            this.providerList = providerList;
 
             if (clazz.isAnnotationPresent(GenerateId.class)) {
                 try {
@@ -223,46 +227,44 @@ public final class Cartrofit {
         }
 
         Call createAdapterCall(Key key, int category) {
-            for (int i = providerList.size() - 1; i >= 0; i--) {
-                Union3<CallAdapter, Object, ConverterFactory> union3 = providerList.get(i);
-                Call call = union3.value1.onCreateCall(union3.value2, key, category);
-                if (call != null) {
-                    call.init(key, union3.value3);
+            Call call = callAdapter.onCreateCall(scopeObj, key, category);
+            if (call == null) {
+                call = mBuildInCallAdapter.onCreateCall(scopeObj, key, category);
+            }
+            if (call != null) {
+                call.init(key, scopeFactory);
 
-                    for (int j = 0; j < mGlobalInterceptorList.size(); j++) {
-                        call.addInterceptor(mGlobalInterceptorList.get(j), false);
-                    }
-                    Category categoryAnnotation = key.getAnnotation(Category.class);
-                    if (categoryAnnotation != null) {
-                        for (String categoryByUser : categoryAnnotation.value()) {
-                            ArrayList<Interceptor> interceptorList = mInterceptorByCategory
-                                    .get(categoryByUser);
-                            if (interceptorList != null) {
-                                for (int j = 0; j < interceptorList.size(); j++) {
-                                    call.addInterceptor(interceptorList.get(j), false);
-                                }
+                for (int i = 0; i < mGlobalInterceptorList.size(); i++) {
+                    call.addInterceptor(mGlobalInterceptorList.get(i), false);
+                }
+                Category categoryAnnotation = key.getAnnotation(Category.class);
+                if (categoryAnnotation != null) {
+                    for (String categoryByUser : categoryAnnotation.value()) {
+                        ArrayList<Interceptor> interceptorList = mInterceptorByCategory
+                                .get(categoryByUser);
+                        if (interceptorList != null) {
+                            for (int i = 0; i < interceptorList.size(); i++) {
+                                call.addInterceptor(interceptorList.get(i), false);
                             }
                         }
                     }
+                }
 
-                    boolean hasSet = call.hasCategory(CallAdapter.CATEGORY_SET);
-                    boolean hasTrack = call.hasCategory(CallAdapter.CATEGORY_TRACK);
-                    if (hasSet ^ hasTrack) {
-                        Restore restore = key.getAnnotation(Restore.class);
-                        if (restore != null) {
-                            call.setRestoreTarget(getOrCreateCall(key.record, key,
-                                    hasSet ? CallAdapter.CATEGORY_TRACK : CallAdapter.CATEGORY_SET));
-                        }
+                boolean hasSet = call.hasCategory(CallAdapter.CATEGORY_SET);
+                boolean hasTrack = call.hasCategory(CallAdapter.CATEGORY_TRACK);
+                if (hasSet ^ hasTrack) {
+                    Restore restore = key.getAnnotation(Restore.class);
+                    if (restore != null) {
+                        call.setRestoreTarget(getOrCreateCall(key.record, key,
+                                hasSet ? CallAdapter.CATEGORY_TRACK : CallAdapter.CATEGORY_SET));
                     }
+                }
 
-                    if (hasTrack && key.isAnnotationPresent(Sticky.class)) {
-                        call.enableStickyTrack();
-                    }
-
-                    return call;
+                if (hasTrack && key.isAnnotationPresent(Sticky.class)) {
+                    call.enableStickyTrack();
                 }
             }
-            return null;
+            return call;
         }
 
         void importDependency(Class<?> target) {
@@ -441,7 +443,7 @@ public final class Cartrofit {
             return this;
         }
 
-        public <T> Builder addFlowConverter(FlowConverter<T> converter) {
+        public Builder addFlowConverter(FlowConverter<?> converter) {
             flowConverters.add(converter);
             return this;
         }
@@ -462,11 +464,11 @@ public final class Cartrofit {
     }
 
     private <T> T fromInternal(Class<T> api) {
-        ApiRecord<T> record = getApi(api, true);
-        if (record.apiObj != null) {
-            return record.apiObj;
-        }
         synchronized (mApiCache) {
+            ApiRecord<T> record = getApi(api, true);
+            if (record.apiObj != null) {
+                return record.apiObj;
+            }
             record.apiObj = (T) Proxy.newProxyInstance(api.getClassLoader(), new Class<?>[]{api},
                     (proxy, method, args) -> {
                         if (method.getDeclaringClass() == Object.class) {
@@ -476,16 +478,19 @@ public final class Cartrofit {
                             throw new UnsupportedOperationException(
                                 "Do not declare any default method in Cartrofit interface");
                         }
+                        Call call;
+                        synchronized (mApiCache) {
+                            call = getOrCreateCall(record, new Key(record, method, false));
+                        }
                         final Union<?> parameter = Union.of(args);
                         try {
-                            return getOrCreateCall(record, new Key(record, method, false))
-                                    .invoke(parameter);
+                            return call.invoke(parameter);
                         } finally {
                             parameter.recycle();
                         }
                     });
+            return record.apiObj;
         }
-        return record.apiObj;
     }
 
     private <T> ApiRecord<T> getApi(Class<T> api) {
@@ -493,30 +498,23 @@ public final class Cartrofit {
     }
 
     private <T> ApiRecord<T> getApi(Class<T> api, boolean throwIfNotDeclareScope) {
-        synchronized (mApiCache) {
-            ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
-            if (record == null) {
-
-                ArrayList<Union3<CallAdapter, Object, ConverterFactory>> providerList = new ArrayList<>();
-                ConverterFactory scopeFactory = new ConverterFactory(this);
-                for (int i = 0; i < mCallAdapterList.size(); i++) {
-                    CallAdapter adapter = mCallAdapterList.get(i);
-                    Object scope = adapter.extractScope(api, scopeFactory);
-                    if (scope != null) {
-                        providerList.add(Union.of(adapter, scope, scopeFactory));
-                        scopeFactory = new ConverterFactory(this);
-                    }
-                }
-                if (providerList.size() > 0) {
-                    record = new ApiRecord<>(providerList, api);
+        ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
+        if (record == null) {
+            ConverterFactory scopeFactory = new ConverterFactory(this);
+            for (int i = 0; i < mCallAdapterList.size(); i++) {
+                CallAdapter adapter = mCallAdapterList.get(i);
+                Object scope = adapter.extractScope(api, scopeFactory);
+                if (scope != null) {
+                    record = new ApiRecord(adapter, scope, scopeFactory, api);
                     mApiCache.put(api, record);
-                }
-                if (record == null && throwIfNotDeclareScope) {
-                    throw new CartrofitGrammarException("Do declare CarApi annotation in class:" + api);
+                    return record;
                 }
             }
-            return record;
+            if (throwIfNotDeclareScope) {
+                throw new CartrofitGrammarException("Do declare CarApi annotation in class:" + api);
+            }
         }
+        return record;
     }
 
     public interface CallInflater {
@@ -527,11 +525,11 @@ public final class Cartrofit {
     }
 
     private Call getOrCreateCall(ApiRecord<?> record, Key key) {
-        Call command = getOrCreateCall(record, key, CallAdapter.CATEGORY_DEFAULT);
-        if (command == null) {
-            throw new CartrofitGrammarException("Can not parse command from:" + key);
+        Call call = getOrCreateCall(record, key, CallAdapter.CATEGORY_DEFAULT);
+        if (call == null) {
+            throw new CartrofitGrammarException("Can not parse call from:" + key);
         }
-        return command;
+        return call;
     }
 
     private Call getOrCreateCallById(ApiRecord<?> record, int id, int flag,
@@ -544,27 +542,22 @@ public final class Cartrofit {
             }
             return getOrCreateCallById(getApi(apiClass, true), id, flag, throwIfNotFound);
         }
-        Call command = getOrCreateCall(record, new Key(record, method, false), flag);
-        if (throwIfNotFound && command == null) {
+        Call call = getOrCreateCall(record, new Key(record, method, false), flag);
+        if (throwIfNotFound && call == null) {
             throw new CartrofitGrammarException("Can not resolve target Id:" + id
                     + " in specific type from:" + this);
         }
-        return command;
+        return call;
     }
 
     private Call getOrCreateCall(ApiRecord<?> record, Key key, int flag) {
-        Call call;
-        synchronized (mApiCache) {
-            call = mCallCache.get(key);
-            if (call != null) {
-                return call;
-            }
-            key.doQualifyCheck();
-
-            call = record.createAdapterCall(key, flag);
-            if (call != null) {
-                mCallCache.put(key, call);
-            }
+        Call call = mCallCache.get(key);
+        if (call != null) {
+            return call;
+        }
+        call = record.createAdapterCall(key, flag);
+        if (call != null) {
+            mCallCache.put(key, call);
         }
         return call;
     }
@@ -587,7 +580,7 @@ public final class Cartrofit {
         public final Field field;
 
         ApiRecord<?> record;
-        private int mId;
+        private int mId = -1;
 
         Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
             this.record = record;
@@ -604,13 +597,13 @@ public final class Cartrofit {
         }
 
         public int getId() {
-            if (mId != 0) {
+            if (mId != -1) {
                 return mId;
             }
             if (method == null) {
                 return 0;
             }
-            return record.selfDependencyReverse.getOrDefault(method, 0);
+            return mId = record.selfDependencyReverse.getOrDefault(method, 0);
         }
 
         boolean isInvalid() {
@@ -624,7 +617,7 @@ public final class Cartrofit {
             }
         }
 
-        void doQualifyCheck() {
+        void doQualifyCheck(Class<? extends Annotation>[] concerned) {
             boolean qualified = false;
             int checkIndex = 0;
             Class<? extends Annotation>[] checkMap = method != null ?
@@ -695,7 +688,7 @@ public final class Cartrofit {
                 }
             } else if (field != null && Modifier.isFinal(field.getModifiers())
                     && isAnnotationPresent(Set.class)) {
-                throw new CartrofitGrammarException("Invalid key:" + this + " in command Inject");
+                throw new CartrofitGrammarException("Invalid key:" + this + " in call Inject");
             }
             if (isInvalid()) {
                 throw new CartrofitGrammarException("Invalid key:" + this);
@@ -821,9 +814,7 @@ public final class Cartrofit {
             if (dataAnnotation != null) {
                 userTargetType = dataAnnotation.type();
             } else {
-                synchronized (WRAPPER_CLASS_MAP) {
-                    userTargetType = WRAPPER_CLASS_MAP.get(wrapperClass);
-                }
+                userTargetType = WRAPPER_CLASS_MAP.get(wrapperClass);
             }
             if (userTargetType == null && originalType instanceof ParameterizedType) {
                 Type[] typeArray = ((ParameterizedType) originalType).getActualTypeArguments();

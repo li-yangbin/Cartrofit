@@ -89,17 +89,17 @@ public abstract class Call implements Cloneable {
             restoreSchedulerList.add(restoreScheduler);
             if (restoreSchedulerList.size() == 1) {
                 onReceiveCall.enableSaveLatestData();
-                onReceiveCall.addInterceptor((command, parameter) -> {
+                onReceiveCall.addInterceptor((call, parameter) -> {
                     synchronized (Call.this) {
                         if (task != null) {
                             task.cancel();
                             task = null;
                         }
                     }
-                    return command.invoke(parameter);
+                    return call.invoke(parameter);
                 }, false);
             }
-            restoreScheduler.addInterceptor((command, parameter) -> {
+            restoreScheduler.addInterceptor((call, parameter) -> {
                 if (onReceiveCall.hasHistoricalData()) {
                     synchronized (Call.this) {
                         if (task != null) {
@@ -115,7 +115,7 @@ public abstract class Call implements Cloneable {
                         }, TIMEOUT_DELAY);
                     }
                 }
-                return command.invoke(parameter);
+                return call.invoke(parameter);
             }, true);
         }
     }
@@ -178,6 +178,7 @@ public abstract class Call implements Cloneable {
             Call call = (Call) clone();
             call.inputConverter = null;
             call.outputConverter = null;
+            call.flowOutputConverter = null;
             return call;
         } catch (CloneNotSupportedException error) {
             throw new RuntimeException(error);

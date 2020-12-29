@@ -9,6 +9,9 @@ import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
 import com.liyangbin.cartrofit.call.Call;
 
+import java.lang.annotation.Annotation;
+import java.util.ArrayList;
+
 public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarPropertyAdapter.PropertyCall> {
 
     private final String key;
@@ -47,6 +50,19 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
             }
         }
         return null;
+    }
+
+    @Override
+    public void getAnnotationCandidates(int category, ArrayList<Class<? extends Annotation>> outCandidates) {
+        if ((category & CallAdapter.CATEGORY_GET) != 0) {
+            outCandidates.add(Get.class);
+        }
+        if ((category & CallAdapter.CATEGORY_SET) != 0) {
+            outCandidates.add(Set.class);
+        }
+        if ((category & CallAdapter.CATEGORY_TRACK) != 0) {
+            outCandidates.add(Track.class);
+        }
     }
 
     public abstract Object get(int propertyId, int area, CarType type);
