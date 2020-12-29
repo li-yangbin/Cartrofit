@@ -4,6 +4,7 @@ import android.car.hardware.CarPropertyValue;
 import android.os.Build;
 
 import com.liyangbin.cartrofit.annotation.CarValue;
+import com.liyangbin.cartrofit.annotation.Category;
 import com.liyangbin.cartrofit.annotation.Combine;
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.GenerateId;
@@ -15,12 +16,13 @@ import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Restore;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
+import com.liyangbin.cartrofit.annotation.Sticky;
 import com.liyangbin.cartrofit.annotation.Track;
 import com.liyangbin.cartrofit.annotation.WrappedData;
+import com.liyangbin.cartrofit.call.BuildInCallAdapter;
+import com.liyangbin.cartrofit.call.Call;
+import com.liyangbin.cartrofit.call.Interceptor;
 import com.liyangbin.cartrofit.funtion.Consumer;
-import com.liyangbin.cartrofit.funtion.Converter;
-import com.liyangbin.cartrofit.funtion.FunctionalConverter;
-import com.liyangbin.cartrofit.funtion.TwoWayConverter;
 import com.liyangbin.cartrofit.funtion.Union;
 import com.liyangbin.cartrofit.funtion.Union3;
 
@@ -46,53 +48,39 @@ public final class Cartrofit {
     private static final ArrayList<FlowConverter<?>> GLOBAL_CONVERTER = new ArrayList<>();
     private static Cartrofit sDefault;
 
-    private static final int FLAG_FIRST_BIT = 1;
-
-    private static final int FLAG_PARSE_SET = FLAG_FIRST_BIT;
-    private static final int FLAG_PARSE_GET = FLAG_FIRST_BIT << 1;
-    private static final int FLAG_PARSE_TRACK = FLAG_FIRST_BIT << 2;
-    private static final int FLAG_PARSE_UN_REGISTER = FLAG_FIRST_BIT << 3;
-    private static final int FLAG_PARSE_INJECT = FLAG_FIRST_BIT << 4;
-    private static final int FLAG_PARSE_COMBINE = FLAG_FIRST_BIT << 5;
-    private static final int FLAG_PARSE_REGISTER = FLAG_FIRST_BIT << 6;
-    private static final int FLAG_PARSE_INJECT_CHILDREN = FLAG_PARSE_SET | FLAG_PARSE_GET
-            | FLAG_PARSE_TRACK | FLAG_PARSE_INJECT | FLAG_PARSE_COMBINE;
-    private static final int FLAG_PARSE_ALL = FLAG_PARSE_SET | FLAG_PARSE_GET | FLAG_PARSE_TRACK
-            | FLAG_PARSE_UN_REGISTER | FLAG_PARSE_INJECT | FLAG_PARSE_COMBINE | FLAG_PARSE_REGISTER;
-
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
     private static final Router ID_ROUTER = new Router();
 
-    private InterceptorChain mChainHead;
-
+    private final ArrayList<Interceptor> mGlobalInterceptorList = new ArrayList<>();
     private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
     private final HashMap<Class<?>, FlowConverter<?>> mFlowConverterMap = new HashMap<>();
-    private final HashMap<Key, CallAdapter.Call> mCallCache = new HashMap<>();
+    private final HashMap<Key, Call> mCallCache = new HashMap<>();
     private final ArrayList<CallAdapter> mCallAdapterList = new ArrayList<>();
+    private final HashMap<String, ArrayList<Interceptor>> mInterceptorByCategory = new HashMap<>();
     private final CallInflater mInflater = new CallInflater() {
         @Override
-        public CallAdapter.Call inflateByIdIfThrow(Key key, int id, int category) {
+        public Call inflateByIdIfThrow(Key key, int id, int category) {
             return getOrCreateCallById(key.record, id, category, true);
         }
 
         @Override
-        public CallAdapter.Call inflateById(Key key, int id, int category) {
+        public Call inflateById(Key key, int id, int category) {
             return getOrCreateCallById(key.record, id, category, false);
         }
 
         @Override
-        public CallAdapter.Call inflate(Key key, int category) {
+        public Call inflate(Key key, int category) {
             return getOrCreateCall(key.record, key, category);
         }
 
         @Override
         public void inflateCallback(Class<?> callbackClass, int category,
-                                    Consumer<CallAdapter.Call> resultReceiver) {
+                                    Consumer<Call> resultReceiver) {
             ApiRecord<?> record = getApi(callbackClass);
             ArrayList<Key> childKeys = record.getChildKey();
             for (int i = 0; i < childKeys.size(); i++) {
                 Key childKey = childKeys.get(i);
-                CallAdapter.Call call = getOrCreateCall(record, childKey, category);
+                Call call = getOrCreateCall(record, childKey, category);
                 if (call != null) {
                     resultReceiver.accept(call);
                 }
@@ -126,11 +114,16 @@ public final class Cartrofit {
             Class<?> targetClass = findFlowConverterTarget(flowConverter);
             mFlowConverterMap.put(targetClass, flowConverter);
         }
-        for (int i = 0; i < builder.interceptors.size(); i++) {
-            if (mChainHead == null) {
-                mChainHead = new InterceptorChain();
+        mGlobalInterceptorList.addAll(builder.interceptors);
+        HashMap<String, ArrayList<Interceptor>> interceptorFromBuilder = builder.interceptorByCategory;
+        if (interceptorFromBuilder.size() > 0) {
+            for (Map.Entry<String, ArrayList<Interceptor>> chainEntry : interceptorFromBuilder.entrySet()) {
+                ArrayList<Interceptor> newChain = chainEntry.getValue();
+                ArrayList<Interceptor> oldChain = mInterceptorByCategory.put(chainEntry.getKey(), newChain);
+                if (oldChain != null) {
+                    newChain.addAll(0, oldChain);
+                }
             }
-            mChainHead.addInterceptor(builder.interceptors.get(i));
         }
     }
 
@@ -192,10 +185,9 @@ public final class Cartrofit {
         return null;
     }
 
-    static int getParameterCount(Method method) {
+    private static int getParameterCount(Method method) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            Class<?>[] classArray = method.getParameterTypes();
-            return classArray != null ? classArray.length : 0;
+            return method.getParameterTypes().length;
         } else {
             return method.getParameterCount();
         }
@@ -208,24 +200,12 @@ public final class Cartrofit {
         String dataScope;
         int apiArea;
         T apiObj;
-        StickyType stickyType = StickyType.NO_SET;
-        DataSource source;
 
         ArrayList<Key> childrenKey;
 
-//        ArrayList<ApiRecord<?>> parentApi;
-
         HashMap<Integer, Method> selfDependency = new HashMap<>();
         HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
-//        ConverterManager converterManager = new ConverterManager();
-        InterceptorManager interceptorManager = new InterceptorManager();
 
-        Interceptor tempInterceptor;
-        ConverterFactory scopeFactory;
-//        ConvertSolution converterBuilder;
-
-//        CallAdapter adapter;
-//        Object scope;
         ArrayList<Union3<CallAdapter, Object, ConverterFactory>> providerList;
 
         ApiRecord(ArrayList<Union3<CallAdapter, Object, ConverterFactory>> providerList, Class<T> clazz) {
@@ -242,12 +222,28 @@ public final class Cartrofit {
             }
         }
 
-        CallAdapter.Call createAdapterCall(Key key, int category) {
+        Call createAdapterCall(Key key, int category) {
             for (int i = providerList.size() - 1; i >= 0; i--) {
                 Union3<CallAdapter, Object, ConverterFactory> union3 = providerList.get(i);
-                CallAdapter.Call call = union3.value1.onCreateCall(union3.value2, key, category);
+                Call call = union3.value1.onCreateCall(union3.value2, key, category);
                 if (call != null) {
                     call.init(key, union3.value3);
+
+                    for (int j = 0; j < mGlobalInterceptorList.size(); j++) {
+                        call.addInterceptor(mGlobalInterceptorList.get(j), false);
+                    }
+                    Category categoryAnnotation = key.getAnnotation(Category.class);
+                    if (categoryAnnotation != null) {
+                        for (String categoryByUser : categoryAnnotation.value()) {
+                            ArrayList<Interceptor> interceptorList = mInterceptorByCategory
+                                    .get(categoryByUser);
+                            if (interceptorList != null) {
+                                for (int j = 0; j < interceptorList.size(); j++) {
+                                    call.addInterceptor(interceptorList.get(j), false);
+                                }
+                            }
+                        }
+                    }
 
                     boolean hasSet = call.hasCategory(CallAdapter.CATEGORY_SET);
                     boolean hasTrack = call.hasCategory(CallAdapter.CATEGORY_TRACK);
@@ -259,180 +255,15 @@ public final class Cartrofit {
                         }
                     }
 
+                    if (hasTrack && key.isAnnotationPresent(Sticky.class)) {
+                        call.enableStickyTrack();
+                    }
+
                     return call;
                 }
             }
             return null;
         }
-
-        int loadId(CallAdapter.Call command) {
-            if (command.key.method == null) {
-                return 0;
-            }
-            return selfDependencyReverse.getOrDefault(command.key.method, 0);
-        }
-
-//        @Override
-//        public void setDefaultAreaId(int areaId) {
-//            apiArea = areaId;
-//        }
-//
-//        @Override
-//        public void setDefaultStickyType(StickyType stickyType) {
-//            this.stickyType = stickyType;
-//        }
-//
-//        @Override
-//        public ConverterBuilder intercept(Interceptor interceptor) {
-//            if (tempInterceptor != null) {
-//                throw new CartrofitGrammarException("Call intercept(Interceptor) only once before apply");
-//            }
-//            tempInterceptor = interceptor;
-//            return this;
-//        }
-//
-//        @Override
-//        ConverterBuilder convert(ConvertSolution builder) {
-//            if (converterBuilder != null) {
-//                throw new CartrofitGrammarException("Call convert(Converter) only once before apply");
-//            }
-//            converterBuilder = builder;
-//            return this;
-//        }
-
-//        @Override
-//        public void apply(Constraint... constraints) {
-//            if (constraints == null || constraints.length == 0) {
-//                return;
-//            }
-//            if (tempInterceptor != null) {
-//                for (Constraint constraint : constraints) {
-//                    interceptorManager.add(constraint, tempInterceptor);
-//                }
-//                tempInterceptor = null;
-//            }
-//            if (converterBuilder != null) {
-//                for (Constraint constraint : constraints) {
-//                    converterManager.add(constraint, converterBuilder);
-//                }
-//                converterBuilder = null;
-//            }
-//        }
-
-        private abstract class AbstractManager<ELEMENT, GROUP> {
-            ArrayList<Constraint> constraintList = new ArrayList<>();
-            void addConstraint(Constraint constraint) {
-                boolean inserted = false;
-                for (int i = 0; i < constraintList.size(); i++) {
-                    if (constraintList.get(i).priority > constraint.priority) {
-                        constraintList.add(i, constraint);
-                        inserted = true;
-                        break;
-                    }
-                }
-                if (!inserted) {
-                    constraintList.add(constraint);
-                }
-            }
-            abstract void add(Constraint constraint, ELEMENT element);
-            abstract GROUP get(CallAdapter.Call command);
-        }
-
-        private final class InterceptorManager extends AbstractManager<Interceptor, InterceptorChain> {
-            HashMap<Constraint, ArrayList<Interceptor>> constraintMapper = new HashMap<>();
-
-            @Override
-            void add(Constraint constraint, Interceptor element) {
-                ArrayList<Interceptor> list = constraintMapper.get(constraint);
-                if (list == null) {
-                    list = new ArrayList<>();
-                    constraintMapper.put(constraint, list);
-                }
-                list.add(element);
-                addConstraint(constraint);
-            }
-
-            @Override
-            InterceptorChain get(CallAdapter.Call command) {
-                InterceptorChain group = null;
-                for (int i = 0; i < constraintList.size(); i++) {
-                    Constraint constraint = constraintList.get(i);
-                    if (constraint.check(command)) {
-                        ArrayList<Interceptor> elements = constraintMapper.get(constraint);
-                        final int size = elements.size();
-                        if (size > 0) {
-                            if (group == null) {
-                                group = new InterceptorChain();
-                            }
-                            for (int j = 0; j < size; j++) {
-                                Interceptor interceptor = elements.get(j);
-                                if (interceptor.checkCommand(command)) {
-                                    group.addInterceptor(interceptor);
-                                }
-                            }
-                        }
-                    }
-                }
-                return group;
-            }
-        }
-
-//        private final class ConverterManager extends AbstractManager<ConvertSolution, ConverterStore> {
-//            HashMap<Constraint, ConverterStore> constraintMapper = new HashMap<>();
-//
-//            @Override
-//            void add(Constraint constraint, ConvertSolution builder) {
-//                ConverterStore store = constraintMapper.get(constraint);
-//                if (store == null) {
-//                    store = new ConverterStore();
-//                    constraintMapper.put(constraint, store);
-//                }
-//                builder.apply(store);
-//                addConstraint(constraint);
-//            }
-//
-//            @Override
-//            ConverterStore get(CallAdapter.Call command) {
-//                ConverterStore current = null;
-//                for (int i = constraintList.size() - 1; i >= 0; i--) {
-//                    Constraint constraint = constraintList.get(i);
-//                    if (constraint.check(command)) {
-//                        ConverterStore node = constraintMapper.get(constraint);
-//                        if (node != null) {
-//                            node = node.copy();
-//                            if (current != null) {
-//                                current.addParentToEnd(node);
-//                            } else {
-//                                current = node;
-//                            }
-//                        }
-//                    }
-//                }
-//                return current;
-//            }
-//        }
-
-        InterceptorChain getInterceptorByKey(CallAdapter.Call command) {
-            InterceptorChain chain = interceptorManager.get(command);
-            if (command.delegateTarget() == command && mChainHead != null) {
-                if (chain != null) {
-                    chain.addInterceptorChainToBottom(mChainHead);
-                } else {
-                    chain = mChainHead;
-                }
-            }
-            return chain;
-        }
-
-//        ConverterStore getConverterByKey(CallAdapter.Call command) {
-//            ConverterStore store = converterManager.get(command);
-//            if (store != null) {
-//                store.addParentToEnd(GLOBAL_CONVERTER);
-//                return store;
-//            } else {
-//                return GLOBAL_CONVERTER;
-//            }
-//        }
 
         void importDependency(Class<?> target) {
             try {
@@ -468,24 +299,6 @@ public final class Cartrofit {
             childrenKey = result;
             return result;
         }
-
-//        ArrayList<ApiRecord<?>> getParentApi() {
-//            if (parentApi != null) {
-//                return parentApi;
-//            }
-//            ArrayList<ApiRecord<?>> result = new ArrayList<>();
-//            if (!clazz.isInterface()) {
-//                if (clazz.isAnnotationPresent(ConsiderSuper.class)) {
-//                    Class<?> superClass = clazz.getSuperclass();
-//                    if (superClass != null && superClass != Object.class) {
-//                        ApiRecord<?> record = getApi(clazz);
-//                        result.add(record);
-//                    }
-//                }
-//            }
-//            parentApi = result;
-//            return result;
-//        }
 
         @Override
         public String toString() {
@@ -551,6 +364,10 @@ public final class Cartrofit {
                 ParameterizedType parameterizedType = (ParameterizedType) type;
                 if (parameterizedType.getRawType() == FlowConverter.class) {
                     Type[] converterDeclaredType = parameterizedType.getActualTypeArguments();
+                    WrappedData wrappedData = implementsBy.getDeclaredAnnotation(WrappedData.class);
+                    if (wrappedData != null) {
+                        WRAPPER_CLASS_MAP.put(implementsBy, wrappedData.type());
+                    }
                     return getClassFromType(converterDeclaredType[0]);
                 }
             }
@@ -558,135 +375,6 @@ public final class Cartrofit {
 
         throw new CartrofitGrammarException("invalid converter class:" + implementsBy
                 + " type:" + Arrays.toString(ifTypes));
-    }
-
-    static class ConverterStore implements Cloneable {
-
-        ArrayList<ConverterWrapper<?, ?>> converterWrapperList = new ArrayList<>();
-        ConverterStore parentStore;
-
-        ConverterStore() {
-        }
-
-        ConverterStore copy() {
-            try {
-                ConverterStore copy = (ConverterStore) clone();
-                copy.parentStore = null;
-                copy.converterWrapperList = new ArrayList<>(this.converterWrapperList);
-                return copy;
-            } catch (CloneNotSupportedException e) {
-                throw new RuntimeException("impossible", e);
-            }
-        }
-
-        void addParentToEnd(ConverterStore parent) {
-            ConverterStore store = this;
-            while (store.parentStore != null) {
-                store = store.parentStore;
-            }
-            store.parentStore = parent;
-        }
-
-        void addConverter(Converter<?, ?> converter) {
-            Objects.requireNonNull(converter);
-            Class<?> lookingFor;
-            if (converter instanceof TwoWayConverter) {
-                lookingFor = TwoWayConverter.class;
-            } else if (converter instanceof FlowConverter) {
-                lookingFor = FlowConverter.class;
-            } else {
-                if (converter instanceof FunctionalConverter) {
-                    lookingFor = converter.getClass().getInterfaces()[0];
-                } else {
-                    lookingFor = Converter.class;
-                }
-            }
-            Class<?> implementsBy = lookUp(converter.getClass(), lookingFor);
-            if (implementsBy == null) {
-                throw new CartrofitGrammarException("invalid input converter:" + converter.getClass());
-            }
-            if (implementsBy.isSynthetic()) {
-                throw new CartrofitGrammarException("Do not use lambda expression in addConverter()");
-            }
-            Type[] ifTypes = implementsBy.getGenericInterfaces();
-            Class<?> convertFrom = null;
-            Class<?> convertTo = null;
-            for (Type type : ifTypes) {
-                if (type instanceof ParameterizedType) {
-                    ParameterizedType parameterizedType = (ParameterizedType) type;
-                    if (parameterizedType.getRawType() == lookingFor) {
-                        Type[] converterDeclaredType = parameterizedType.getActualTypeArguments();
-                        if (lookingFor == FlowConverter.class) {
-                            convertFrom = Flow.class;
-                            convertTo = getClassFromType(converterDeclaredType[0]);
-                        } else if (FunctionalConverter.class.isAssignableFrom(lookingFor)) {
-                            convertFrom = Object[].class;
-                            convertTo = getClassFromType(converterDeclaredType[converterDeclaredType.length - 1]);
-                        } else {
-                            convertFrom = getClassFromType(converterDeclaredType[0]);
-                            convertTo = getClassFromType(converterDeclaredType[1]);
-                        }
-                        break;
-                    }
-                }
-            }
-
-            if (convertFrom != null && convertTo != null) {
-                addConverter(convertFrom, convertTo, converter);
-            } else {
-                throw new CartrofitGrammarException("invalid converter class:" + implementsBy
-                        + " type:" + Arrays.toString(ifTypes));
-            }
-        }
-
-        void addConverter(Class<?> convertFrom, Class<?> convertTo, Converter<?, ?> converter) {
-            if (checkConverter(convertFrom, convertTo)) {
-                throw new CartrofitGrammarException("Can not add duplicate converter from:" +
-                        toClassString(convertFrom) + " to:" + toClassString(convertTo));
-            }
-            converterWrapperList.add(new ConverterWrapper<>(convertFrom, convertTo,
-                    converter));
-            WrappedData wrappedData = converter.getClass()
-                    .getDeclaredAnnotation(WrappedData.class);
-            if (wrappedData != null) {
-                synchronized (WRAPPER_CLASS_MAP) {
-                    WRAPPER_CLASS_MAP.put(convertTo, wrappedData.type());
-                }
-            }
-        }
-
-        private boolean checkConverter(Class<?> from, Class<?> to) {
-            final ConverterStore parent = this.parentStore;
-            this.parentStore = null;
-            Converter<?, ?> converter = findWithoutCommand(from, to);
-            this.parentStore = parent;
-            return converter != null;
-        }
-
-        private Converter<?, ?> findWithoutCommand(Class<?> from, Class<?> to) {
-            for (int i = 0; i < converterWrapperList.size(); i++) {
-                ConverterWrapper<?, ?> converterWrapper = converterWrapperList.get(i);
-                Converter<?, ?> converter = converterWrapper.asConverter(from, to);
-                if (converter != null) {
-                    return converter;
-                }
-            }
-            return parentStore != null ? parentStore.findWithoutCommand(from, to) : null;
-        }
-
-        Converter<?, ?> find(CallAdapter.Call command, Class<?> from, Class<?> to) {
-            Converter<?, ?> converter = findWithoutCommand(from, to);
-            if (converter != null || classEquals(from, to)) {
-                return converter;
-            }
-            throw new CartrofitGrammarException("Can not resolve converter from:"
-                    + toClassString(from) + " to:" + toClassString(to)
-                    + " by:" + command);
-        }
-
-        private static String toClassString(Class<?> clazz) {
-            return clazz.isArray() ? clazz.getComponentType() + "[]" : clazz.toString();
-        }
     }
 
     static boolean classEquals(Class<?> a, Class<?> b) {
@@ -726,6 +414,7 @@ public final class Cartrofit {
 
         private final ArrayList<CallAdapter> dataAdapterList = new ArrayList<>();
         private final ArrayList<Interceptor> interceptors = new ArrayList<>();
+        private final HashMap<String, ArrayList<Interceptor>> interceptorByCategory = new HashMap<>();
         private final ArrayList<FlowConverter<?>> flowConverters = new ArrayList<>();
 
         private Builder() {
@@ -741,6 +430,17 @@ public final class Cartrofit {
             return this;
         }
 
+        public Builder addInterceptor(String category, Interceptor interceptor) {
+            Objects.requireNonNull(interceptor);
+            ArrayList<Interceptor> interceptorList = interceptorByCategory.get(category);
+            if (interceptorList == null) {
+                interceptorList = new ArrayList<>();
+                interceptorByCategory.put(category, interceptorList);
+            }
+            interceptorList.add(interceptor);
+            return this;
+        }
+
         public <T> Builder addFlowConverter(FlowConverter<T> converter) {
             flowConverters.add(converter);
             return this;
@@ -752,6 +452,7 @@ public final class Cartrofit {
             }
             sDefault.append(this);
             interceptors.clear();
+            interceptorByCategory.clear();
             flowConverters.clear();
         }
     }
@@ -819,33 +520,21 @@ public final class Cartrofit {
     }
 
     public interface CallInflater {
-        CallAdapter.Call inflateByIdIfThrow(Key key, int id, int category);
-        CallAdapter.Call inflateById(Key key, int id, int category);
-        CallAdapter.Call inflate(Key key, int category);
-        void inflateCallback(Class<?> callbackClass, int flag, Consumer<CallAdapter.Call> resultReceiver);
+        Call inflateByIdIfThrow(Key key, int id, int category);
+        Call inflateById(Key key, int id, int category);
+        Call inflate(Key key, int category);
+        void inflateCallback(Class<?> callbackClass, int flag, Consumer<Call> resultReceiver);
     }
 
-    private CallAdapter.Call getOrCreateCall(ApiRecord<?> record, Key key) {
-        CallAdapter.Call command = getOrCreateCall(record, key, FLAG_PARSE_ALL);
+    private Call getOrCreateCall(ApiRecord<?> record, Key key) {
+        Call command = getOrCreateCall(record, key, CallAdapter.CATEGORY_DEFAULT);
         if (command == null) {
             throw new CartrofitGrammarException("Can not parse command from:" + key);
         }
         return command;
     }
 
-//    CallAdapter.Call getOrCreateCallById(ApiRecord<?> record, int id, int flag) {
-//        return getOrCreateCallById(record, id, flag, true);
-//    }
-
-    CallAdapter.Call getOrCreateCallByIdIfThrow(Key key, int id, int flag) {
-        return getOrCreateCallById(key.record, id, flag, true);
-    }
-
-    CallAdapter.Call getOrCreateCallById(Key key, int id, int flag) {
-        return getOrCreateCallById(key.record, id, flag, false);
-    }
-
-    private CallAdapter.Call getOrCreateCallById(ApiRecord<?> record, int id, int flag,
+    private Call getOrCreateCallById(ApiRecord<?> record, int id, int flag,
                                                boolean throwIfNotFound) {
         Method method = record.selfDependency.get(id);
         if (method == null) {
@@ -855,7 +544,7 @@ public final class Cartrofit {
             }
             return getOrCreateCallById(getApi(apiClass, true), id, flag, throwIfNotFound);
         }
-        CallAdapter.Call command = getOrCreateCall(record, new Key(record, method, false), flag);
+        Call command = getOrCreateCall(record, new Key(record, method, false), flag);
         if (throwIfNotFound && command == null) {
             throw new CartrofitGrammarException("Can not resolve target Id:" + id
                     + " in specific type from:" + this);
@@ -863,8 +552,8 @@ public final class Cartrofit {
         return command;
     }
 
-    private CallAdapter.Call getOrCreateCall(ApiRecord<?> record, Key key, int flag) {
-        CallAdapter.Call call;
+    private Call getOrCreateCall(ApiRecord<?> record, Key key, int flag) {
+        Call call;
         synchronized (mApiCache) {
             call = mCallCache.get(key);
             if (call != null) {
@@ -898,6 +587,7 @@ public final class Cartrofit {
         public final Field field;
 
         ApiRecord<?> record;
+        private int mId;
 
         Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
             this.record = record;
@@ -911,6 +601,16 @@ public final class Cartrofit {
             this.method = null;
             this.field = field;
             this.isCallbackEntry = false;
+        }
+
+        public int getId() {
+            if (mId != 0) {
+                return mId;
+            }
+            if (method == null) {
+                return 0;
+            }
+            return record.selfDependencyReverse.getOrDefault(method, 0);
         }
 
         boolean isInvalid() {
@@ -1040,14 +740,6 @@ public final class Cartrofit {
             return null;
         }
 
-        private Class<? extends Annotation>[] getInputAnnotationType() {
-//            if (method != null) {
-//                Annotation[][] annotationMatrix = method.getParameterAnnotations();
-//            }
-//            return method != null ? method.getParameterTypes() : new Class<?>[] {field.getType()};
-            return null;
-        }
-
         Class<?> getGetClass() {
             if (field != null) {
                 return field.getType();
@@ -1063,7 +755,7 @@ public final class Cartrofit {
             }
         }
 
-        Class<?> getSetClass() {
+        public Class<?> getSetClass() {
             if (field != null) {
                 return field.getType();
             } else if (isCallbackEntry) {
@@ -1214,39 +906,39 @@ public final class Cartrofit {
                 " but <" + type + "> is of type " + className);
     }
 
-    private static class ConverterWrapper<CarData, AppData> implements Converter<AppData, CarData> {
-        Class<?> fromClass;
-        Class<?> toClass;
-
-        TwoWayConverter<CarData, AppData> twoWayConverter;
-        Converter<Object, ?> oneWayConverter;
-
-        ConverterWrapper(Class<?> from, Class<?> to, Converter<?, ?> converter) {
-            fromClass = from;
-            toClass = to;
-            if (converter instanceof TwoWayConverter) {
-                twoWayConverter = (TwoWayConverter<CarData, AppData>) converter;
-                oneWayConverter = (Converter<Object, ?>) twoWayConverter;
-            } else {
-                oneWayConverter = (Converter<Object, ?>) converter;
-            }
-            if (oneWayConverter == null) {
-                throw new NullPointerException("converter can not be null");
-            }
-        }
-
-        Converter<?, ?> asConverter(Class<?> from, Class<?> to) {
-            if (classEquals(fromClass, from) && classEquals(toClass, to)) {
-                return oneWayConverter;
-            } else if (twoWayConverter != null && toClass.equals(from) && fromClass.equals(to)) {
-                return this;
-            }
-            return null;
-        }
-
-        @Override
-        public CarData convert(AppData value) {
-            return Objects.requireNonNull(twoWayConverter).fromApp2Car(value);
-        }
-    }
+//    private static class ConverterWrapper<CarData, AppData> implements Converter<AppData, CarData> {
+//        Class<?> fromClass;
+//        Class<?> toClass;
+//
+//        TwoWayConverter<CarData, AppData> twoWayConverter;
+//        Converter<Object, ?> oneWayConverter;
+//
+//        ConverterWrapper(Class<?> from, Class<?> to, Converter<?, ?> converter) {
+//            fromClass = from;
+//            toClass = to;
+//            if (converter instanceof TwoWayConverter) {
+//                twoWayConverter = (TwoWayConverter<CarData, AppData>) converter;
+//                oneWayConverter = (Converter<Object, ?>) twoWayConverter;
+//            } else {
+//                oneWayConverter = (Converter<Object, ?>) converter;
+//            }
+//            if (oneWayConverter == null) {
+//                throw new NullPointerException("converter can not be null");
+//            }
+//        }
+//
+//        Converter<?, ?> asConverter(Class<?> from, Class<?> to) {
+//            if (classEquals(fromClass, from) && classEquals(toClass, to)) {
+//                return oneWayConverter;
+//            } else if (twoWayConverter != null && toClass.equals(from) && fromClass.equals(to)) {
+//                return this;
+//            }
+//            return null;
+//        }
+//
+//        @Override
+//        public CarData convert(AppData value) {
+//            return Objects.requireNonNull(twoWayConverter).fromApp2Car(value);
+//        }
+//    }
 }

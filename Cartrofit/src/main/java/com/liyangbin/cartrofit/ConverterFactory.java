@@ -14,7 +14,7 @@ public final class ConverterFactory {
         mCartrofit = cartrofit;
     }
 
-    ConverterFactory(ConverterFactory parentFactory) {
+    public ConverterFactory(ConverterFactory parentFactory) {
         mParentFactory = parentFactory;
         mCartrofit = parentFactory.mCartrofit;
     }
@@ -28,7 +28,7 @@ public final class ConverterFactory {
         };
     }
 
-    Converter<?, ?> findInputConverterByKey(Cartrofit.Key key) {
+    public Converter<?, ?> findInputConverterByKey(Cartrofit.Key key) {
         for (int i = 0; i < mSolutionList.size(); i++) {
             Converter<?, ?> converter = mSolutionList.get(i).findInputConverterByKey(key);
             if (converter != null) {
@@ -38,7 +38,7 @@ public final class ConverterFactory {
         return mParentFactory != null ? mParentFactory.findInputConverterByKey(key) : null;
     }
 
-    Converter<?, ?> findOutputConverterByKey(Cartrofit.Key key, boolean flowMap) {
+    public Converter<?, ?> findOutputConverterByKey(Cartrofit.Key key, boolean flowMap) {
         for (int i = 0; i < mSolutionList.size(); i++) {
             Converter<?, ?> converter = mSolutionList.get(i).findOutputConverterByKey(key, flowMap);
             if (converter != null) {
@@ -48,7 +48,7 @@ public final class ConverterFactory {
         return mParentFactory != null ? mParentFactory.findOutputConverterByKey(key, flowMap) : null;
     }
 
-    FlowConverter<?> findFlowConverter(Cartrofit.Key key) {
+    public FlowConverter<?> findFlowConverter(Cartrofit.Key key) {
         if (key.isCallbackEntry) {
             return null;
         }

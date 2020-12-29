@@ -1,22 +1,24 @@
-package com.liyangbin.cartrofit;
+package com.liyangbin.cartrofit.call;
 
+import com.liyangbin.cartrofit.CallAdapter;
+import com.liyangbin.cartrofit.Flow;
 import com.liyangbin.cartrofit.funtion.Union;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.function.Consumer;
 
-public class CombineCall extends CallGroup<CallAdapter.Call> {
+public class CombineCall extends CallGroup<Call> {
 
     @Override
-    public void addChildCall(CallAdapter.Call call) {
+    public void addChildCall(Call call) {
         super.addChildCall(call.copyByHost(this));
     }
 
     @Override
     public boolean hasCategory(int category) {
         for (int i = 0; i < getChildCount(); i++) {
-            CallAdapter.Call call = getChildAt(i);
+            Call call = getChildAt(i);
             if (call.hasCategory(category)) {
                 return true;
             }
@@ -25,7 +27,7 @@ public class CombineCall extends CallGroup<CallAdapter.Call> {
     }
 
     @Override
-    public CombineCall copyByHost(CallAdapter.Call host) {
+    public CombineCall copyByHost(Call host) {
         CombineCall copy = (CombineCall) super.copyByHost(host);
         copy.childrenCallList = new ArrayList<>();
         for (int i = 0; i < getChildCount(); i++) {
@@ -80,7 +82,7 @@ public class CombineCall extends CallGroup<CallAdapter.Call> {
             trackingData = new CombineData(elementCount);
 
             for (int i = 0; i < getChildCount(); i++) {
-                CallAdapter.Call call = getChildAt(i);
+                Call call = getChildAt(i);
                 if (call.hasCategory(CallAdapter.CATEGORY_TRACK)) {
                     flowArray[i] = (Flow<Object>) call.invoke(input);
                     flowObservers[i] = new InternalObserver(i);

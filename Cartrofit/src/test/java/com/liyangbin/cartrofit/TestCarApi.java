@@ -27,7 +27,7 @@ import static com.liyangbin.cartrofit.TestCarApiId.trackStringAndCombine;
 import static com.liyangbin.cartrofit.TestCarApiId.trackStringSignal;
 
 @GenerateId
-@Scope(value = "test", onCreate = CreateHelper.class)
+@Scope("test")
 public interface TestCarApi {
 
     @Get(id = 0)
@@ -48,7 +48,7 @@ public interface TestCarApi {
     @Set(id = 2)
     void setStringSignal(String value);
 
-    @Track(id = 2, sticky = StickyType.ON)
+    @Track(id = 2)
     Observable<String> trackStringSignal();
 
     @Get(id = 3)
@@ -84,7 +84,7 @@ public interface TestCarApi {
     @Delegate(trackStringAndCombine)
     Observable<String> trackIntDelegate();
 
-    @Track(id = 0, sticky = StickyType.ON)
+    @Track(id = 0)
     Observable<Boolean> trackBooleanReactive();
 
     @Combine(elements = {trackStringSignal, trackBooleanReactive})
@@ -137,18 +137,4 @@ public interface TestCarApi {
 
     @Unregister(register2Callback)
     void unregisterCallback(MyCallback callback);
-}
-
-class CreateHelper implements ApiCallback {
-    @Override
-    public void onApiCreate(Class<?> apiClass, ConverterBuilder builder) {
-        builder.convert(int.class)
-                .to(boolean.class)
-                .by(value -> value > 0)
-                .apply(Constraint.ALL);
-        builder.combine(String.class, boolean.class)
-                .to(String.class)
-                .by((string, bool) -> "string:" + string + " together:" + bool)
-                .apply(TestCarApiId.trackIntAndBoolean);
-    }
 }

@@ -1,4 +1,4 @@
-package com.liyangbin.cartrofit;
+package com.liyangbin.cartrofit.call;
 
 public interface Interceptor {
 
@@ -6,12 +6,8 @@ public interface Interceptor {
 
     class InvokeSession {
         ChainNode current;
-        final CallAdapter.Call call;
+        final Call call;
         boolean cancelled;
-
-        InvokeSession(CallAdapter.Call call) {
-            this.call = call;
-        }
 
         public final Object invoke(Object parameter) {
             if (cancelled) {
@@ -27,6 +23,10 @@ public interface Interceptor {
             }
         }
 
+        InvokeSession(Call call) {
+            this.call = call;
+        }
+
         public final void cancel() {
             if (!cancelled) {
                 cancelled = true;
@@ -34,7 +34,11 @@ public interface Interceptor {
             }
         }
 
-        public CallAdapter.Call getCall() {
+        public boolean isReceive() {
+            return false;
+        }
+
+        public Call getCall() {
             return this.call;
         }
 
@@ -67,9 +71,6 @@ class ChainNode {
 
 class InterceptorChain {
     private ChainNode top;
-
-    InterceptorChain() {
-    }
 
     InterceptorChain(Interceptor firstInterceptor) {
         addInterceptor(firstInterceptor);

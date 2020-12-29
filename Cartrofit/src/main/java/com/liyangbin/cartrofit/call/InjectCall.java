@@ -1,8 +1,10 @@
-package com.liyangbin.cartrofit;
+package com.liyangbin.cartrofit.call;
 
-public class InjectCall extends CallGroup<CallAdapter.Call> implements CallAdapter.FieldAccessible {
+import com.liyangbin.cartrofit.CallAdapter;
+import com.liyangbin.cartrofit.InjectReceiver;
 
-//    ReflectCall reflectCall;
+public class InjectCall extends CallGroup<Call> implements CallAdapter.FieldAccessible {
+
     Class<?> targetClass;
 
     static class InjectInfo {
@@ -29,8 +31,6 @@ public class InjectCall extends CallGroup<CallAdapter.Call> implements CallAdapt
 
     InjectCall(Class<?> targetClass) {
         this.targetClass = targetClass;
-//        this.reflectCall = reflectCall;
-//        reflectCall.setInjectCall(this);
     }
 
     @Override
@@ -77,7 +77,7 @@ public class InjectCall extends CallGroup<CallAdapter.Call> implements CallAdapt
             }
 
             for (int i = 0; i < getChildCount(); i++) {
-                CallAdapter.Call childCall = getChildAt(i);
+                Call childCall = getChildAt(i);
                 if (childCall instanceof InjectCall) {
                     InjectInfo copiedInfo = dispatchedInfo.copy();
                     try {

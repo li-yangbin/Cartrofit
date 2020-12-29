@@ -1,5 +1,9 @@
-package com.liyangbin.cartrofit;
+package com.liyangbin.cartrofit.call;
 
+import android.os.Build;
+
+import com.liyangbin.cartrofit.CartrofitGrammarException;
+import com.liyangbin.cartrofit.Flow;
 import com.liyangbin.cartrofit.funtion.Union;
 
 import java.lang.reflect.InvocationTargetException;
@@ -13,18 +17,18 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
     private final HashMap<Object, RegisterCallbackWrapper> callbackWrapperMapper = new HashMap<>();
 
-    void addChildCall(CallAdapter.Call entryCall, CallAdapter.Call returnCall,
-                      CallAdapter.Call parameterOutCall) {
+    void addChildCall(Call entryCall, Call returnCall,
+                      Call parameterOutCall) {
         addChildCall(new Entry(entryCall, returnCall, (InjectGroupCall) parameterOutCall));
     }
 
     static class Entry {
-        CallAdapter.Call call;
-        CallAdapter.Call returnCall;
+        Call call;
+        Call returnCall;
         InjectGroupCall injectCall;
         Flow<Object> registeredCall;
 
-        Entry(CallAdapter.Call call, CallAdapter.Call returnCall, InjectGroupCall injectCall) {
+        Entry(Call call, Call returnCall, InjectGroupCall injectCall) {
             this.call = call;
             this.returnCall = returnCall;
             this.injectCall = injectCall;
@@ -90,10 +94,18 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
         }
     }
 
+    private static int getParameterCount(Method method) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return method.getParameterTypes().length;
+        } else {
+            return method.getParameterCount();
+        }
+    }
+
     private static class InnerObserver implements Consumer<Object> {
 
-        CallAdapter.Call flowCall;
-        CallAdapter.Call returnCall;
+        Call flowCall;
+        Call returnCall;
         Object callbackObj;
         Method method;
         InjectGroupCall parameterInject;
@@ -115,7 +127,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             Union<?> union = Union.of(o);
             dispatchProcessing = true;
             try {
-                int parameterCount = Cartrofit.getParameterCount(method);
+                int parameterCount = getParameterCount(method);
                 int injectCount = parameterInject != null ? parameterInject.getChildCount() : 0;
                 Object[] parameters = new Object[parameterCount + injectCount];
                 for (int i = 0, j = 0; i < parameters.length; i++) {

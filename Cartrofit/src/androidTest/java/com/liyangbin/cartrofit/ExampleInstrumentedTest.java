@@ -17,6 +17,5 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
 //        Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
 //        assertEquals("com.android.cartrofit.test", appContext.getPackageName());
-        new cartrofit.Builder().build().from(TestApi.class).test("hello");
     }
 }

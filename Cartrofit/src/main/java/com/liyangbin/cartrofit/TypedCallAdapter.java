@@ -1,7 +1,9 @@
 package com.liyangbin.cartrofit;
 
+import com.liyangbin.cartrofit.call.Call;
+
 @SuppressWarnings("unchecked")
-public abstract class TypedCallAdapter<SCOPE, CALL extends CallAdapter.Call> extends CallAdapter {
+public abstract class TypedCallAdapter<SCOPE, CALL extends Call> extends CallAdapter {
 
     @Override
     public final Object extractScope(Class<?> scopeClass, ConverterFactory factory) {

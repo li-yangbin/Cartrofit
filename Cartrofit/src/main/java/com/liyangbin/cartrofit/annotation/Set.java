@@ -14,7 +14,5 @@ public @interface Set {
 
     int area() default Scope.DEFAULT_AREA_ID;
 
-    int restoreTrack() default 0;
-
     CarValue value() default @CarValue(string = CarValue.EMPTY_VALUE);
 }

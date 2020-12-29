@@ -7,6 +7,7 @@ import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
+import com.liyangbin.cartrofit.call.Call;
 
 public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarPropertyAdapter.PropertyCall> {
 
@@ -139,7 +140,7 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
         }
     }
 
-    public class PropertyCall extends CallAdapter.Call implements CallAdapter.FieldAccessible {
+    public class PropertyCall extends Call implements CallAdapter.FieldAccessible {
         static final int TYPE_SET = 0;
         static final int TYPE_GET = 1;
         static final int TYPE_TRACK = 2;
@@ -200,9 +201,9 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
                     Flow<CarPropertyValue<?>> flow = CarPropertyAdapter.this.track(propertyId, areaId);
                     switch (carType) {
                         case VALUE:
-                            return Flow.map(flow, CarPropertyValue::getValue);
+                            return flow.map(CarPropertyValue::getValue);
                         case AVAILABILITY:
-                            return Flow.map(flow, value -> value != null
+                            return flow.map(value -> value != null
                                     && value.getStatus() == CarPropertyValue.STATUS_AVAILABLE);
                         default:
                             return flow;

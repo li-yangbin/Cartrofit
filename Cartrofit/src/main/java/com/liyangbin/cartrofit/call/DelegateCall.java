@@ -1,14 +1,16 @@
-package com.liyangbin.cartrofit;
+package com.liyangbin.cartrofit.call;
 
-public class DelegateCall extends CallAdapter.Call {
-    CallAdapter.Call targetCall;
+import com.liyangbin.cartrofit.CallAdapter;
+
+public class DelegateCall extends Call {
+    Call targetCall;
 
     @Override
     public boolean hasCategory(int category) {
         return targetCall.hasCategory(category);
     }
 
-    void setTargetCall(CallAdapter.Call targetCall) {
+    void setTargetCall(Call targetCall) {
         this.targetCall = targetCall.copyByHost(this);
     }
 

@@ -1,7 +1,9 @@
 package com.liyangbin.cartrofit;
 
-public interface InjectReceiver {
-    boolean onBeforeInject(CallAdapter.Call injectCall);
+import com.liyangbin.cartrofit.call.Call;
 
-    void onAfterInject(CallAdapter.Call injectCall);
+public interface InjectReceiver {
+    boolean onBeforeInject(Call injectCall);
+
+    void onAfterInject(Call injectCall);
 }

@@ -1,9 +1,7 @@
 package com.liyangbin.cartrofit.annotation;
 
 import com.liyangbin.cartrofit.CarType;
-import com.liyangbin.cartrofit.StickyType;
 
-import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 

@@ -1,8 +1,5 @@
 package com.liyangbin.cartrofit.annotation;
 
-import com.liyangbin.cartrofit.ApiCallback;
-import com.liyangbin.cartrofit.Cartrofit;
-
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
@@ -18,6 +15,4 @@ public @interface Scope {
     String value();
 
     int area() default DEFAULT_AREA_ID;
-
-    Class<? extends ApiCallback> onCreate() default Cartrofit.DummyOnCreate.class;
 }

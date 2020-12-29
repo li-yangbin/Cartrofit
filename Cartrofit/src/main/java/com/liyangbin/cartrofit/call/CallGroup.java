@@ -1,8 +1,8 @@
-package com.liyangbin.cartrofit;
+package com.liyangbin.cartrofit.call;
 
 import java.util.ArrayList;
 
-public abstract class CallGroup<T> extends CallAdapter.Call {
+public abstract class CallGroup<T> extends Call {
     ArrayList<T> childrenCallList = new ArrayList<>();
 
     public void addChildCall(T call) {
