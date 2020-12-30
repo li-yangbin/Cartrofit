@@ -69,8 +69,8 @@ public final class Cartrofit {
         }
 
         @Override
-        public Call inflate(Key key, int category) {
-            return getOrCreateCall(key.record, key, category);
+        public Call reInflate(Key key, int category) {
+            return key.record.createAdapterCall(key, category);
         }
 
         @Override
@@ -204,6 +204,7 @@ public final class Cartrofit {
         ArrayList<Key> childrenKey;
 
         HashMap<Integer, Method> selfDependency = new HashMap<>();
+        HashMap<Integer, ArrayList<Class<? extends Annotation>>> candidatesCache = new HashMap<>();
         HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
 
         CallAdapter callAdapter;
@@ -227,6 +228,16 @@ public final class Cartrofit {
         }
 
         Call createAdapterCall(Key key, int category) {
+            ArrayList<Class<? extends Annotation>> candidates = candidatesCache.get(category);
+            if (candidates == null) {
+                candidates = new ArrayList<>();
+                callAdapter.getAnnotationCandidates(category, candidates);
+                mBuildInCallAdapter.getAnnotationCandidates(category, candidates);
+                candidatesCache.put(category, candidates);
+            }
+
+            key.doQualifyCheckIfNeeded(category, candidates);
+
             Call call = callAdapter.createCall(key, category);
             if (call == null) {
                 call = mBuildInCallAdapter.createCall(key, category);
@@ -520,7 +531,7 @@ public final class Cartrofit {
     public interface CallInflater {
         Call inflateByIdIfThrow(Key key, int id, int category);
         Call inflateById(Key key, int id, int category);
-        Call inflate(Key key, int category);
+        Call reInflate(Key key, int category);
         void inflateCallback(Class<?> callbackClass, int flag, Consumer<Call> resultReceiver);
     }
 
@@ -532,8 +543,7 @@ public final class Cartrofit {
         return call;
     }
 
-    private Call getOrCreateCallById(ApiRecord<?> record, int id, int flag,
-                                               boolean throwIfNotFound) {
+    private Call getOrCreateCallById(ApiRecord<?> record, int id, int flag, boolean throwIfNotFound) {
         Method method = record.selfDependency.get(id);
         if (method == null) {
             Class<?> apiClass = ID_ROUTER.findApiClassById(id);
@@ -563,16 +573,6 @@ public final class Cartrofit {
     }
 
     public static class Key {
-        private static final Class<? extends Annotation>[] QUALIFY_CHECK =
-                new Class[]{Get.class, Set.class, Delegate.class,
-                        Combine.class, Inject.class, Register.class};
-
-        private static final Class<? extends Annotation>[] QUALIFY_CALLBACK_CHECK =
-                new Class[]{Delegate.class, Track.class, Combine.class};
-
-        private static final Class<? extends Annotation>[] QUALIFY_INJECT_CHECK =
-                new Class[]{Get.class, Set.class, Delegate.class, Combine.class, Inject.class};
-
         public final Method method;
         public final boolean isCallbackEntry;
         int trackReceiveArgIndex = -1;
@@ -621,14 +621,14 @@ public final class Cartrofit {
             }
         }
 
-        void doQualifyCheck(Class<? extends Annotation>[] concerned) {
+        void doQualifyCheckIfNeeded(int category, ArrayList<Class<? extends Annotation>> candidates) {
+            if (candidates.size() == 0) {
+                throw new CartrofitGrammarException("no annotation candidates?? " + this);
+            }
             boolean qualified = false;
             int checkIndex = 0;
-            Class<? extends Annotation>[] checkMap = method != null ?
-                    (isCallbackEntry ? QUALIFY_CALLBACK_CHECK : QUALIFY_CHECK)
-                    : QUALIFY_INJECT_CHECK;
-            while (checkIndex < checkMap.length) {
-                if (isAnnotationPresent(checkMap[checkIndex++])) {
+            while (checkIndex < candidates.size()) {
+                if (isAnnotationPresent(candidates.get(checkIndex++))) {
                     if (qualified) {
                         throw new CartrofitGrammarException("More than one annotation presented by:" + this);
                     }

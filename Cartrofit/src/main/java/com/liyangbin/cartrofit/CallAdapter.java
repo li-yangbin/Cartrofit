@@ -46,8 +46,8 @@ public abstract class CallAdapter {
         }
 
         @Override
-        public Call inflate(Cartrofit.Key key, int category) {
-            return mCallInflater.inflate(key, category);
+        public Call reInflate(Cartrofit.Key key, int category) {
+            return mCallInflater.reInflate(key, category);
         }
 
         @Override
