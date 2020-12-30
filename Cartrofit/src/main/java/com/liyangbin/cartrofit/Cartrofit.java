@@ -56,7 +56,7 @@ public final class Cartrofit {
     private final HashMap<Key, Call> mCallCache = new HashMap<>();
     private final ArrayList<CallAdapter> mCallAdapterList = new ArrayList<>();
     private final HashMap<String, ArrayList<Interceptor>> mInterceptorByCategory = new HashMap<>();
-    private final BuildInCallAdapter mBuildInCallAdapter = new BuildInCallAdapter();
+    private final CallAdapter mBuildInCallAdapter = new BuildInCallAdapter();
     private final CallInflater mInflater = new CallInflater() {
         @Override
         public Call inflateByIdIfThrow(Key key, int id, int category) {
@@ -100,13 +100,13 @@ public final class Cartrofit {
             Class<?> targetClass = findFlowConverterTarget(flowConverter);
             mFlowConverterMap.put(targetClass, flowConverter);
         }
-        mBuildInCallAdapter.setCallInflater(mInflater);
+        mBuildInCallAdapter.init(mInflater);
     }
 
     private void append(Builder builder) {
         for (int i = 0; i < builder.dataAdapterList.size(); i++) {
             CallAdapter adapter = builder.dataAdapterList.get(i);
-            adapter.setCallInflater(mInflater);
+            adapter.init(mInflater);
             mCallAdapterList.add(adapter);
         }
         for (int i = 0; i < builder.flowConverters.size(); i++) {
@@ -227,9 +227,9 @@ public final class Cartrofit {
         }
 
         Call createAdapterCall(Key key, int category) {
-            Call call = callAdapter.onCreateCall(scopeObj, key, category);
+            Call call = callAdapter.createCall(key, category);
             if (call == null) {
-                call = mBuildInCallAdapter.onCreateCall(scopeObj, key, category);
+                call = mBuildInCallAdapter.createCall(key, category);
             }
             if (call != null) {
                 call.init(key, scopeFactory);
@@ -604,6 +604,10 @@ public final class Cartrofit {
                 return 0;
             }
             return mId = record.selfDependencyReverse.getOrDefault(method, 0);
+        }
+
+        public <S> S getScopeObj() {
+            return (S) record.scopeObj;
         }
 
         boolean isInvalid() {
