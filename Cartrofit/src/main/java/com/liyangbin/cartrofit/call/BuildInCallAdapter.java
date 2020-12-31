@@ -12,7 +12,6 @@ import com.liyangbin.cartrofit.annotation.Out;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Unregister;
 
-import java.lang.annotation.Annotation;
 import java.util.Arrays;
 import java.util.HashMap;
 
@@ -42,6 +41,7 @@ public class BuildInCallAdapter extends CallAdapter {
 
         builder.create(Inject.class)
                 .takeIfEqual(CATEGORY_DEFAULT)
+                .checkParameterIncluded(In.class, Out.class)
                 .provide(new CallProvider<Inject>() {
                     @Override
                     public Call provide(int category, Inject inject, Cartrofit.Key key) {
@@ -80,7 +80,7 @@ public class BuildInCallAdapter extends CallAdapter {
                         }
                         final RegisterCall registerCall = new RegisterCall();
                         inflateCallback(targetClass, CATEGORY_TRACK, call -> {
-                            Call returnCall = inflate(call.key, CATEGORY_SET);
+                            Call returnCall = reInflate(call.key, CATEGORY_SET);
                             Call parameterCall = createInjectCommand(this, key);
                             registerCall.addChildCall(call, returnCall, parameterCall);
                         });
@@ -102,30 +102,21 @@ public class BuildInCallAdapter extends CallAdapter {
                 });
     }
 
-    private static boolean contains(Annotation[] annotations, Class<? extends Annotation> expectClass) {
-        for (Annotation annotation : annotations) {
-            if (expectClass.isInstance(annotation)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private Call createInjectCommand(CallProvider<?> provider, Cartrofit.Key key) {
         if (key.method != null) {
-            Class<?>[] parameterTypes = key.method.getParameterTypes();
-            Annotation[][] annotationMatrix = key.method.getParameterAnnotations();
             InjectGroupCall injectGroupCall = null;
-            for (int i = 0; i < parameterTypes.length; i++) {
-                boolean inDeclared = !key.isCallbackEntry && contains(annotationMatrix[i], In.class);
-                boolean outDeclared = contains(annotationMatrix[i], Out.class);
+            final int parameterCount = key.getParameterCount();
+            for (int i = 0; i < parameterCount; i++) {
+                Cartrofit.Parameter parameter = key.getParameterAt(i);
+                boolean inDeclared = !key.isCallbackEntry && parameter.isAnnotationPresent(In.class);
+                boolean outDeclared = parameter.isAnnotationPresent(Out.class);
 
                 if (inDeclared || outDeclared) {
-                    Class<?> targetClass = key.method.getParameterTypes()[i];
+                    Class<?> targetClass = parameter.getType();
                     InjectCall injectCall = getOrCreateInjectCallByClass(provider, targetClass);
 
                     if (injectGroupCall == null) {
-                        injectGroupCall = new InjectGroupCall(parameterTypes.length);
+                        injectGroupCall = new InjectGroupCall(parameterCount);
                     }
 
                     if (key.isCallbackEntry) {

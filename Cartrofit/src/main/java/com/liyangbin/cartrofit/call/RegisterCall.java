@@ -115,7 +115,6 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             this.flowCall = entry.call;
             this.returnCall = entry.returnCall;
             this.callbackObj = callbackObj;
-            this.method = flowCall.key.method;
             this.parameterInject = entry.injectCall;
         }
 
@@ -127,7 +126,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             Union<?> union = Union.of(o);
             dispatchProcessing = true;
             try {
-                int parameterCount = getParameterCount(method);
+                int parameterCount = flowCall.key.getParameterCount();
                 int injectCount = parameterInject != null ? parameterInject.getChildCount() : 0;
                 Object[] parameters = new Object[parameterCount + injectCount];
                 for (int i = 0, j = 0; i < parameters.length; i++) {

@@ -5,14 +5,11 @@ import android.os.Build;
 
 import com.liyangbin.cartrofit.annotation.CarValue;
 import com.liyangbin.cartrofit.annotation.Category;
-import com.liyangbin.cartrofit.annotation.Combine;
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.GenerateId;
-import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Inject;
 import com.liyangbin.cartrofit.annotation.Out;
-import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Restore;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
@@ -204,7 +201,7 @@ public final class Cartrofit {
         ArrayList<Key> childrenKey;
 
         HashMap<Integer, Method> selfDependency = new HashMap<>();
-        HashMap<Integer, ArrayList<Class<? extends Annotation>>> candidatesCache = new HashMap<>();
+        HashMap<Integer, ArrayList<CallAdapter.CallSolution<?>>> grammarRuleMap = new HashMap<>();
         HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
 
         CallAdapter callAdapter;
@@ -228,15 +225,15 @@ public final class Cartrofit {
         }
 
         Call createAdapterCall(Key key, int category) {
-            ArrayList<Class<? extends Annotation>> candidates = candidatesCache.get(category);
-            if (candidates == null) {
-                candidates = new ArrayList<>();
-                callAdapter.getAnnotationCandidates(category, candidates);
-                mBuildInCallAdapter.getAnnotationCandidates(category, candidates);
-                candidatesCache.put(category, candidates);
+            ArrayList<CallAdapter.CallSolution<?>> grammarRule = grammarRuleMap.get(category);
+            if (grammarRule == null) {
+                grammarRule = new ArrayList<>();
+                callAdapter.collectGrammarRules(category, grammarRule);
+                mBuildInCallAdapter.collectGrammarRules(category, grammarRule);
+                grammarRuleMap.put(category, grammarRule);
             }
 
-            key.doQualifyCheckIfNeeded(category, candidates);
+            key.doGrammarCheckIfNeeded(category, grammarRule);
 
             Call call = callAdapter.createCall(key, category);
             if (call == null) {
@@ -572,6 +569,14 @@ public final class Cartrofit {
         return call;
     }
 
+    public interface Parameter {
+        boolean isAnnotationPresent(Class<? extends Annotation> clazz);
+        <A extends Annotation> A getAnnotation(Class<A> clazz);
+        Class<?> getType();
+        Type getGenericType();
+        int getDeclaredIndex();
+    }
+
     public static class Key {
         public final Method method;
         public final boolean isCallbackEntry;
@@ -581,6 +586,9 @@ public final class Cartrofit {
 
         ApiRecord<?> record;
         private int mId = -1;
+
+        int parameterCount = -1;
+        Parameter[] parameters;
 
         Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
             this.record = record;
@@ -596,6 +604,15 @@ public final class Cartrofit {
             this.isCallbackEntry = false;
         }
 
+        private static <A extends Annotation> A find(Annotation[] annotations, Class<A> expectClass) {
+            for (Annotation annotation : annotations) {
+                if (expectClass.isInstance(annotation)) {
+                    return (A) annotation;
+                }
+            }
+            return null;
+        }
+
         public int getId() {
             if (mId != -1) {
                 return mId;
@@ -604,6 +621,88 @@ public final class Cartrofit {
                 return 0;
             }
             return mId = record.selfDependencyReverse.getOrDefault(method, 0);
+        }
+
+        public Parameter findParameterByAnnotation(Class<? extends Annotation> clazz) {
+            for (int i = 0; i < getParameterCount(); i++) {
+                Parameter parameter = getParameterAt(i);
+                if (parameter.isAnnotationPresent(clazz)) {
+                    return parameter;
+                }
+            }
+            return null;
+        }
+
+        public int getParameterCount() {
+            if (parameterCount != -1) {
+                return parameterCount;
+            }
+            if (method == null) {
+                return 0;
+            }
+            return parameterCount = Cartrofit.getParameterCount(method);
+        }
+
+        public Parameter getParameterAt(int index) {
+            if (method == null) {
+                return null;
+            }
+            if (parameters == null) {
+                final int count = Cartrofit.getParameterCount(method);
+                parameters = new Parameter[count];
+                Class<?>[] parameterClass = method.getParameterTypes();
+                Type[] parameterType = method.getGenericParameterTypes();
+                Annotation[][] annotationMatrix = method.getParameterAnnotations();
+                for (int i = 0; i < count; i++) {
+                    parameters[i] = new ParameterImpl(parameterClass, parameterType,
+                            annotationMatrix, i);
+                }
+            }
+            if (index < 0 || index >= parameters.length) {
+                return null;
+            }
+            return parameters[index];
+        }
+
+        private static class ParameterImpl implements Parameter {
+
+            final Class<?>[] parameterClass;
+            final Type[] parameterType;
+            final Annotation[][] annotationMatrix;
+            final int index;
+
+            ParameterImpl(Class<?>[] parameterClass, Type[] parameterType,
+                          Annotation[][] annotationMatrix, int index) {
+                this.parameterClass = parameterClass;
+                this.parameterType = parameterType;
+                this.annotationMatrix = annotationMatrix;
+                this.index = index;
+            }
+
+            @Override
+            public boolean isAnnotationPresent(Class<? extends Annotation> clazz) {
+                return find(annotationMatrix[index], clazz) != null;
+            }
+
+            @Override
+            public <A extends Annotation> A getAnnotation(Class<A> clazz) {
+                return find(annotationMatrix[index], clazz);
+            }
+
+            @Override
+            public Class<?> getType() {
+                return parameterClass[index];
+            }
+
+            @Override
+            public Type getGenericType() {
+                return parameterType[index];
+            }
+
+            @Override
+            public int getDeclaredIndex() {
+                return index;
+            }
         }
 
         public <S> S getScopeObj() {
@@ -621,17 +720,21 @@ public final class Cartrofit {
             }
         }
 
-        void doQualifyCheckIfNeeded(int category, ArrayList<Class<? extends Annotation>> candidates) {
-            if (candidates.size() == 0) {
-                throw new CartrofitGrammarException("no annotation candidates?? " + this);
+        void doGrammarCheckIfNeeded(int category, ArrayList<CallAdapter.CallSolution<?>> grammarRules) {
+            if (grammarRules.size() == 0) {
+                throw new CartrofitGrammarException("No annotation requirement?? " + this);
             }
             boolean qualified = false;
             int checkIndex = 0;
-            while (checkIndex < candidates.size()) {
-                if (isAnnotationPresent(candidates.get(checkIndex++))) {
+            while (checkIndex < grammarRules.size()) {
+                CallAdapter.CallSolution<?> grammarProvider = grammarRules.get(checkIndex++);
+                if (isAnnotationPresent(grammarProvider.getGrammarContext())) {
                     if (qualified) {
                         throw new CartrofitGrammarException("More than one annotation presented by:" + this);
                     }
+
+                    grammarProvider.checkParameterGrammar(this);
+
                     qualified = true;
                 }
             }
@@ -660,6 +763,7 @@ public final class Cartrofit {
                                 continue anchor;
                             }
                         }
+                        // TODO
                         trackReceiveArgIndex = i;
                     }
                     if (parameterCount - countWithInOut > 1) {
@@ -690,9 +794,8 @@ public final class Cartrofit {
                 if (method != null && getParameterCount(method) > 0) {
                     throw new CartrofitGrammarException("Invalid track declaration " + this);
                 }
-            } else if (field != null && Modifier.isFinal(field.getModifiers())
-                    && isAnnotationPresent(Set.class)) {
-                throw new CartrofitGrammarException("Invalid key:" + this + " in call Inject");
+            } else if ((category & CallAdapter.CATEGORY_SET) != 0 && field != null && Modifier.isFinal(field.getModifiers())) {
+                throw new CartrofitGrammarException("Invalid key:" + this + " for SET grammar");
             }
             if (isInvalid()) {
                 throw new CartrofitGrammarException("Invalid key:" + this);
