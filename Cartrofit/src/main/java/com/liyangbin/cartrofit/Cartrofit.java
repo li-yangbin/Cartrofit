@@ -3,18 +3,11 @@ package com.liyangbin.cartrofit;
 import android.car.hardware.CarPropertyValue;
 import android.os.Build;
 
-import com.liyangbin.cartrofit.annotation.CarValue;
 import com.liyangbin.cartrofit.annotation.Category;
-import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.GenerateId;
-import com.liyangbin.cartrofit.annotation.In;
-import com.liyangbin.cartrofit.annotation.Inject;
-import com.liyangbin.cartrofit.annotation.Out;
 import com.liyangbin.cartrofit.annotation.Restore;
 import com.liyangbin.cartrofit.annotation.Scope;
-import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Sticky;
-import com.liyangbin.cartrofit.annotation.Track;
 import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.call.BuildInCallAdapter;
 import com.liyangbin.cartrofit.call.Call;
@@ -233,7 +226,7 @@ public final class Cartrofit {
                 grammarRuleMap.put(category, grammarRule);
             }
 
-            key.doGrammarCheckIfNeeded(category, grammarRule);
+            key.checkGrammar(grammarRule);
 
             Call call = callAdapter.createCall(key, category);
             if (call == null) {
@@ -559,11 +552,8 @@ public final class Cartrofit {
 
     private Call getOrCreateCall(ApiRecord<?> record, Key key, int flag) {
         Call call = mCallCache.get(key);
-        if (call != null) {
-            return call;
-        }
-        call = record.createAdapterCall(key, flag);
-        if (call != null) {
+        if (call == null) {
+            call = record.createAdapterCall(key, flag);
             mCallCache.put(key, call);
         }
         return call;
@@ -580,15 +570,14 @@ public final class Cartrofit {
     public static class Key {
         public final Method method;
         public final boolean isCallbackEntry;
-        int trackReceiveArgIndex = -1;
 
         public final Field field;
 
         ApiRecord<?> record;
         private int mId = -1;
 
-        int parameterCount = -1;
-        Parameter[] parameters;
+        private int parameterCount = -1;
+        private Parameter[] parameters;
 
         Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
             this.record = record;
@@ -720,85 +709,39 @@ public final class Cartrofit {
             }
         }
 
-        void doGrammarCheckIfNeeded(int category, ArrayList<CallAdapter.CallSolution<?>> grammarRules) {
+        void checkGrammar(ArrayList<CallAdapter.CallSolution<?>> grammarRules) {
+            if (isInvalid()) {
+                throw new CartrofitGrammarException("Invalid key:" + this);
+            }
             if (grammarRules.size() == 0) {
                 throw new CartrofitGrammarException("No annotation requirement?? " + this);
             }
             boolean qualified = false;
             int checkIndex = 0;
             while (checkIndex < grammarRules.size()) {
-                CallAdapter.CallSolution<?> grammarProvider = grammarRules.get(checkIndex++);
-                if (isAnnotationPresent(grammarProvider.getGrammarContext())) {
+                CallAdapter.CallSolution<?> solution = grammarRules.get(checkIndex++);
+                if (isAnnotationPresent(solution.getGrammarContext())) {
                     if (qualified) {
                         throw new CartrofitGrammarException("More than one annotation presented by:" + this);
                     }
 
-                    grammarProvider.checkParameterGrammar(this);
+                    solution.checkParameterGrammar(this);
+
+                    if (field != null && solution.hasCategory(CallAdapter.CATEGORY_SET)
+                            && Modifier.isFinal(field.getModifiers())) {
+                        throw new CartrofitGrammarException("Invalid final key:" + this);
+                    }
+
+                    if (method != null
+                            && ((!isCallbackEntry && solution.hasCategory(CallAdapter.CATEGORY_GET))
+                            || (isCallbackEntry && solution.hasCategory(CallAdapter.CATEGORY_SET)))) {
+                        if (method.getReturnType() == void.class) {
+                            throw new CartrofitGrammarException("Invalid return type:" + this);
+                        }
+                    }
 
                     qualified = true;
                 }
-            }
-            if (isCallbackEntry) {
-                Set set = getAnnotation(Set.class);
-                boolean setWithReturn;
-                if (set != null) {
-                    CarValue value = set.value();
-                    setWithReturn = CarValue.EMPTY_VALUE.equals(value.string());
-                } else {
-                    Delegate delegate = getAnnotation(Delegate.class);
-                    setWithReturn = delegate != null && delegate._return() != 0;
-                }
-                boolean declareReturn = method.getReturnType() != void.class;
-                if (setWithReturn != declareReturn) {
-                    throw new CartrofitGrammarException("Invalid declaration:" + method);
-                }
-                int parameterCount = getParameterCount(method);
-                if (parameterCount > 0) {
-                    Annotation[][] annotationAll = method.getParameterAnnotations();
-                    int countWithInOut = 0;
-                    anchor:for (int i = 0; i < annotationAll.length; i++) {
-                        for (Annotation annotation : annotationAll[i]) {
-                            if (annotation instanceof Out || annotation instanceof In) {
-                                countWithInOut++;
-                                continue anchor;
-                            }
-                        }
-                        // TODO
-                        trackReceiveArgIndex = i;
-                    }
-                    if (parameterCount - countWithInOut > 1) {
-                        throw new CartrofitGrammarException("Invalid parameter count " + this);
-                    }
-                }
-            } else if (isAnnotationPresent(Inject.class)) {
-                if (method != null) {
-                    if (method.getReturnType() != void.class) {
-                        throw new CartrofitGrammarException("Can not return any result by using Inject");
-                    }
-                    int parameterCount = getParameterCount(method);
-                    if (parameterCount != 1) {
-                        throw new CartrofitGrammarException("Can not declare parameter more or less than one " + this);
-                    }
-                    Annotation[] annotationOne = method.getParameterAnnotations()[0];
-                    int countWithInOut = 0;
-                    for (Annotation annotation : annotationOne) {
-                        if (annotation instanceof Out || annotation instanceof In) {
-                            countWithInOut++;
-                        }
-                    }
-                    if (countWithInOut == 0) {
-                        throw new CartrofitGrammarException("Invalid parameter declaration " + this);
-                    }
-                }
-            }  else if (isAnnotationPresent(Track.class)) {
-                if (method != null && getParameterCount(method) > 0) {
-                    throw new CartrofitGrammarException("Invalid track declaration " + this);
-                }
-            } else if ((category & CallAdapter.CATEGORY_SET) != 0 && field != null && Modifier.isFinal(field.getModifiers())) {
-                throw new CartrofitGrammarException("Invalid key:" + this + " for SET grammar");
-            }
-            if (isInvalid()) {
-                throw new CartrofitGrammarException("Invalid key:" + this);
             }
         }
 

@@ -28,7 +28,7 @@ public class BuildInCallAdapter extends CallAdapter {
     @Override
     public void onProvideCallSolution(CallSolutionBuilder builder) {
         builder.create(Unregister.class)
-                .takeIfEqual(CATEGORY_DEFAULT)
+                .takeIfDefault()
                 .provide(new CallProvider<Unregister>() {
                     @Override
                     public Call provide(int category, Unregister unregister, Cartrofit.Key key) {
@@ -40,7 +40,7 @@ public class BuildInCallAdapter extends CallAdapter {
                 });
 
         builder.create(Inject.class)
-                .takeIfEqual(CATEGORY_DEFAULT)
+                .takeIfDefault()
                 .checkParameterIncluded(In.class, Out.class)
                 .provide(new CallProvider<Inject>() {
                     @Override
@@ -49,6 +49,7 @@ public class BuildInCallAdapter extends CallAdapter {
                     }
                 });
 
+        // TODO: add belong annotation
         builder.create(Combine.class)
                 .takeIfContains(CATEGORY_TRACK | CATEGORY_GET)
                 .provide(new CallProvider<Combine>() {
@@ -70,7 +71,7 @@ public class BuildInCallAdapter extends CallAdapter {
                 });
 
         builder.create(Register.class)
-                .takeIfEqual(CATEGORY_DEFAULT)
+                .takeIfDefault()
                 .provide(new CallProvider<Register>() {
                     @Override
                     public Call provide(int category, Register register, Cartrofit.Key key) {

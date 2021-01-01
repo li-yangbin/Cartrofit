@@ -58,6 +58,7 @@ public abstract class CallAdapter {
     public final class CallSolution<A extends Annotation> {
         IntPredicate predictor;
         Class<A> candidateClass;
+        int expectedCategory;
         CallProvider<A> provider;
         List<Class<? extends Annotation>[]> withInAnnotationCandidates;
         List<Class<? extends Annotation>> withAnnotationCandidates;
@@ -78,11 +79,12 @@ public abstract class CallAdapter {
             return takeIf(category -> true);
         }
 
-        public CallSolution<A> takeIfEqual(int expect) {
-            return takeIf(category -> category == expect);
+        public CallSolution<A> takeIfDefault() {
+            return takeIf(category -> category == CATEGORY_DEFAULT);
         }
 
         public CallSolution<A> takeIfContains(int expect) {
+            expectedCategory = expect;
             return takeIf(category -> (category & expect) != 0);
         }
 
@@ -143,6 +145,10 @@ public abstract class CallAdapter {
                 }
             }
             return null;
+        }
+
+        boolean hasCategory(int category) {
+            return (expectedCategory & category) != 0;
         }
 
         Class<? extends Annotation> getGrammarContext() {
