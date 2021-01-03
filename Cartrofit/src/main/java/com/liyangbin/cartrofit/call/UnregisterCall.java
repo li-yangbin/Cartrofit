@@ -1,10 +1,11 @@
 package com.liyangbin.cartrofit.call;
 
+import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.ConverterFactory;
 
 public class UnregisterCall extends Call {
-    RegisterCall trackCall;
+    private RegisterCall trackCall;
 
     @Override
     public void onInit(ConverterFactory scopeFactory) {

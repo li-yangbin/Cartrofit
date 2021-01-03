@@ -1,9 +1,12 @@
 package com.liyangbin.cartrofit.call;
 
-import android.os.Build;
-
+import com.liyangbin.cartrofit.Call;
+import com.liyangbin.cartrofit.CallGroup;
+import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
+import com.liyangbin.cartrofit.ConverterFactory;
 import com.liyangbin.cartrofit.Flow;
+import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.funtion.Union;
 
 import java.lang.reflect.InvocationTargetException;
@@ -16,6 +19,7 @@ import java.util.function.Consumer;
 public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
     private final HashMap<Object, RegisterCallbackWrapper> callbackWrapperMapper = new HashMap<>();
+    private int callbackParaIndex;
 
     void addChildCall(Call entryCall, Call returnCall,
                       Call parameterOutCall) {
@@ -36,14 +40,29 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
     }
 
     @Override
-    public Object doInvoke(Object callback) {
+    protected Call asCall(Entry entry) {
+        return entry.call;
+    }
+
+    @Override
+    public void onInit(ConverterFactory scopeFactory) {
+        super.onInit(scopeFactory);
+        Cartrofit.Parameter parameter = key.findParameterByAnnotation(Callback.class);
+        if (parameter != null) {
+            callbackParaIndex = parameter.getDeclaredIndex();
+        }
+    }
+
+    @Override
+    public Object mapInvoke(Union<?> parameter) {
+        final Object callback = parameter.get(callbackParaIndex);
         if (callbackWrapperMapper.containsKey(
                 Objects.requireNonNull(callback, "callback can not be null"))) {
             return null;
         }
         RegisterCallbackWrapper wrapper = new RegisterCallbackWrapper(callback);
         callbackWrapperMapper.put(callback, wrapper);
-        wrapper.register();
+        wrapper.register(parameter);
         return null;
     }
 
@@ -67,7 +86,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             this.callbackObj = callbackObj;
         }
 
-        void register() {
+        void register(Union<?> parameter) {
             if (commandObserverList.size() > 0) {
                 throw new CartrofitGrammarException("impossible situation");
             }
@@ -75,9 +94,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
                 Entry entry = getChildAt(i);
                 InnerObserver observer = new InnerObserver(entry, callbackObj);
                 commandObserverList.add(observer);
-                if (entry.registeredCall == null) {
-                    entry.registeredCall = (Flow<Object>) entry.call.invoke(null);
-                }
+                entry.registeredCall = childInvoke(entry.call, parameter);
                 entry.registeredCall.addObserver(observer);
             }
         }
@@ -88,17 +105,10 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
                 InnerObserver observer = commandObserverList.get(i);
                 if (observer != null && entry.registeredCall != null) {
                     entry.registeredCall.removeObserver(observer);
+                    entry.registeredCall = null;
                 }
             }
             commandObserverList.clear();
-        }
-    }
-
-    private static int getParameterCount(Method method) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            return method.getParameterTypes().length;
-        } else {
-            return method.getParameterCount();
         }
     }
 
@@ -126,7 +136,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             Union<?> union = Union.of(o);
             dispatchProcessing = true;
             try {
-                int parameterCount = flowCall.key.getParameterCount();
+                int parameterCount = flowCall.getKey().getParameterCount();
                 int injectCount = parameterInject != null ? parameterInject.getChildCount() : 0;
                 Object[] parameters = new Object[parameterCount + injectCount];
                 for (int i = 0, j = 0; i < parameters.length; i++) {
@@ -154,7 +164,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
                 }
 
                 if (returnCall != null) {
-                    returnCall.invoke(result);
+                    returnCall.invoke(Union.of(result));
                 }
             } catch (InvocationTargetException invokeExp) {
                 if (invokeExp.getCause() instanceof RuntimeException) {

@@ -1,24 +1,22 @@
-package com.liyangbin.cartrofit.call;
+package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.Flow;
+class StickyFlowImpl extends FlowWrapper implements Flow.StickyFlow<Object> {
 
-public class StickyFlowImpl extends FlowWrapper implements Flow.StickyFlow<Object> {
-
-    public StickyFlowImpl(Flow<?> base) {
+    StickyFlowImpl(Flow<?> base) {
         super(base);
     }
 
     @Override
     public Object get() {
         for (int i = receiverList.size() - 1; i >= 0; i--) {
-            OnReceiveCall onReceiveCall = receiverList.get(i);
+            Call.OnReceiveCall onReceiveCall = receiverList.get(i);
             Object value = onReceiveCall.getHistoricalData(this);
             if (value != null) {
                 return value;
             }
         }
         for (int i = receiverList.size() - 1; i >= 0; i--) {
-            OnReceiveCall onReceiveCall = receiverList.get(i);
+            Call.OnReceiveCall onReceiveCall = receiverList.get(i);
             Object value = onReceiveCall.loadInitialData();
             if (value != null) {
                 return value;

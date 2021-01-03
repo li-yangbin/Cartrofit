@@ -1,9 +1,6 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.call.FlowWrapper;
 import com.liyangbin.cartrofit.call.MediatorFlow;
-import com.liyangbin.cartrofit.call.OnReceiveCall;
-import com.liyangbin.cartrofit.call.StickyFlowImpl;
 import com.liyangbin.cartrofit.funtion.Converter;
 
 import java.util.function.Consumer;
@@ -21,7 +18,7 @@ public interface Flow<T> {
         }
     }
 
-    default Flow<T> untilReceive(OnReceiveCall onReceiveCall) {
+    default Flow<T> untilReceive(Call.OnReceiveCall onReceiveCall) {
         if (this instanceof FlowWrapper) {
             return (Flow<T>) ((FlowWrapper) this).addReceiverCall(onReceiveCall);
         } else {

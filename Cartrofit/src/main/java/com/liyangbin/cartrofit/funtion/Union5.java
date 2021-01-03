@@ -23,6 +23,11 @@ public class Union5<T1, T2, T3, T4, T5> extends Union4<T1, T2, T3, T4> {
     }
 
     @Override
+    Union<?> merge(Object obj) {
+        throw new RuntimeException("At most 5 elements inside");
+    }
+
+    @Override
     public void recycle() {
         value1 = null;
         value2 = null;

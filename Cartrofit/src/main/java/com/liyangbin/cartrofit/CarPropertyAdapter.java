@@ -7,12 +7,8 @@ import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
-import com.liyangbin.cartrofit.call.Call;
 
-import java.lang.annotation.Annotation;
-import java.util.ArrayList;
-
-public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarPropertyAdapter.PropertyCall> {
+public abstract class CarPropertyAdapter extends CallAdapter {
 
     private final String key;
 
@@ -21,7 +17,7 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
     }
 
     @Override
-    public Scope extractTypedScope(Class<?> apiClass, ConverterFactory factory) {
+    public Scope extractScope(Class<?> apiClass, ConverterFactory factory) {
         Scope scope = findScopeByClass(Scope.class, apiClass);
         if (scope != null && scope.value().equals(key)) {
             return scope;
@@ -30,39 +26,33 @@ public abstract class CarPropertyAdapter extends TypedCallAdapter<Scope, CarProp
     }
 
     @Override
-    public PropertyCall onCreateTypedCall(Scope scope, Cartrofit.Key key, int category) {
-        if ((category & CallAdapter.CATEGORY_GET) != 0) {
-            Get get = key.getAnnotation(Get.class);
-            if (get != null) {
-                return new PropertyCall(scope, get);
-            }
-        }
-        if ((category & CallAdapter.CATEGORY_SET) != 0) {
-            Set set = key.getAnnotation(Set.class);
-            if (set != null) {
-                return new PropertyCall(scope, set);
-            }
-        }
-        if ((category & CallAdapter.CATEGORY_TRACK) != 0) {
-            Track track = key.getAnnotation(Track.class);
-            if (track != null) {
-                return new PropertyCall(scope, track);
-            }
-        }
-        return null;
-    }
+    public void onProvideCallSolution(CallSolutionBuilder builder) {
+        builder.create(Get.class)
+                .takeIfContains(CATEGORY_GET)
+                .provide(new CallProvider<Get>() {
+                    @Override
+                    public Call provide(int category, Get get, Cartrofit.Key key) {
+                        return new PropertyCall(key.getScopeObj(), get);
+                    }
+                });
 
-    @Override
-    public void getAnnotationCandidates(int category, ArrayList<Class<? extends Annotation>> outCandidates) {
-        if ((category & CallAdapter.CATEGORY_GET) != 0) {
-            outCandidates.add(Get.class);
-        }
-        if ((category & CallAdapter.CATEGORY_SET) != 0) {
-            outCandidates.add(Set.class);
-        }
-        if ((category & CallAdapter.CATEGORY_TRACK) != 0) {
-            outCandidates.add(Track.class);
-        }
+        builder.create(Set.class)
+                .takeIfContains(CATEGORY_SET)
+                .provide(new CallProvider<Set>() {
+                    @Override
+                    public Call provide(int category, Set set, Cartrofit.Key key) {
+                        return new PropertyCall(key.getScopeObj(), set);
+                    }
+                });
+
+        builder.create(Track.class)
+                .takeIfContains(CATEGORY_TRACK)
+                .provide(new CallProvider<Track>() {
+                    @Override
+                    public Call provide(int category, Track track, Cartrofit.Key key) {
+                        return new PropertyCall(key.getScopeObj(), track);
+                    }
+                });
     }
 
     public abstract Object get(int propertyId, int area, CarType type);

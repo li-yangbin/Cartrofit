@@ -1,33 +1,14 @@
 package com.liyangbin.cartrofit.call;
 
+import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CallAdapter;
+import com.liyangbin.cartrofit.CallGroup;
 import com.liyangbin.cartrofit.InjectReceiver;
+import com.liyangbin.cartrofit.funtion.Union;
 
 public class InjectCall extends CallGroup<Call> implements CallAdapter.FieldAccessible {
 
     Class<?> targetClass;
-
-    static class InjectInfo {
-        boolean get;
-        boolean set;
-        Object target;
-
-        InjectInfo copy() {
-            InjectInfo copy = new InjectInfo();
-            copy.get = this.get;
-            copy.set = this.set;
-            return copy;
-        }
-
-        @Override
-        public String toString() {
-            return "InjectInfo{" +
-                    "get=" + get +
-                    ", set=" + set +
-                    ", target=" + target +
-                    '}';
-        }
-    }
 
     InjectCall(Class<?> targetClass) {
         this.targetClass = targetClass;
@@ -38,37 +19,25 @@ public class InjectCall extends CallGroup<Call> implements CallAdapter.FieldAcce
         return key.field != null ? this : null;
     }
 
-//    void suppressGetAndExecute(Object object) {
-//        final boolean oldGetEnable = dispatchInfo.get;
-//        dispatchInfo.get = false;
-//        if (shouldExecuteReflectOperation(dispatchInfo)) {
-//            dispatchInfo.target = object;
-//            reflectCall.invoke(dispatchInfo);
-//            dispatchInfo.target = null;
-//        }
-//        dispatchInfo.get = oldGetEnable;
-//    }
-
-//    void suppressSetAndExecute(Object object) {
-//        final boolean oldSetEnable = dispatchInfo.set;
-//        dispatchInfo.set = false;
-//        if (shouldExecuteReflectOperation(dispatchInfo)) {
-//            dispatchInfo.target = object;
-//            reflectCall.invoke(dispatchInfo);
-//            dispatchInfo.target = null;
-//        }
-//        dispatchInfo.set = oldSetEnable;
-//    }
-
-    static boolean shouldExecuteReflectOperation(InjectInfo info) {
-        return info.set || info.get;
+    @Override
+    protected Call asCall(Call call) {
+        return call;
     }
 
     @Override
-    protected Object doInvoke(Object parameter) {
-        InjectInfo dispatchedInfo = (InjectInfo) parameter;
-        if (shouldExecuteReflectOperation(dispatchedInfo)) {
-            final Object target = dispatchedInfo.target;
+    public InjectGroupCall.InjectContext getParameterContext() {
+        return (InjectGroupCall.InjectContext) super.getParameterContext();
+    }
+
+    @Override
+    public Object mapInvoke(Union<?> parameter) {
+        final boolean doGet = getParameterContext().doGet(this);
+        final boolean doSet = getParameterContext().doSet(this);
+        if (!doGet && !doSet) {
+            return null;
+        }
+        try {
+            Object target = getParameterContext().getTarget(this);
 
             if (target instanceof InjectReceiver) {
                 if (((InjectReceiver) target).onBeforeInject(this)) {
@@ -79,40 +48,20 @@ public class InjectCall extends CallGroup<Call> implements CallAdapter.FieldAcce
             for (int i = 0; i < getChildCount(); i++) {
                 Call childCall = getChildAt(i);
                 if (childCall instanceof InjectCall) {
-                    InjectInfo copiedInfo = dispatchedInfo.copy();
-                    try {
-                        copiedInfo.target = key.field.get(dispatchedInfo.target);
-                    } catch (IllegalAccessException impossible) {
-                        throw new RuntimeException(impossible);
-                    }
-                    if (dispatchedInfo.get && copiedInfo.target == null) {
-                        throw new NullPointerException("Can not resolve target:" + key);
-                    } else if (dispatchedInfo.set && copiedInfo.target == null) {
-                        // TODO: really necessary?
-                        try {
-                            copiedInfo.target = key.field.getType().newInstance();
-                            key.field.set(dispatchedInfo.target, copiedInfo.target);
-                        } catch (IllegalAccessException | InstantiationException illegalAccessException) {
-                            throw new RuntimeException("Do provide a default constructor for:" + key.field.getType());
-                        }
-                    }
-
-                    childCall.invoke(copiedInfo);
+                    childInvoke(childCall, parameter);
                 } else {
                     CallAdapter.FieldAccessible childKeyAccess = childCall.asFieldAccessible();
-                    boolean isGetCommand = childCall.hasCategory(CallAdapter.CATEGORY_GET
-                            | CallAdapter.CATEGORY_TRACK);
-                    boolean isSetCommand = !isGetCommand
-                            && childCall.hasCategory(CallAdapter.CATEGORY_SET);
-                    try {
-                        if (dispatchedInfo.get && isGetCommand) {
-                            childKeyAccess.set(target, childCall.invoke(null));
-                        } else if (dispatchedInfo.set && isSetCommand) {
+                    if (childKeyAccess != null) {
+                        boolean isGetCommand = childCall.hasCategory(CallAdapter.CATEGORY_GET
+                                | CallAdapter.CATEGORY_TRACK);
+                        boolean isSetCommand = !isGetCommand
+                                && childCall.hasCategory(CallAdapter.CATEGORY_SET);
+                        if (doGet && isGetCommand) {
+                            childKeyAccess.set(target, childInvoke(childCall, parameter));
+                        } else if (doSet && isSetCommand) {
                             Object setValue = childKeyAccess.get(target);
-                            childCall.invoke(setValue);
+                            childInvokeWithExtra(childCall, parameter, setValue);
                         }
-                    } catch (IllegalAccessException impossible) {
-                        throw new RuntimeException(impossible);
                     }
                 }
             }
@@ -120,6 +69,9 @@ public class InjectCall extends CallGroup<Call> implements CallAdapter.FieldAcce
             if (target instanceof InjectReceiver) {
                 ((InjectReceiver) target).onAfterInject(this);
             }
+
+        } catch (IllegalAccessException impossible) {
+            throw new RuntimeException(impossible);
         }
         return null;
     }

@@ -1,6 +1,4 @@
-package com.liyangbin.cartrofit.call;
-
-import com.liyangbin.cartrofit.Flow;
+package com.liyangbin.cartrofit;
 
 import java.util.ArrayList;
 import java.util.function.Consumer;
@@ -8,15 +6,15 @@ import java.util.function.Consumer;
 @SuppressWarnings("unchecked")
 public class FlowWrapper implements Flow<Object>, Consumer<Object> {
 
-    ArrayList<OnReceiveCall> receiverList = new ArrayList<>();
-    ArrayList<Consumer<Object>> consumerList = new ArrayList<>();
-    Flow<Object> base;
+    ArrayList<Call.OnReceiveCall> receiverList = new ArrayList<>();
+    private ArrayList<Consumer<Object>> consumerList = new ArrayList<>();
+    private Flow<Object> base;
 
     FlowWrapper(Flow<?> base) {
         this.base = (Flow<Object>) base;
     }
 
-    public FlowWrapper(Flow<?> base, OnReceiveCall onReceiveCall) {
+    FlowWrapper(Flow<?> base, Call.OnReceiveCall onReceiveCall) {
         this.base = (Flow<Object>) base;
         this.receiverList.add(onReceiveCall);
     }
@@ -53,15 +51,15 @@ public class FlowWrapper implements Flow<Object>, Consumer<Object> {
         }
     }
 
-    public FlowWrapper addReceiverCall(OnReceiveCall receiver) {
+    FlowWrapper addReceiverCall(Call.OnReceiveCall receiver) {
         synchronized (this) {
             receiverList.add(receiver);
         }
         return this;
     }
 
-    void onReceiveComplete(OnReceiveCall receiver, Object obj) {
-        OnReceiveCall nextReceiver = null;
+    void onReceiveComplete(Call.OnReceiveCall receiver, Object obj) {
+        Call.OnReceiveCall nextReceiver = null;
         synchronized (this) {
             for (int i = 0; i < receiverList.size() - 1; i++) {
                 if (receiverList.get(i) == receiver) {

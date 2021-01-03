@@ -1,41 +1,46 @@
-package com.liyangbin.cartrofit.call;
+package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.CallAdapter;
-import com.liyangbin.cartrofit.Cartrofit;
-import com.liyangbin.cartrofit.ConverterFactory;
-import com.liyangbin.cartrofit.Flow;
-import com.liyangbin.cartrofit.FlowConverter;
+import com.liyangbin.cartrofit.annotation.Category;
 import com.liyangbin.cartrofit.funtion.Converter;
+import com.liyangbin.cartrofit.funtion.Union;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.WeakHashMap;
 
 import static com.liyangbin.cartrofit.CallAdapter.CATEGORY_GET;
 import static com.liyangbin.cartrofit.CallAdapter.CATEGORY_SET;
 import static com.liyangbin.cartrofit.CallAdapter.CATEGORY_TRACK;
 
 public abstract class Call implements Cloneable {
-    private static final Timer sTimeOutTimer = new Timer("timeout-tracker");
+    static final Timer sTimeOutTimer = new Timer("timeout-tracker");
     private static final long TIMEOUT_DELAY = 1500;
 
     protected Cartrofit.Key key;
     protected int category;
     InterceptorChain interceptorChain;
+    private boolean inOutConvertDisabled;
     private ConverterFactory converterFactory;
-    protected Converter inputConverter;
-    protected FlowConverter<?> flowOutputConverter;
-    protected Converter outputConverter;
+    private Converter<Union<?>, ?> inputConverter;
+    private FlowConverter<?> flowOutputConverter;
+    private Converter outputConverter;
 
     private ArrayList<Call> restoreSchedulerList = new ArrayList<>();
     private Call restoreReceiver;
+    private CallGroup<?> parentCall;
     private TimerTask task;
     private OnReceiveCall onReceiveCall;
     private boolean stickyTrackSupport;
+    private boolean parameterRequired = true;
     private Object mTag;
+    private List<String> tokenList;
 
-    public final void init(Cartrofit.Key key, ConverterFactory scopeFactory) {
+    final void init(Cartrofit.Key key, ConverterFactory scopeFactory) {
         this.key = key;
 
         if (hasCategory(CATEGORY_TRACK)) {
@@ -48,22 +53,35 @@ public abstract class Call implements Cloneable {
 
         onInit(converterFactory = new ConverterFactory(scopeFactory));
 
-        if (hasCategory(CATEGORY_SET)) {
+        if (!inOutConvertDisabled && hasCategory(CATEGORY_SET)) {
             inputConverter = converterFactory.findInputConverterByKey(key);
         }
-        boolean isGet = hasCategory(CATEGORY_GET);
         boolean flowTrack = hasCategory(CATEGORY_TRACK);
-        if (isGet || flowTrack) {
+        if (flowTrack) {
+            flowOutputConverter = converterFactory.findFlowConverter(key);
+        }
+        if (!inOutConvertDisabled) {
             if (flowTrack) {
                 outputConverter = converterFactory.findOutputConverterByKey(key, true);
-                flowOutputConverter = converterFactory.findFlowConverter(key);
-            } else {
+            } else if (hasCategory(CATEGORY_GET)) {
                 outputConverter = converterFactory.findOutputConverterByKey(key, false);
             }
         }
     }
 
-    public void enableStickyTrack() {
+    public Cartrofit.Key getKey() {
+        return key;
+    }
+
+    protected void disableParameterRequirement() {
+        parameterRequired = false;
+    }
+
+    public boolean isParameterRequired() {
+        return parameterRequired || (!key.isCallbackEntry && key.getParameterCount() > 0);
+    }
+
+    void enableStickyTrack() {
         if (onReceiveCall != null) {
             stickyTrackSupport = true;
             onReceiveCall.enableSaveLatestData();
@@ -74,7 +92,22 @@ public abstract class Call implements Cloneable {
         return stickyTrackSupport;
     }
 
-    public void setRestoreTarget(Call targetCall) {
+    void setTokenList(Category category) {
+        tokenList = Arrays.asList(category.value());
+    }
+
+    public void addToken(String token) {
+        if (tokenList == null) {
+            tokenList = new ArrayList<>();
+        }
+        tokenList.add(token);
+    }
+
+    public boolean hasToken(String token) {
+        return tokenList != null && tokenList.contains(token);
+    }
+
+    void setRestoreTarget(Call targetCall) {
         if (targetCall.hasCategory(CATEGORY_SET) && hasCategory(CATEGORY_TRACK)) {
             attachScheduler(targetCall);
             targetCall.attachReceiver(this);
@@ -139,16 +172,20 @@ public abstract class Call implements Cloneable {
         return null;
     }
 
-    public final Object invoke(Object arg) {
+    public final Object invoke(Union<?> parameter) {
         if (interceptorChain != null) {
-            return interceptorChain.doProcess(onCreateInvokeSession(), arg);
+            return interceptorChain.doProcess(onCreateInvokeSession(), parameter);
         } else {
-            return mapInvoke(arg);
+            try {
+                return mapInvoke(parameter);
+            } finally {
+                parameter.recycle();
+            }
         }
     }
 
     @SuppressWarnings("unchecked")
-    Object mapInvoke(Object parameter) {
+    public Object mapInvoke(Union<?> parameter) {
         parameter = parameter != null && inputConverter != null ?
                 inputConverter.convert(parameter) : parameter;
         final Object result = doInvoke(parameter);
@@ -167,7 +204,17 @@ public abstract class Call implements Cloneable {
         }
     }
 
-    protected abstract Object doInvoke(Object arg);
+    void attachParent(CallGroup<?> parent) {
+        parentCall = parent;
+    }
+
+    public CallGroup<?> getParent() {
+        return parentCall;
+    }
+
+    protected Object doInvoke(Object arg) {
+        return null;
+    }
 
     protected Interceptor.InvokeSession onCreateInvokeSession() {
         return new Interceptor.InvokeSession(this);
@@ -176,13 +223,17 @@ public abstract class Call implements Cloneable {
     public Call copyByHost(Call host) {
         try {
             Call call = (Call) clone();
-            call.inputConverter = null;
-            call.outputConverter = null;
             call.flowOutputConverter = null;
+            host.disableInOutConvert();
             return call;
         } catch (CloneNotSupportedException error) {
             throw new RuntimeException(error);
         }
+    }
+
+    private void disableInOutConvert() {
+        inOutConvertDisabled = true;
+        inputConverter = outputConverter = null;
     }
 
     public final Method getMethod() {
@@ -216,5 +267,85 @@ public abstract class Call implements Cloneable {
 
     public final int getId() {
         return key.getId();
+    }
+
+    static class OnReceiveCall extends Call {
+
+        private final WeakHashMap<FlowWrapper, Union<?>> lastTransactData = new WeakHashMap<>();
+        private boolean keepLatestData;
+
+        private final Call trackCall;
+
+        OnReceiveCall(Call trackCall) {
+            this.trackCall = trackCall;
+        }
+
+        @Override
+        public Object mapInvoke(Union<?> parameter) {
+            return null;
+        }
+
+        @Override
+        protected Object doInvoke(Object arg) {
+            return null;
+        }
+
+        void enableSaveLatestData() {
+            keepLatestData = true;
+        }
+
+        void restoreDispatch() {
+            keepLatestData = false;
+            for (Map.Entry<FlowWrapper, Union<?>> entry : lastTransactData.entrySet()) {
+                invokeWithFlow(entry.getKey(), entry.getValue());
+            }
+            keepLatestData = true;
+        }
+
+        boolean hasHistoricalData() {
+            return !lastTransactData.isEmpty();
+        }
+
+        Object getHistoricalData(FlowWrapper flowWrapper) {
+            return lastTransactData.get(flowWrapper);
+        }
+
+        Object loadInitialData() {
+            return trackCall.isStickyTrackEnable() ? trackCall.onLoadStickyValue() : null;
+        }
+
+        final void invokeWithFlow(FlowWrapper callFrom, Union<?> transact) {
+            if (interceptorChain != null) {
+                interceptorChain.doProcess(new OnReceiveCallSession(callFrom), transact);
+            } else {
+                if (keepLatestData) {
+                    lastTransactData.put(callFrom, transact);
+                }
+                callFrom.onReceiveComplete(OnReceiveCall.this, transact);
+            }
+        }
+
+        private class OnReceiveCallSession extends Interceptor.InvokeSession {
+
+            final FlowWrapper callFrom;
+
+            OnReceiveCallSession(FlowWrapper callFrom) {
+                super(trackCall);
+                this.callFrom = callFrom;
+            }
+
+            @Override
+            public void onInterceptComplete(Union<?> parameter) {
+                if (keepLatestData) {
+                    lastTransactData.put(callFrom, parameter);
+                }
+                this.callFrom.onReceiveComplete(OnReceiveCall.this, parameter);
+            }
+
+            @Override
+            public boolean isReceive() {
+                return true;
+            }
+        }
     }
 }

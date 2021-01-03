@@ -23,6 +23,11 @@ public class Union4<T1, T2, T3, T4> extends Union3<T1, T2, T3> {
     }
 
     @Override
+    Union<?> merge(Object obj) {
+        return new Union5<>(value1, value2, value3, value4, obj);
+    }
+
+    @Override
     public void recycle() {
         value1 = null;
         value2 = null;

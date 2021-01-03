@@ -7,8 +7,8 @@ import java.util.Arrays;
 @SuppressWarnings("unchecked")
 public class Union<T> {
     static final int LIMIT = 5;
-    static Union<?> sPool;
-    static int sSize;
+    private static Union<?> sPool;
+    private static int sSize;
 
     private static final Union<Void> NULL_UNION = new Union<Void>(null) {
         @Override
@@ -19,6 +19,11 @@ public class Union<T> {
         @Override
         public int getCount() {
             return 0;
+        }
+
+        @Override
+        Union<?> merge(Object obj) {
+            return Union.of(obj);
         }
 
         @Override
@@ -39,6 +44,10 @@ public class Union<T> {
         return 1;
     }
 
+    Union<?> merge(Object obj) {
+        return new Union2<>(value1, obj);
+    }
+
     public Object get(int index) {
         if (index != 0) {
             throw new IndexOutOfBoundsException("size:" + getCount() + " index:" + index);
@@ -55,6 +64,22 @@ public class Union<T> {
                 sPool = this;
                 sSize++;
             }
+        }
+    }
+
+    public static Union<?> ofNull() {
+        return NULL_UNION;
+    }
+
+    public static Union<?> merge(Union<?> dst, Object src) {
+        if (src instanceof Union) {
+            Union<?> srcUnion = (Union<?>) src;
+            for (int i = 0; i < srcUnion.getCount(); i++) {
+                dst = dst.merge(srcUnion.get(i));
+            }
+            return dst;
+        } else {
+            return dst.merge(src);
         }
     }
 

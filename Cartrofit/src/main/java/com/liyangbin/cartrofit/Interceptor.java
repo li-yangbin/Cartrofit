@@ -1,29 +1,35 @@
-package com.liyangbin.cartrofit.call;
+package com.liyangbin.cartrofit;
+
+import com.liyangbin.cartrofit.funtion.Union;
 
 public interface Interceptor {
 
-    Object process(InvokeSession session, Object transact);
+    Object process(InvokeSession session, Union<?> parameter);
 
     class InvokeSession {
         ChainNode current;
         final Call call;
         boolean cancelled;
 
-        public final Object invoke(Object transact) {
+        public final Object invoke(Union<?> parameter) {
             if (cancelled) {
                 throw new RuntimeException("Illegal invoke after cancel");
             }
-            onInterceptPass(current.interceptor, transact);
+            onInterceptPass(current.interceptor, parameter);
             current = current.previous;
             if (current != null) {
-                return current.doProcess(this, transact);
+                return current.doProcess(this, parameter);
             } else {
-                onInterceptComplete(transact);
-                return call.mapInvoke(transact);
+                try {
+                    onInterceptComplete(parameter);
+                    return call.mapInvoke(parameter);
+                } finally {
+                    parameter.recycle();
+                }
             }
         }
 
-        InvokeSession(Call call) {
+        public InvokeSession(Call call) {
             this.call = call;
         }
 
@@ -42,16 +48,16 @@ public interface Interceptor {
             return this.call;
         }
 
-        public void onInterceptStart(Object transact) {
+        public void onInterceptStart(Union<?> parameter) {
         }
 
-        public void onInterceptPass(Interceptor interceptor, Object transact) {
+        public void onInterceptPass(Interceptor interceptor, Union<?> parameter) {
         }
 
         public void onInterceptCancel() {
         }
 
-        public void onInterceptComplete(Object transact) {
+        public void onInterceptComplete(Union<?> transact) {
         }
     }
 }
@@ -64,8 +70,8 @@ class ChainNode {
         this.interceptor = interceptor;
     }
 
-    Object doProcess(Interceptor.InvokeSession session, Object transact) {
-        return interceptor.process(session, transact);
+    Object doProcess(Interceptor.InvokeSession session, Union<?> parameter) {
+        return interceptor.process(session, parameter);
     }
 }
 
@@ -102,12 +108,9 @@ class InterceptorChain {
         }
     }
 
-    Object doProcess(Interceptor.InvokeSession session, Object transact) {
-        if (top != null) {
-            session.current = top;
-            session.onInterceptStart(transact);
-            return top.doProcess(session, transact);
-        }
-        return session.call.mapInvoke(transact);
+    Object doProcess(Interceptor.InvokeSession session, Union<?> parameter) {
+        session.current = top;
+        session.onInterceptStart(parameter);
+        return top.doProcess(session, parameter);
     }
 }

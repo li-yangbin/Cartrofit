@@ -1,6 +1,5 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.call.Call;
 import com.liyangbin.cartrofit.funtion.Consumer;
 
 import java.lang.annotation.Annotation;
@@ -8,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.IntPredicate;
 
 public abstract class CallAdapter {
@@ -25,7 +25,7 @@ public abstract class CallAdapter {
 
     public static final int CATEGORY_DEFAULT = 0xffffffff;
 
-    private Cartrofit.CallInflater mCallInflater;
+    private Cartrofit mCartrofit;
     private final ArrayList<CallSolution<?>> mCallSolutionList = new ArrayList<>();
 
     public final class CallSolutionBuilder {
@@ -39,19 +39,28 @@ public abstract class CallAdapter {
         public abstract Call provide(int category, A annotation, Cartrofit.Key key);
 
         public final Call inflateByIdIfThrow(Cartrofit.Key key, int id, int category) {
-            return mCallInflater.inflateByIdIfThrow(key, id, category);
+            return mCartrofit.getOrCreateCallById(key.record, id, category, true);
         }
 
         public final Call inflateById(Cartrofit.Key key, int id, int category) {
-            return mCallInflater.inflateById(key, id, category);
+            return mCartrofit.getOrCreateCallById(key.record, id, category, false);
         }
 
         public final Call reInflate(Cartrofit.Key key, int category) {
-            return mCallInflater.reInflate(key, category);
+            return key.record.createAdapterCall(key, category);
         }
 
-        public final void inflateCallback(Class<?> callbackClass, int flag, Consumer<Call> resultReceiver) {
-            mCallInflater.inflateCallback(callbackClass, flag, resultReceiver);
+        public final void inflateCallback(Class<?> callbackClass, int category,
+                                          Consumer<Call> resultReceiver) {
+            Cartrofit.ApiRecord<?> record = mCartrofit.getApi(callbackClass);
+            ArrayList<Cartrofit.Key> childKeys = record.getChildKey();
+            for (int i = 0; i < childKeys.size(); i++) {
+                Cartrofit.Key childKey = childKeys.get(i);
+                Call call = mCartrofit.getOrCreateCall(record, childKey, category);
+                if (call != null) {
+                    resultReceiver.accept(call);
+                }
+            }
         }
     }
 
@@ -60,6 +69,7 @@ public abstract class CallAdapter {
         Class<A> candidateClass;
         int expectedCategory;
         CallProvider<A> provider;
+        BiConsumer<A, Cartrofit.Key> keyGrammarChecker;
         List<Class<? extends Annotation>[]> withInAnnotationCandidates;
         List<Class<? extends Annotation>> withAnnotationCandidates;
         HashMap<Class<? extends Annotation>, Class<?>> withAnnotationTypeMap;
@@ -113,6 +123,11 @@ public abstract class CallAdapter {
             return this;
         }
 
+        public CallSolution<A> checkParameter(BiConsumer<A, Cartrofit.Key> keyConsumer) {
+            keyGrammarChecker = keyConsumer;
+            return this;
+        }
+
         public CallSolution<A> checkParameter(Class<? extends Annotation> clazz) {
             return checkParameter(clazz, null);
         }
@@ -140,7 +155,6 @@ public abstract class CallAdapter {
             if (predictor.test(category)) {
                 A annotation = key.getAnnotation(candidateClass);
                 if (annotation != null) {
-                    checkParameterGrammar(key);
                     return provider.provide(category, annotation, key);
                 }
             }
@@ -155,7 +169,7 @@ public abstract class CallAdapter {
             return candidateClass;
         }
 
-        void checkParameterGrammar(Cartrofit.Key key) {
+        void checkParameterGrammar(Annotation annotation, Cartrofit.Key key) {
             if (withAnnotationCandidates != null) {
                 for (int i = 0; i < withAnnotationCandidates.size(); i++) {
                     Class<? extends Annotation> annotationClass = withAnnotationCandidates.get(i);
@@ -175,6 +189,9 @@ public abstract class CallAdapter {
                                 + Arrays.toString(withInAnnotationCandidates.get(i)) + " on:" + key);
                     }
                 }
+            }
+            if (keyGrammarChecker != null) {
+                keyGrammarChecker.accept((A) annotation, key);
             }
         }
 
@@ -200,8 +217,8 @@ public abstract class CallAdapter {
         }
     }
 
-    public void init(Cartrofit.CallInflater callInflater) {
-        mCallInflater = callInflater;
+    void init(Cartrofit cartrofit) {
+        mCartrofit = cartrofit;
         onProvideCallSolution(new CallSolutionBuilder());
     }
 

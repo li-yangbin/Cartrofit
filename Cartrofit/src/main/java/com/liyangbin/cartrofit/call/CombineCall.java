@@ -1,6 +1,9 @@
 package com.liyangbin.cartrofit.call;
 
+import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CallAdapter;
+import com.liyangbin.cartrofit.CallGroup;
+import com.liyangbin.cartrofit.ConverterFactory;
 import com.liyangbin.cartrofit.Flow;
 import com.liyangbin.cartrofit.funtion.Union;
 
@@ -10,35 +13,53 @@ import java.util.function.Consumer;
 
 public class CombineCall extends CallGroup<Call> {
 
+    private int startConcernResultIndex;
+
     @Override
     public void addChildCall(Call call) {
         super.addChildCall(call.copyByHost(this));
     }
 
     @Override
-    public boolean hasCategory(int category) {
+    public void onInit(ConverterFactory scopeFactory) {
+        super.onInit(scopeFactory);
+        boolean resultDetected = false;
         for (int i = 0; i < getChildCount(); i++) {
             Call call = getChildAt(i);
-            if (call.hasCategory(category)) {
-                return true;
+            boolean hasResult = call.hasCategory(CallAdapter.CATEGORY_GET | CallAdapter.CATEGORY_TRACK);
+            if (!resultDetected && hasResult) {
+                startConcernResultIndex = i;
+                resultDetected = true;
+            } else if (resultDetected && !hasResult) {
+                throw new RuntimeException("SET child CALL must be declared in front of all " + key);
             }
         }
-        return false;
     }
 
     @Override
-    public CombineCall copyByHost(Call host) {
-        CombineCall copy = (CombineCall) super.copyByHost(host);
-        copy.childrenCallList = new ArrayList<>();
-        for (int i = 0; i < getChildCount(); i++) {
-            copy.childrenCallList.add(getChildAt(i).copyByHost(host));
-        }
-        return copy;
+    protected Call asCall(Call call) {
+        return call;
     }
+
+//    @Override
+//    public CombineCall copyByHost(Call host) {
+//        CombineCall copy = (CombineCall) super.copyByHost(host);
+//        copy.childrenCallList = new ArrayList<>();
+//        for (int i = 0; i < getChildCount(); i++) {
+//            copy.childrenCallList.add(getChildAt(i).copyByHost(host));
+//        }
+//        return copy;
+//    }
 
     @Override
     protected Object doInvoke(Object parameter) {
-        return new CombineFlow(parameter).castAsUnionIfNeeded();
+        for (int i = 0; i < startConcernResultIndex; i++) {
+            childInvoke(getChildAt(i), (Union<?>) parameter);
+        }
+        if (startConcernResultIndex == getChildCount()) {
+            return null;
+        }
+        return new CombineFlow((Union<?>) parameter).castAsUnionIfNeeded();
     }
 
     private static class CombineData {
@@ -73,22 +94,22 @@ public class CombineCall extends CallGroup<Call> {
         ArrayList<Consumer<Union<?>>> consumers = new ArrayList<>();
         boolean notifyValueSuppressed;
 
-        CombineFlow(Object input) {
-            final int elementCount = getChildCount();
+        CombineFlow(Union<?> parameter) {
+            final int elementCount = getChildCount() - startConcernResultIndex;
             flowArray = new Flow[elementCount];
             trackIndexArray = new int[elementCount];
             getIndexArray = new int[elementCount];
             flowObservers = new InternalObserver[elementCount];
             trackingData = new CombineData(elementCount);
 
-            for (int i = 0; i < getChildCount(); i++) {
+            for (int i = startConcernResultIndex; i < getChildCount(); i++) {
                 Call call = getChildAt(i);
                 if (call.hasCategory(CallAdapter.CATEGORY_TRACK)) {
-                    flowArray[i] = (Flow<Object>) call.invoke(input);
+                    flowArray[i] = (Flow<Object>) childInvoke(call, parameter);
                     flowObservers[i] = new InternalObserver(i);
                     trackIndexArray[trackElementCount++] = i;
                 } else if (call.hasCategory(CallAdapter.CATEGORY_GET)) {
-                    trackingData.trackingObj[i] = call.invoke(input);
+                    trackingData.trackingObj[i] = childInvoke(call, parameter);
                     getIndexArray[getElementCount++] = i;
                 } else {
                     throw new RuntimeException("impossible situation");

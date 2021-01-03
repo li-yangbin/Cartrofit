@@ -1,6 +1,8 @@
 package com.liyangbin.cartrofit.call;
 
+import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CallAdapter;
+import com.liyangbin.cartrofit.funtion.Union;
 
 public class DelegateCall extends Call {
     private Call targetCall;
@@ -45,7 +47,7 @@ public class DelegateCall extends Call {
 
     @Override
     protected Object doInvoke(Object arg) {
-        return targetCall.invoke(arg);
+        return targetCall.invoke((Union<?>) arg);
     }
 
 //    @Override

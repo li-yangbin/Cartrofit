@@ -1,6 +1,7 @@
 package com.liyangbin.cartrofit.call;
 
 import com.liyangbin.cartrofit.Flow;
+import com.liyangbin.cartrofit.FlowWrapper;
 import com.liyangbin.cartrofit.funtion.Converter;
 
 //class EmptyFlowWrapper extends FlowWrapper<Void> implements Flow.EmptyFlow {
