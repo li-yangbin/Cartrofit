@@ -69,12 +69,12 @@ public abstract class CallGroup<T> extends Call {
         return false;
     }
 
-    protected <RESULT> RESULT childInvoke(Call child, Union<?> parameter) {
+    protected <RESULT> RESULT childInvoke(Call child, Union parameter) {
         return (RESULT) child.invoke(getParameterContext().getParameter(child, parameter));
     }
 
-    protected <RESULT> RESULT childInvokeWithExtra(Call child, Union<?> parameter, Object extra) {
+    protected <RESULT> RESULT childInvokeWithExtra(Call child, Union parameter, Object extra) {
         // TODO: injectable parameter will always be the last one?
-        return (RESULT) child.invoke(Union.merge(getParameterContext().getParameter(child, parameter), extra));
+        return (RESULT) child.invoke(getParameterContext().getParameter(child, parameter).merge(extra));
     }
 }

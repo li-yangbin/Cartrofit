@@ -237,17 +237,17 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             super(classArray);
         }
 
-        public void in(Converter<Union<?>, SERIALIZATION> converter) {
+        public void in(Converter<Union, SERIALIZATION> converter) {
             ConverterBuilderArray.this.converterIn = converter;
             ConverterBuilder.this.onCommit(ConverterBuilderArray.this);
         }
 
-        public void out(Converter<SERIALIZATION, Union<?>> converter) {
+        public void out(Converter<SERIALIZATION, Union> converter) {
             ConverterBuilderArray.this.converterOut = converter;
             ConverterBuilder.this.onCommit(ConverterBuilderArray.this);
         }
 
-        public void inout(TwoWayConverter<Union<?>, SERIALIZATION> converter) {
+        public void inout(TwoWayConverter<Union, SERIALIZATION> converter) {
             ConverterBuilderArray.this.twoWayConverter = converter;
             ConverterBuilder.this.onCommit(ConverterBuilderArray.this);
         }

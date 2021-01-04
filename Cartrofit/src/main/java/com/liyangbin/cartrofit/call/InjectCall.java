@@ -30,7 +30,7 @@ public class InjectCall extends CallGroup<Call> implements CallAdapter.FieldAcce
     }
 
     @Override
-    public Object mapInvoke(Union<?> parameter) {
+    public Object mapInvoke(Union parameter) {
         final boolean doGet = getParameterContext().doGet(this);
         final boolean doSet = getParameterContext().doSet(this);
         if (!doGet && !doSet) {

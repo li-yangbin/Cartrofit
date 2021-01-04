@@ -47,7 +47,7 @@ public class ParameterContext {
 //        }
 //    }
 
-    public Union<?> getParameter(Call target, Union<?> all) {
+    public Union getParameter(Call target, Union all) {
         for (Map.Entry<String, ParameterMap> parameterEntry : parameterIndexMap.entrySet()) {
             if (target.hasToken(parameterEntry.getKey())) {
                 ParameterMap map = parameterEntry.getValue();
@@ -66,7 +66,7 @@ public class ParameterContext {
             size++;
         }
 
-        Union<?> find(Union<?> all) {
+        Union find(Union all) {
             Object[] elements = new Object[size];
             for (int i = 0, j = 0; i < all.getCount(); i++) {
                 if ((indexBit & (1 << i)) != 0) {

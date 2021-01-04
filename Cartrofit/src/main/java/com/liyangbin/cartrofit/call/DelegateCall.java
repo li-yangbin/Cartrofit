@@ -47,7 +47,7 @@ public class DelegateCall extends Call {
 
     @Override
     protected Object doInvoke(Object arg) {
-        return targetCall.invoke((Union<?>) arg);
+        return targetCall.invoke((Union) arg);
     }
 
 //    @Override

@@ -4,14 +4,14 @@ import com.liyangbin.cartrofit.funtion.Union;
 
 public interface Interceptor {
 
-    Object process(InvokeSession session, Union<?> parameter);
+    Object process(InvokeSession session, Union parameter);
 
     class InvokeSession {
         ChainNode current;
         final Call call;
         boolean cancelled;
 
-        public final Object invoke(Union<?> parameter) {
+        public final Object invoke(Union parameter) {
             if (cancelled) {
                 throw new RuntimeException("Illegal invoke after cancel");
             }
@@ -48,16 +48,16 @@ public interface Interceptor {
             return this.call;
         }
 
-        public void onInterceptStart(Union<?> parameter) {
+        public void onInterceptStart(Union parameter) {
         }
 
-        public void onInterceptPass(Interceptor interceptor, Union<?> parameter) {
+        public void onInterceptPass(Interceptor interceptor, Union parameter) {
         }
 
         public void onInterceptCancel() {
         }
 
-        public void onInterceptComplete(Union<?> transact) {
+        public void onInterceptComplete(Union transact) {
         }
     }
 }
@@ -70,7 +70,7 @@ class ChainNode {
         this.interceptor = interceptor;
     }
 
-    Object doProcess(Interceptor.InvokeSession session, Union<?> parameter) {
+    Object doProcess(Interceptor.InvokeSession session, Union parameter) {
         return interceptor.process(session, parameter);
     }
 }
@@ -108,7 +108,7 @@ class InterceptorChain {
         }
     }
 
-    Object doProcess(Interceptor.InvokeSession session, Union<?> parameter) {
+    Object doProcess(Interceptor.InvokeSession session, Union parameter) {
         session.current = top;
         session.onInterceptStart(parameter);
         return top.doProcess(session, parameter);

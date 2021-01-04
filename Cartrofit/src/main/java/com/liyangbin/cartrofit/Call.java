@@ -26,7 +26,7 @@ public abstract class Call implements Cloneable {
     InterceptorChain interceptorChain;
     private boolean inOutConvertDisabled;
     private ConverterFactory converterFactory;
-    private Converter<Union<?>, ?> inputConverter;
+    private Converter<Union, ?> inputConverter;
     private FlowConverter<?> flowOutputConverter;
     private Converter outputConverter;
 
@@ -172,7 +172,7 @@ public abstract class Call implements Cloneable {
         return null;
     }
 
-    public final Object invoke(Union<?> parameter) {
+    public final Object invoke(Union parameter) {
         if (interceptorChain != null) {
             return interceptorChain.doProcess(onCreateInvokeSession(), parameter);
         } else {
@@ -185,7 +185,7 @@ public abstract class Call implements Cloneable {
     }
 
     @SuppressWarnings("unchecked")
-    public Object mapInvoke(Union<?> parameter) {
+    public Object mapInvoke(Union parameter) {
         parameter = parameter != null && inputConverter != null ?
                 inputConverter.convert(parameter) : parameter;
         final Object result = doInvoke(parameter);
@@ -271,7 +271,7 @@ public abstract class Call implements Cloneable {
 
     static class OnReceiveCall extends Call {
 
-        private final WeakHashMap<FlowWrapper, Union<?>> lastTransactData = new WeakHashMap<>();
+        private final WeakHashMap<FlowWrapper, Union> lastTransactData = new WeakHashMap<>();
         private boolean keepLatestData;
 
         private final Call trackCall;
@@ -281,7 +281,7 @@ public abstract class Call implements Cloneable {
         }
 
         @Override
-        public Object mapInvoke(Union<?> parameter) {
+        public Object mapInvoke(Union parameter) {
             return null;
         }
 
@@ -296,7 +296,7 @@ public abstract class Call implements Cloneable {
 
         void restoreDispatch() {
             keepLatestData = false;
-            for (Map.Entry<FlowWrapper, Union<?>> entry : lastTransactData.entrySet()) {
+            for (Map.Entry<FlowWrapper, Union> entry : lastTransactData.entrySet()) {
                 invokeWithFlow(entry.getKey(), entry.getValue());
             }
             keepLatestData = true;
@@ -314,7 +314,7 @@ public abstract class Call implements Cloneable {
             return trackCall.isStickyTrackEnable() ? trackCall.onLoadStickyValue() : null;
         }
 
-        final void invokeWithFlow(FlowWrapper callFrom, Union<?> transact) {
+        final void invokeWithFlow(FlowWrapper callFrom, Union transact) {
             if (interceptorChain != null) {
                 interceptorChain.doProcess(new OnReceiveCallSession(callFrom), transact);
             } else {
@@ -335,7 +335,7 @@ public abstract class Call implements Cloneable {
             }
 
             @Override
-            public void onInterceptComplete(Union<?> parameter) {
+            public void onInterceptComplete(Union parameter) {
                 if (keepLatestData) {
                     lastTransactData.put(callFrom, parameter);
                 }

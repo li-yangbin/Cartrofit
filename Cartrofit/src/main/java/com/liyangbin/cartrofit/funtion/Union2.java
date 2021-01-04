@@ -1,6 +1,6 @@
 package com.liyangbin.cartrofit.funtion;
 
-public class Union2<T1, T2> extends Union<T1> {
+public class Union2<T1, T2> extends Union1<T1> {
 
     static Union2<?, ?> sPool2;
     static int sSize2;
@@ -23,7 +23,7 @@ public class Union2<T1, T2> extends Union<T1> {
     }
 
     @Override
-    Union<?> merge(Object obj) {
+    Union mergeObj(Object obj) {
         return new Union3<>(value1, value2, obj);
     }
 

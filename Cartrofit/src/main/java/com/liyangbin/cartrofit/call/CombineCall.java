@@ -54,12 +54,12 @@ public class CombineCall extends CallGroup<Call> {
     @Override
     protected Object doInvoke(Object parameter) {
         for (int i = 0; i < startConcernResultIndex; i++) {
-            childInvoke(getChildAt(i), (Union<?>) parameter);
+            childInvoke(getChildAt(i), (Union) parameter);
         }
         if (startConcernResultIndex == getChildCount()) {
             return null;
         }
-        return new CombineFlow((Union<?>) parameter).castAsUnionIfNeeded();
+        return new CombineFlow((Union) parameter).castAsUnionIfNeeded();
     }
 
     private static class CombineData {
@@ -83,7 +83,7 @@ public class CombineCall extends CallGroup<Call> {
         }
     }
 
-    private class CombineFlow implements Flow.StickyFlow<Union<?>> {
+    private class CombineFlow implements Flow.StickyFlow<Union> {
         CombineData trackingData;
         Flow<Object>[] flowArray;
         int trackElementCount;
@@ -91,10 +91,10 @@ public class CombineCall extends CallGroup<Call> {
         int[] trackIndexArray;
         int[] getIndexArray;
         InternalObserver[] flowObservers;
-        ArrayList<Consumer<Union<?>>> consumers = new ArrayList<>();
+        ArrayList<Consumer<Union>> consumers = new ArrayList<>();
         boolean notifyValueSuppressed;
 
-        CombineFlow(Union<?> parameter) {
+        CombineFlow(Union parameter) {
             final int elementCount = getChildCount() - startConcernResultIndex;
             flowArray = new Flow[elementCount];
             trackIndexArray = new int[elementCount];
@@ -142,7 +142,7 @@ public class CombineCall extends CallGroup<Call> {
         }
 
         @Override
-        public void addObserver(Consumer<Union<?>> consumer) {
+        public void addObserver(Consumer<Union> consumer) {
             consumers.add(consumer);
             if (consumers.size() == 1) {
                 notifyValueSuppressed = true;
@@ -158,7 +158,7 @@ public class CombineCall extends CallGroup<Call> {
         }
 
         @Override
-        public void removeObserver(Consumer<Union<?>> consumer) {
+        public void removeObserver(Consumer<Union> consumer) {
             if (consumers.remove(consumer) && consumers.size() == 0) {
                 for (int i = 0; i < trackElementCount; i++) {
                     Flow<Object> flow = flowArray[trackIndexArray[i]];
@@ -171,8 +171,8 @@ public class CombineCall extends CallGroup<Call> {
 
         private void notifyChangeLocked() {
             if (!notifyValueSuppressed && consumers.size() > 0) {
-                ArrayList<Consumer<Union<?>>> consumersClone
-                        = (ArrayList<Consumer<Union<?>>>) consumers.clone();
+                ArrayList<Consumer<Union>> consumersClone
+                        = (ArrayList<Consumer<Union>>) consumers.clone();
                 for (int i = 0; i < consumersClone.size(); i++) {
                     consumersClone.get(i).accept(Union.of(trackingData.trackingObj));
                 }
@@ -180,7 +180,7 @@ public class CombineCall extends CallGroup<Call> {
         }
 
         @Override
-        public Union<?> get() {
+        public Union get() {
             synchronized (this) {
                 return Union.of(trackingData.copy().trackingObj);
             }

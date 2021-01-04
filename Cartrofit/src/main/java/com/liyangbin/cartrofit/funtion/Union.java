@@ -5,106 +5,55 @@ import com.liyangbin.cartrofit.CartrofitGrammarException;
 import java.util.Arrays;
 
 @SuppressWarnings("unchecked")
-public class Union<T> {
-    static final int LIMIT = 5;
-    private static Union<?> sPool;
-    private static int sSize;
+public abstract class Union {
 
-    private static final Union<Void> NULL_UNION = new Union<Void>(null) {
-        @Override
-        public Object get(int index) {
-            throw new RuntimeException("impossible call");
-        }
-
-        @Override
-        public int getCount() {
-            return 0;
-        }
-
-        @Override
-        Union<?> merge(Object obj) {
-            return Union.of(obj);
-        }
-
-        @Override
-        public void recycle() {
-            // ignore
-        }
-    };
-
-    public T value1;
-
-    Union<?> next;
-
-    Union(T t) {
-        value1 = t;
-    }
-
-    public int getCount() {
-        return 1;
-    }
-
-    Union<?> merge(Object obj) {
-        return new Union2<>(value1, obj);
-    }
-
-    public Object get(int index) {
-        if (index != 0) {
-            throw new IndexOutOfBoundsException("size:" + getCount() + " index:" + index);
-        }
-        return value1;
-    }
-
-    public void recycle() {
-        value1 = null;
-
-        synchronized (Union.class) {
-            if (sSize < LIMIT) {
-                next = sPool;
-                sPool = this;
-                sSize++;
-            }
-        }
-    }
-
-    public static Union<?> ofNull() {
-        return NULL_UNION;
-    }
-
-    public static Union<?> merge(Union<?> dst, Object src) {
-        if (src instanceof Union) {
-            Union<?> srcUnion = (Union<?>) src;
+    public final Union merge(Object target) {
+        if (target instanceof Union) {
+            Union dst = this;
+            Union srcUnion = (Union) target;
             for (int i = 0; i < srcUnion.getCount(); i++) {
-                dst = dst.merge(srcUnion.get(i));
+                dst = dst.mergeObj(srcUnion.get(i));
             }
             return dst;
         } else {
-            return dst.merge(src);
+            return mergeObj(target);
         }
     }
 
-    public static Union<?> of(Object obj) {
+    abstract Union mergeObj(Object obj);
+
+    public abstract int getCount();
+
+    public abstract Object get(int index);
+
+    public abstract void recycle();
+
+    public static Union ofNull() {
+        return Union1.NULL_UNION;
+    }
+
+    public static Union of(Object obj) {
         if (obj instanceof Union) {
-            return (Union<?>) obj;
+            return (Union) obj;
         } else {
             synchronized (Union.class) {
-                if (Union.sPool == null) {
-                    return new Union<>(obj);
+                if (Union1.sPool == null) {
+                    return new Union1<>(obj);
                 }
-                Union<Object> out = (Union<Object>) Union.sPool;
+                Union1<Object> out = (Union1<Object>) Union1.sPool;
                 out.value1 = obj;
 
-                Union.sPool = out.next;
+                Union1.sPool = out.next;
                 out.next = null;
-                Union.sSize--;
+                Union1.sSize--;
                 return out;
             }
         }
     }
 
-    public static Union<?> of(Object... array) {
+    public static Union of(Object... array) {
         if (array == null || array.length == 0) {
-            return NULL_UNION;
+            return Union1.NULL_UNION;
         }
         switch (array.length) {
             case 1:

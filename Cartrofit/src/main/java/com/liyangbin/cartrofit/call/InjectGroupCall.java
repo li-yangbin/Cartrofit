@@ -10,6 +10,7 @@ import com.liyangbin.cartrofit.funtion.Union;
 
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Objects;
 
 public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
 
@@ -44,13 +45,13 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
         parameterInject[call.parameterIndex] = null;
     }
 
-    void suppressGetAndInvoke(Union<?> object) {
+    void suppressGetAndInvoke(Union object) {
         getSuppressed = true;
         invoke(object);
         getSuppressed = false;
     }
 
-    void suppressSetAndInvoke(Union<?> object) {
+    void suppressSetAndInvoke(Union object) {
         setSuppressed = true;
         invoke(object);
         setSuppressed = false;
@@ -112,12 +113,15 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
             return false;
         }
 
-        void attachParameter(Union<?> parameter) {
+        void attachParameter(Union parameter) {
             contextTarget.clear();
             if (parameter != null) {
                 for (int i = 0,j = 0; i < parameter.getCount(); i++) {
                     if ((injectTargetIndex & i) != 0) {
-                        targetContainer[j++] = parameter.get(i);
+                        final Object target = Objects.requireNonNull(parameter.get(i));
+                        contextTarget.put(getChildAt(j).call, target);
+                        targetContainer[j] = target;
+                        j++;
                     }
                 }
             } else {
@@ -126,27 +130,21 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
         }
 
         public Object getTarget(InjectCall child) throws IllegalAccessException {
+            if (child == null) {
+                return null;
+            }
             Object obj = contextTarget.get(child);
-            if (obj == null) {
-                contextTarget.put(child, obj = resolveContextTarget(child));
+            if (obj != null) {
+                return obj;
             }
-            return obj;
-        }
 
-        private Object resolveContextTarget(InjectCall childCall) throws IllegalAccessException {
-            if (childCall.getParent() == InjectGroupCall.this) {
-                for (int i = 0; i < getChildCount(); i++) {
-                    if (getChildAt(i).call == childCall) {
-                        return targetContainer[i];
-                    }
-                }
-                throw new RuntimeException("logic impossible");
-            }
-            Object containerObject = resolveContextTarget((InjectCall) childCall.getParent());
+            Object containerObject = getTarget((InjectCall) child.getParent());
             if (containerObject != null) {
-                return childCall.asFieldAccessible().get(containerObject);
+                obj = child.asFieldAccessible().get(containerObject);
+                contextTarget.put(child, obj);
+                return obj;
             }
-            throw new NullPointerException("Can not resolve target " + childCall.getKey());
+            throw new NullPointerException("Can not resolve target " + child.getKey());
         }
     }
 
@@ -172,7 +170,7 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
     }
 
     @Override
-    public Object mapInvoke(Union<?> parameter) {
+    public Object mapInvoke(Union parameter) {
         final int elementCount = getChildCount();
         getParameterContext().attachParameter(parameter);
         for (int i = 0; i < elementCount; i++) {

@@ -54,7 +54,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
     }
 
     @Override
-    public Object mapInvoke(Union<?> parameter) {
+    public Object mapInvoke(Union parameter) {
         final Object callback = parameter.get(callbackParaIndex);
         if (callbackWrapperMapper.containsKey(
                 Objects.requireNonNull(callback, "callback can not be null"))) {
@@ -86,7 +86,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             this.callbackObj = callbackObj;
         }
 
-        void register(Union<?> parameter) {
+        void register(Union parameter) {
             if (commandObserverList.size() > 0) {
                 throw new CartrofitGrammarException("impossible situation");
             }
@@ -133,7 +133,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             if (dispatchProcessing) {
                 throw new IllegalStateException("Recursive invocation from:" + flowCall);
             }
-            Union<?> union = Union.of(o);
+            Union union = Union.of(o);
             dispatchProcessing = true;
             try {
                 int parameterCount = flowCall.getKey().getParameterCount();
