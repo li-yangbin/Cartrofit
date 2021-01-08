@@ -16,8 +16,8 @@ public interface Interceptor {
                 throw new RuntimeException("Illegal invoke after cancel");
             }
             onInterceptPass(current.interceptor, parameter);
-            current = current.previous;
-            if (current != null) {
+            if (current.previous != null) {
+                current = current.previous;
                 return current.doProcess(this, parameter);
             } else {
                 try {

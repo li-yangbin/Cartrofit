@@ -31,13 +31,14 @@ public class InjectCall extends CallGroup<Call> implements CallAdapter.FieldAcce
 
     @Override
     public Object mapInvoke(Union parameter) {
-        final boolean doGet = getParameterContext().doGet(this);
-        final boolean doSet = getParameterContext().doSet(this);
+        final InjectGroupCall.InjectContext injectContext = getParameterContext();
+        final boolean doGet = injectContext.doGet(this);
+        final boolean doSet = injectContext.doSet(this);
         if (!doGet && !doSet) {
             return null;
         }
         try {
-            Object target = getParameterContext().getTarget(this);
+            final Object target = injectContext.getTarget(this);
 
             if (target instanceof InjectReceiver) {
                 if (((InjectReceiver) target).onBeforeInject(this)) {

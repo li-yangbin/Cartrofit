@@ -40,7 +40,7 @@ public abstract class CallGroup<T> extends Call {
     }
 
     protected ParameterContext onCreateParameterContext() {
-        return new ParameterContext(key);
+        return new ParameterContext(getKey());
     }
 
     @Override

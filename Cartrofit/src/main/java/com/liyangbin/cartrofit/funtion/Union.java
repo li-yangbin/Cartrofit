@@ -20,6 +20,20 @@ public abstract class Union {
         }
     }
 
+    public final Union exclude(int index) {
+        final int count = getCount();
+        if (index < 0 || index >= count) {
+            return this;
+        }
+        Union result = Union1.NULL_UNION;
+        for (int i = 0; i < count; i++) {
+            if (i != index) {
+                result = result.mergeObj(get(i));
+            }
+        }
+        return result;
+    }
+
     abstract Union mergeObj(Object obj);
 
     public abstract int getCount();

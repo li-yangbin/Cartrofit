@@ -232,6 +232,12 @@ public final class Cartrofit {
                 if (hasTrack && key.isAnnotationPresent(Sticky.class)) {
                     call.enableStickyTrack();
                 }
+
+                Call wrappedCall = ((BuildInCallAdapter) mBuildInCallAdapter).wrapNormalTrack2RegisterIfNeeded(call);
+                if (wrappedCall != null) {
+                    wrappedCall.init(key, scopeFactory);
+                    return wrappedCall;
+                }
             }
             return call;
         }
@@ -457,7 +463,7 @@ public final class Cartrofit {
         }
     }
 
-    public static Call findCallById(int id) {
+    /*public static Call findCallById(int id) {
         final Cartrofit cartrofit = Objects.requireNonNull(sDefault);
         synchronized (cartrofit.mApiCache) {
             Class<?> apiClass = ID_ROUTER.findApiClassById(id);
@@ -477,7 +483,7 @@ public final class Cartrofit {
             Method method = record.clazz.getDeclaredMethod(methodName, parameterTypes);
             return cartrofit.getOrCreateCall(record, new Key(record, method, false));
         }
-    }
+    }*/
 
     <T> ApiRecord<T> getApi(Class<T> api) {
         return getApi(api, false);
@@ -491,7 +497,7 @@ public final class Cartrofit {
                 CallAdapter adapter = mCallAdapterList.get(i);
                 Object scope = adapter.extractScope(api, scopeFactory);
                 if (scope != null) {
-                    record = new ApiRecord(adapter, scope, scopeFactory, api);
+                    record = new ApiRecord<>(adapter, scope, scopeFactory, api);
                     mApiCache.put(api, record);
                     return record;
                 }

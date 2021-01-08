@@ -16,6 +16,7 @@ import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Timeout;
 import com.liyangbin.cartrofit.annotation.Unregister;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 
 public class BuildInCallAdapter extends CallAdapter {
@@ -146,6 +147,35 @@ public class BuildInCallAdapter extends CallAdapter {
                         return delegateTarget != null ? new DelegateCall(delegateTarget) : null;
                     }
                 });
+    }
+
+    public Call wrapNormalTrack2RegisterIfNeeded(Call call) {
+        if (call instanceof RegisterCall || !call.hasCategory(CATEGORY_TRACK)) {
+            return null;
+        }
+        Cartrofit.Parameter callbackParameter = call.getKey().findParameterByAnnotation(Callback.class);
+        if (callbackParameter == null) {
+            return null;
+        }
+
+        ArrayList<Cartrofit.Key> childrenKey = getChildKey(callbackParameter.getType());
+        Cartrofit.Key trackKey = null;
+        Cartrofit.Key timeoutKey = null;
+        for (int i = 0; i < childrenKey.size(); i++) {
+            Cartrofit.Key entryKey = childrenKey.get(i);
+            if (entryKey.isAnnotationPresent(Unregister.class)) {
+                trackKey = entryKey;
+            } else if (entryKey.isAnnotationPresent(Timeout.class)) {
+                timeoutKey = entryKey;
+            }
+            if (trackKey != null && timeoutKey != null) {
+                break;
+            }
+        }
+        if (trackKey == null) {
+            throw new CartrofitGrammarException("Must provide a method with unregister annotation");
+        }
+        return new RegisterCall(call, trackKey, timeoutKey);
     }
 
     private Call createInjectCommand(CallProvider<?> provider, Cartrofit.Key key) {

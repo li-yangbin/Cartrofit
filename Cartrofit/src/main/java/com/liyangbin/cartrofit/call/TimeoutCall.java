@@ -26,13 +26,15 @@ public class TimeoutCall extends Call {
 
         @Override
         public void addObserver(Consumer<Void> consumer) {
-            TimerTask task;
-            consumers.put(consumer, task = new TimerTask() {
-                @Override
-                public void run() {
-                    consumer.accept(null);
-                }
-            });
+            TimerTask task = consumers.remove(consumer);
+            if (task == null) {
+                consumers.put(consumer, task = new TimerTask() {
+                    @Override
+                    public void run() {
+                        consumer.accept(null);
+                    }
+                });
+            }
             sTimeOutTimer.schedule(task, mTimeoutMillis);
         }
 

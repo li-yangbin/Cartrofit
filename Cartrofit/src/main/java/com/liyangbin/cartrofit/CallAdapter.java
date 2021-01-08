@@ -52,16 +52,19 @@ public abstract class CallAdapter {
 
         public final void inflateCallback(Class<?> callbackClass, int category,
                                           Consumer<Call> resultReceiver) {
-            Cartrofit.ApiRecord<?> record = mCartrofit.getApi(callbackClass);
-            ArrayList<Cartrofit.Key> childKeys = record.getChildKey();
+            ArrayList<Cartrofit.Key> childKeys = getChildKey(callbackClass);
             for (int i = 0; i < childKeys.size(); i++) {
                 Cartrofit.Key childKey = childKeys.get(i);
-                Call call = mCartrofit.getOrCreateCall(record, childKey, category);
+                Call call = mCartrofit.getOrCreateCall(childKey.record, childKey, category);
                 if (call != null) {
                     resultReceiver.accept(call);
                 }
             }
         }
+    }
+
+    public ArrayList<Cartrofit.Key> getChildKey(Class<?> callbackClass) {
+        return mCartrofit.getApi(callbackClass).getChildKey();
     }
 
     public final class CallSolution<A extends Annotation> {

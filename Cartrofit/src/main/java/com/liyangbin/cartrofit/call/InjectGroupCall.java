@@ -91,9 +91,13 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
             if (getSuppressed) {
                 return false;
             }
+            Call injectParent = child.getParent();
+            while (injectParent.getParent() != null) {
+                injectParent = injectParent.getParent();
+            }
             for (int i = 0; i < getChildCount(); i++) {
                 Entry entry = getChildAt(i);
-                if (entry.call == child) {
+                if (entry.call == injectParent) {
                     return entry.get;
                 }
             }
@@ -104,9 +108,13 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
             if (setSuppressed) {
                 return false;
             }
+            Call injectParent = child.getParent();
+            while (injectParent.getParent() != null) {
+                injectParent = injectParent.getParent();
+            }
             for (int i = 0; i < getChildCount(); i++) {
                 Entry entry = getChildAt(i);
-                if (entry.call == child) {
+                if (entry.call == injectParent) {
                     return entry.set;
                 }
             }
