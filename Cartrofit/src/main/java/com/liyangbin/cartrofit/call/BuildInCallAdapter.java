@@ -31,7 +31,6 @@ public class BuildInCallAdapter extends CallAdapter {
     @Override
     public void onProvideCallSolution(CallSolutionBuilder builder) {
         builder.create(Inject.class)
-                .takeIfDefault()
                 .checkParameterIncluded(In.class, Out.class)
                 .provide(new CallProvider<Inject>() {
                     @Override
@@ -41,7 +40,6 @@ public class BuildInCallAdapter extends CallAdapter {
                 });
 
         builder.create(Combine.class)
-                .takeIfContains(CATEGORY_TRACK | CATEGORY_GET)
                 .checkParameter((combine, key) -> {
                     if (combine.elements().length <= 1) {
                         throw new CartrofitGrammarException("Must declare more than one element on Combine:"
@@ -68,7 +66,6 @@ public class BuildInCallAdapter extends CallAdapter {
                 });
 
         builder.create(Timeout.class)
-                .takeIfContains(CATEGORY_TRACK)
                 .provide(new CallProvider<Timeout>() {
                     @Override
                     public Call provide(int category, Timeout timeout, Cartrofit.Key key) {
@@ -77,7 +74,6 @@ public class BuildInCallAdapter extends CallAdapter {
                 });
 
         builder.create(Register.class)
-                .takeIfDefault()
                 .checkParameter((register, key) -> {
                     if (key.getParameterCount() == 0) {
                         throw new CartrofitGrammarException("Register must declare a Callback parameter " + key);
@@ -121,7 +117,6 @@ public class BuildInCallAdapter extends CallAdapter {
                 });
 
         builder.create(Unregister.class)
-                .takeIfDefault()
                 .checkParameter((unregister, key) -> {
                     if (key.getParameterCount() != 1
                             || !key.getParameterAt(0).getType().isInterface()) {
@@ -139,7 +134,6 @@ public class BuildInCallAdapter extends CallAdapter {
                 });
 
         builder.create(Delegate.class)
-                .takeIfAny()
                 .provide(new CallProvider<Delegate>() {
                     @Override
                     public Call provide(int category, Delegate delegate, Cartrofit.Key key) {

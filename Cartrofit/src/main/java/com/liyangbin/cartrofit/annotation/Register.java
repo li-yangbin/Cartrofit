@@ -8,5 +8,6 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 @Target(METHOD)
 @Retention(RUNTIME)
+@Category(Category.CATEGORY_DEFAULT)
 public @interface Register {
 }

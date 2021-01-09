@@ -28,7 +28,6 @@ public abstract class CarPropertyAdapter extends CallAdapter {
     @Override
     public void onProvideCallSolution(CallSolutionBuilder builder) {
         builder.create(Get.class)
-                .takeIfContains(CATEGORY_GET)
                 .provide(new CallProvider<Get>() {
                     @Override
                     public Call provide(int category, Get get, Cartrofit.Key key) {
@@ -37,7 +36,6 @@ public abstract class CarPropertyAdapter extends CallAdapter {
                 });
 
         builder.create(Set.class)
-                .takeIfContains(CATEGORY_SET)
                 .provide(new CallProvider<Set>() {
                     @Override
                     public Call provide(int category, Set set, Cartrofit.Key key) {
@@ -46,7 +44,6 @@ public abstract class CarPropertyAdapter extends CallAdapter {
                 });
 
         builder.create(Track.class)
-                .takeIfContains(CATEGORY_TRACK)
                 .provide(new CallProvider<Track>() {
                     @Override
                     public Call provide(int category, Track track, Cartrofit.Key key) {

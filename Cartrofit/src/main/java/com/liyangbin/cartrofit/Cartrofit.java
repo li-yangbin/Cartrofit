@@ -3,7 +3,7 @@ package com.liyangbin.cartrofit;
 import android.car.hardware.CarPropertyValue;
 import android.os.Build;
 
-import com.liyangbin.cartrofit.annotation.Category;
+import com.liyangbin.cartrofit.annotation.Token;
 import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.Restore;
 import com.liyangbin.cartrofit.annotation.Scope;
@@ -43,6 +43,7 @@ public final class Cartrofit {
     private final HashMap<Key, Call> mCallCache = new HashMap<>();
     private final ArrayList<CallAdapter> mCallAdapterList = new ArrayList<>();
     private final HashMap<String, ArrayList<Interceptor>> mInterceptorByCategory = new HashMap<>();
+    private Key mRootKey;
     private final CallAdapter mBuildInCallAdapter = new BuildInCallAdapter();
 
     static {
@@ -200,15 +201,15 @@ public final class Cartrofit {
                 call = mBuildInCallAdapter.createCall(key, category);
             }
             if (call != null) {
-                call.init(key, scopeFactory);
+                call.init(key, mRootKey, scopeFactory);
 
                 for (int i = 0; i < mGlobalInterceptorList.size(); i++) {
                     call.addInterceptor(mGlobalInterceptorList.get(i), false);
                 }
 
-                Category categoryAnnotation = key.getAnnotation(Category.class);
-                if (categoryAnnotation != null) {
-                    for (String categoryByUser : categoryAnnotation.value()) {
+                Token tokenAnnotation = key.getAnnotation(Token.class);
+                if (tokenAnnotation != null) {
+                    for (String categoryByUser : tokenAnnotation.value()) {
                         ArrayList<Interceptor> interceptorList = mInterceptorByCategory
                                 .get(categoryByUser);
                         if (interceptorList != null) {
@@ -235,7 +236,7 @@ public final class Cartrofit {
 
                 Call wrappedCall = ((BuildInCallAdapter) mBuildInCallAdapter).wrapNormalTrack2RegisterIfNeeded(call);
                 if (wrappedCall != null) {
-                    wrappedCall.init(key, scopeFactory);
+                    wrappedCall.init(key, mRootKey, scopeFactory);
                     return wrappedCall;
                 }
             }
@@ -510,7 +511,9 @@ public final class Cartrofit {
     }
 
     private Call getOrCreateCall(ApiRecord<?> record, Key key) {
+        mRootKey = key;
         Call call = getOrCreateCall(record, key, CallAdapter.CATEGORY_DEFAULT);
+        mRootKey = null;
         if (call == null) {
             throw new CartrofitGrammarException("Can not parse call from:" + key);
         }
@@ -541,6 +544,11 @@ public final class Cartrofit {
             mCallCache.put(key, call);
         }
         return call;
+    }
+
+    interface InflateContext {
+        InflateContext getParent();
+        Cartrofit.Key getKey();
     }
 
     public interface Parameter {

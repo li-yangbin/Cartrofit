@@ -1,5 +1,6 @@
 package com.liyangbin.cartrofit;
 
+import com.liyangbin.cartrofit.annotation.Category;
 import com.liyangbin.cartrofit.funtion.Consumer;
 
 import java.lang.annotation.Annotation;
@@ -80,25 +81,19 @@ public abstract class CallAdapter {
 
         CallSolution(Class<A> candidateClass) {
             this.candidateClass = candidateClass;
-        }
-
-        public CallSolution<A> takeIf(IntPredicate intPredicate) {
-            predictor = intPredicate;
-            return this;
-        }
-
-        public CallSolution<A> takeIfAny() {
-            keepLookingIfNull = true;
-            return takeIf(category -> true);
-        }
-
-        public CallSolution<A> takeIfDefault() {
-            return takeIf(category -> category == CATEGORY_DEFAULT);
-        }
-
-        public CallSolution<A> takeIfContains(int expect) {
-            expectedCategory = expect;
-            return takeIf(category -> (category & expect) != 0);
+            Category category = candidateClass.getDeclaredAnnotation(Category.class);
+            if (category != null) {
+                int categoryFlag = category.value();
+                if (categoryFlag == Category.CATEGORY_DEFAULT) {
+                    keepLookingIfNull = true;
+                    predictor = flag -> true;
+                } else {
+                    predictor = flag -> (flag & categoryFlag) != 0;
+                }
+            } else {
+                throw new CartrofitGrammarException("Must declare Category attribute on annotation:"
+                        + candidateClass);
+            }
         }
 
         @SafeVarargs

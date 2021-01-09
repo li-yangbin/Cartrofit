@@ -1,6 +1,6 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.annotation.Category;
+import com.liyangbin.cartrofit.annotation.Token;
 import com.liyangbin.cartrofit.funtion.Converter;
 import com.liyangbin.cartrofit.funtion.Union;
 
@@ -40,7 +40,8 @@ public abstract class Call implements Cloneable {
     private Object mTag;
     private List<String> tokenList;
 
-    final void init(Cartrofit.Key key, ConverterFactory scopeFactory) {
+    final void init(Cartrofit.Key key, Cartrofit.Key rootKey,
+                    ConverterFactory scopeFactory) {
         this.key = key;
 
         if (hasCategory(CATEGORY_TRACK)) {
@@ -53,18 +54,20 @@ public abstract class Call implements Cloneable {
 
         onInit(converterFactory = new ConverterFactory(scopeFactory));
 
+        Cartrofit.Key parameterKey = key.isCallbackEntry || key.field != null ? rootKey : key;
+
         if (!inOutConvertDisabled && hasCategory(CATEGORY_SET)) {
-            inputConverter = converterFactory.findInputConverterByKey(key);
+            inputConverter = converterFactory.findInputConverterByKey(parameterKey);
         }
         boolean flowTrack = hasCategory(CATEGORY_TRACK);
         if (flowTrack) {
-            flowOutputConverter = converterFactory.findFlowConverter(key);
+            flowOutputConverter = converterFactory.findFlowConverter(parameterKey);
         }
         if (!inOutConvertDisabled) {
             if (flowTrack) {
-                outputConverter = converterFactory.findOutputConverterByKey(key, true);
+                outputConverter = converterFactory.findOutputConverterByKey(parameterKey, true);
             } else if (hasCategory(CATEGORY_GET)) {
-                outputConverter = converterFactory.findOutputConverterByKey(key, false);
+                outputConverter = converterFactory.findOutputConverterByKey(parameterKey, false);
             }
         }
     }
@@ -92,8 +95,8 @@ public abstract class Call implements Cloneable {
         return stickyTrackSupport;
     }
 
-    void setTokenList(Category category) {
-        tokenList = Arrays.asList(category.value());
+    void setTokenList(Token token) {
+        tokenList = Arrays.asList(token.value());
     }
 
     public void addToken(String token) {
