@@ -5,8 +5,15 @@ import com.liyangbin.cartrofit.funtion.Union;
 import java.util.ArrayList;
 
 public abstract class CallGroup<T> extends Call {
-    private ParameterContext parameterContext;
     private ArrayList<T> childrenCallList = new ArrayList<>();
+
+    @Override
+    void dispatchInit(ConverterFactory scopeFactory) {
+        super.dispatchInit(scopeFactory);
+        for (int i = 0; i < getChildCount(); i++) {
+            asCall(getChildAt(i)).dispatchInit(scopeFactory);
+        }
+    }
 
     public void addChildCall(T call) {
         childrenCallList.add(call);
@@ -28,20 +35,6 @@ public abstract class CallGroup<T> extends Call {
     }
 
     protected abstract Call asCall(T t);
-
-    public ParameterContext getParameterContext() {
-        if (getParent() != null) {
-            return getParent().getParameterContext();
-        }
-        if (parameterContext == null) {
-            parameterContext = onCreateParameterContext();
-        }
-        return parameterContext;
-    }
-
-    protected ParameterContext onCreateParameterContext() {
-        return new ParameterContext(getKey());
-    }
 
     @Override
     public boolean hasToken(String token) {

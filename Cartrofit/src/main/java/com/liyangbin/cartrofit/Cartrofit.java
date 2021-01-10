@@ -3,11 +3,12 @@ package com.liyangbin.cartrofit;
 import android.car.hardware.CarPropertyValue;
 import android.os.Build;
 
-import com.liyangbin.cartrofit.annotation.Token;
+import com.liyangbin.cartrofit.annotation.Bind;
 import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.Restore;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Sticky;
+import com.liyangbin.cartrofit.annotation.Token;
 import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.call.BuildInCallAdapter;
 import com.liyangbin.cartrofit.funtion.Union;
@@ -168,6 +169,8 @@ public final class Cartrofit {
         CallAdapter callAdapter;
         Object scopeObj;
         ConverterFactory scopeFactory;
+        ConverterFactory inflateContextFactory;
+        ParameterContext parameterContext;
 
         ApiRecord(CallAdapter adapter, Object scopeObj, ConverterFactory scopeFactory, Class<T> clazz) {
             this.callAdapter = adapter;
@@ -201,7 +204,12 @@ public final class Cartrofit {
                 call = mBuildInCallAdapter.createCall(key, category);
             }
             if (call != null) {
-                call.init(key, mRootKey, scopeFactory);
+//                if (inflateContextFactory == null) {
+//                    inflateContextFactory = new ConverterFactory(scopeFactory,
+//                            call.getParameterContext());
+//                }
+                call.setKey(key);
+//                call.init(key, inflateContextFactory);
 
                 for (int i = 0; i < mGlobalInterceptorList.size(); i++) {
                     call.addInterceptor(mGlobalInterceptorList.get(i), false);
@@ -236,11 +244,20 @@ public final class Cartrofit {
 
                 Call wrappedCall = ((BuildInCallAdapter) mBuildInCallAdapter).wrapNormalTrack2RegisterIfNeeded(call);
                 if (wrappedCall != null) {
-                    wrappedCall.init(key, mRootKey, scopeFactory);
+                    wrappedCall.setKey(key);
+//                    wrappedCall.init(key, inflateContextFactory);
                     return wrappedCall;
                 }
             }
             return call;
+        }
+
+        void prepareInflateContext(Call parentScope) {
+            parameterContext = parentScope.getParameterContext();
+        }
+
+        void cleanupInflateContext() {
+            inflateContextFactory = null;
         }
 
         void importDependency(Class<?> target) {
@@ -511,12 +528,11 @@ public final class Cartrofit {
     }
 
     private Call getOrCreateCall(ApiRecord<?> record, Key key) {
-        mRootKey = key;
         Call call = getOrCreateCall(record, key, CallAdapter.CATEGORY_DEFAULT);
-        mRootKey = null;
         if (call == null) {
             throw new CartrofitGrammarException("Can not parse call from:" + key);
         }
+        call.dispatchInit(new ConverterFactory(record.scopeFactory, call.getParameterContext()));
         return call;
     }
 
@@ -546,11 +562,6 @@ public final class Cartrofit {
         return call;
     }
 
-    interface InflateContext {
-        InflateContext getParent();
-        Cartrofit.Key getKey();
-    }
-
     public interface Parameter {
         boolean isAnnotationPresent(Class<? extends Annotation> clazz);
         <A extends Annotation> A getAnnotation(Class<A> clazz);
@@ -559,7 +570,13 @@ public final class Cartrofit {
         int getDeclaredIndex();
     }
 
-    public static class Key {
+    public interface ParameterGroup {
+        String token();
+        int getParameterCount();
+        Parameter getParameterAt(int index);
+    }
+
+    public static class Key implements ParameterGroup {
         public final Method method;
         public final boolean isCallbackEntry;
 
@@ -569,7 +586,9 @@ public final class Cartrofit {
         private int mId = -1;
 
         private int parameterCount = -1;
+        private int parameterGroupCount = -1;
         private Parameter[] parameters;
+        private ParameterGroup[] parameterGroups;
 
         Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
             this.record = record;
@@ -614,6 +633,12 @@ public final class Cartrofit {
             return null;
         }
 
+        @Override
+        public String token() {
+            return "";
+        }
+
+        @Override
         public int getParameterCount() {
             if (parameterCount != -1) {
                 return parameterCount;
@@ -624,6 +649,7 @@ public final class Cartrofit {
             return parameterCount = Cartrofit.getParameterCount(method);
         }
 
+        @Override
         public Parameter getParameterAt(int index) {
             if (method == null) {
                 return null;
@@ -643,6 +669,49 @@ public final class Cartrofit {
                 return null;
             }
             return parameters[index];
+        }
+
+        public int getParameterGroupCount() {
+            if (parameterGroupCount != -1) {
+                return parameterGroupCount;
+            }
+            if (method == null) {
+                return 0;
+            }
+            HashMap<String, ArrayList<Parameter>> groupMap = null;
+            for (int i = 0; i < getParameterCount(); i++) {
+                Parameter parameter = getParameterAt(i);
+                Bind bind = parameter.getAnnotation(Bind.class);
+                if (bind != null) {
+                    for (String token : bind.token()) {
+                        if (groupMap == null) {
+                            groupMap = new HashMap<>();
+                        }
+                        ArrayList<Parameter> list = groupMap.get(token);
+                        if (list == null) {
+                            list = new ArrayList<>();
+                            groupMap.put(token, list);
+                        }
+                        list.add(parameter);
+                    }
+                }
+            }
+            parameterGroupCount = groupMap != null ? groupMap.size() : 0;
+            parameterGroups = new ParameterGroup[parameterGroupCount];
+            if (groupMap != null) {
+                int index = 0;
+                for (Map.Entry<String, ArrayList<Parameter>> entry : groupMap.entrySet()) {
+                    parameterGroups[index++] = new ParameterGroupImpl(entry.getKey(), entry.getValue());
+                }
+            }
+            return parameterGroupCount;
+        }
+
+        public ParameterGroup getParameterGroupAt(int index) {
+            if (index < 0 || index >= getParameterGroupCount()) {
+                return null;
+            }
+            return parameterGroups[index];
         }
 
         private static class ParameterImpl implements Parameter {
@@ -683,6 +752,32 @@ public final class Cartrofit {
             @Override
             public int getDeclaredIndex() {
                 return index;
+            }
+        }
+
+        private static class ParameterGroupImpl implements ParameterGroup {
+
+            private final String token;
+            private final ArrayList<Parameter> parameters;
+
+            ParameterGroupImpl(String token, ArrayList<Parameter> parameters) {
+                this.token = token;
+                this.parameters = parameters;
+            }
+
+            @Override
+            public String token() {
+                return token;
+            }
+
+            @Override
+            public int getParameterCount() {
+                return parameters.size();
+            }
+
+            @Override
+            public Parameter getParameterAt(int index) {
+                return parameters.get(index);
             }
         }
 

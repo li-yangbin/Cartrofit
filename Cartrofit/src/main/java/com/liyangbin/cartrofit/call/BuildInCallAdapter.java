@@ -57,9 +57,8 @@ public class BuildInCallAdapter extends CallAdapter {
                     public Call provide(int category, Combine combine, Cartrofit.Key key) {
                         CombineCall combineCall = new CombineCall();
                         for (int element : combine.elements()) {
-                            Call childCall = inflateByIdIfThrow(key, element,
-                                    category & (CATEGORY_TRACK | CATEGORY_GET));
-                            combineCall.addChildCall(childCall);
+                            combineCall.addChildCall(inflateByIdIfThrow(key, element,
+                                    category & (CATEGORY_TRACK | CATEGORY_GET)));
                         }
                         return combineCall;
                     }
@@ -103,8 +102,9 @@ public class BuildInCallAdapter extends CallAdapter {
                             callbackParameter = key.getParameterAt(0);
                         }
                         final RegisterCall registerCall = new RegisterCall();
-                        inflateCallback(callbackParameter.getType(), CATEGORY_TRACK, call -> {
-                            Call returnCall = reInflate(call.getKey(), CATEGORY_SET);
+                        inflateCallback(callbackParameter.getType(), CATEGORY_TRACK,
+                                call -> {
+                            Call returnCall = reInflate(key, CATEGORY_SET);
                             Call parameterCall = createInjectCommand(this, key);
                             registerCall.addChildCall(call, returnCall, parameterCall);
                         });

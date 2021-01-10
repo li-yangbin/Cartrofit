@@ -93,7 +93,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
     private class ConvenientTrackContext extends ParameterContext {
 
-        public ConvenientTrackContext(Cartrofit.Key key) {
+        ConvenientTrackContext(Cartrofit.Key key) {
             super(key);
         }
 

@@ -71,11 +71,11 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             this.concernedTypes = clazzArray;
         }
 
-        Converter<?, SERIALIZATION> findInputConverterByKey(Cartrofit.Key key) {
-            Class<?>[] inputTypes = key.getParameterType();
-            if (concernedTypes.length == inputTypes.length) {
+        Converter<?, SERIALIZATION> findInputConverter(Cartrofit.ParameterGroup group, Cartrofit.Key key) {
+            if (concernedTypes.length == group.getParameterCount()) {
                 for (int i = 0; i < concernedTypes.length; i++) {
-                    if (!Cartrofit.classEquals(concernedTypes[i], inputTypes[i])) {
+                    if (!Cartrofit.classEquals(concernedTypes[i],
+                            group.getParameterAt(i).getType())) {
                         return null;
                     }
                 }
@@ -83,12 +83,12 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             return twoWayConverter != null ? twoWayConverter : converterIn;
         }
 
-        Converter<SERIALIZATION, ?> findOutputConverterByKey(Cartrofit.Key key, boolean flowMap) {
+        Converter<SERIALIZATION, ?> findOutputConverter(Cartrofit.ParameterGroup group, Cartrofit.Key key, boolean flowMap) {
             if (key.isCallbackEntry) {
-                Class<?>[] inputTypes = key.getParameterType();
-                if (concernedTypes.length == inputTypes.length) {
+                if (concernedTypes.length == group.getParameterCount()) {
                     for (int i = 0; i < concernedTypes.length; i++) {
-                        if (!Cartrofit.classEquals(concernedTypes[i], inputTypes[i])) {
+                        if (!Cartrofit.classEquals(concernedTypes[i],
+                                group.getParameterAt(i).getType())) {
                             return null;
                         }
                     }

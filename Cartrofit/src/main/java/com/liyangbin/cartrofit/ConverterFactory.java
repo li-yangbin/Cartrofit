@@ -9,14 +9,16 @@ public final class ConverterFactory {
     private final ArrayList<ConverterBuilder<?>.ConvertSolution> mSolutionList = new ArrayList<>();
     private ConverterFactory mParentFactory;
     private final Cartrofit mCartrofit;
+    private ParameterContext mContext;
 
     ConverterFactory(Cartrofit cartrofit) {
         mCartrofit = cartrofit;
     }
 
-    public ConverterFactory(ConverterFactory parentFactory) {
+    public ConverterFactory(ConverterFactory parentFactory, ParameterContext context) {
         mParentFactory = parentFactory;
         mCartrofit = parentFactory.mCartrofit;
+        mContext = context;
     }
 
     public <SERIAL_TYPE> ConverterBuilder<SERIAL_TYPE> builder(Class<SERIAL_TYPE> serialTypeClass) {
@@ -28,30 +30,35 @@ public final class ConverterFactory {
         };
     }
 
-    public Converter<?, ?> findInputConverterByKey(Cartrofit.Key key) {
+    public Converter<?, ?> findInputConverterByCall(Call call) {
         for (int i = 0; i < mSolutionList.size(); i++) {
-            Converter<?, ?> converter = mSolutionList.get(i).findInputConverterByKey(key);
+            Cartrofit.ParameterGroup targetGroup = mContext != null ?
+                    mContext.extractParameterFromCall(call) : call.getKey();
+            Converter<?, ?> converter = mSolutionList.get(i).findInputConverter(targetGroup, call.getKey());
             if (converter != null) {
                 return converter;
             }
         }
-        return mParentFactory != null ? mParentFactory.findInputConverterByKey(key) : null;
+        return mParentFactory != null ? mParentFactory.findInputConverterByCall(call) : null;
     }
 
-    public Converter<?, ?> findOutputConverterByKey(Cartrofit.Key key, boolean flowMap) {
+    public Converter<?, ?> findOutputConverterByCall(Call call, boolean flowMap) {
         for (int i = 0; i < mSolutionList.size(); i++) {
-            Converter<?, ?> converter = mSolutionList.get(i).findOutputConverterByKey(key, flowMap);
+            Cartrofit.ParameterGroup targetGroup = mContext != null ?
+                    mContext.extractParameterFromCall(call) : call.getKey();
+            Converter<?, ?> converter = mSolutionList.get(i).findOutputConverter(targetGroup,
+                    call.getKey(), flowMap);
             if (converter != null) {
                 return converter;
             }
         }
-        return mParentFactory != null ? mParentFactory.findOutputConverterByKey(key, flowMap) : null;
+        return mParentFactory != null ? mParentFactory.findOutputConverterByCall(call, flowMap) : null;
     }
 
-    public FlowConverter<?> findFlowConverter(Cartrofit.Key key) {
-        if (key.isCallbackEntry) {
+    public FlowConverter<?> findFlowConverter(Call call) {
+        if (call.getKey().isCallbackEntry) {
             return null;
         }
-        return mCartrofit.findFlowConverter(key.getReturnType());
+        return mCartrofit.findFlowConverter(call.getKey().getReturnType());
     }
 }

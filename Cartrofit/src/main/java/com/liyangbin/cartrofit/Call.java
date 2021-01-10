@@ -25,10 +25,10 @@ public abstract class Call implements Cloneable {
     protected int category;
     InterceptorChain interceptorChain;
     private boolean inOutConvertDisabled;
-    private ConverterFactory converterFactory;
     private Converter<Union, ?> inputConverter;
     private FlowConverter<?> flowOutputConverter;
     private Converter outputConverter;
+    private ParameterContext parameterContext;
 
     private ArrayList<Call> restoreSchedulerList = new ArrayList<>();
     private Call restoreReceiver;
@@ -36,14 +36,10 @@ public abstract class Call implements Cloneable {
     private TimerTask task;
     private OnReceiveCall onReceiveCall;
     private boolean stickyTrackSupport;
-    private boolean parameterRequired = true;
     private Object mTag;
     private List<String> tokenList;
 
-    final void init(Cartrofit.Key key, Cartrofit.Key rootKey,
-                    ConverterFactory scopeFactory) {
-        this.key = key;
-
+    void dispatchInit(ConverterFactory convertFactory) {
         if (hasCategory(CATEGORY_TRACK)) {
             onReceiveCall = new OnReceiveCall(this);
         }
@@ -52,36 +48,44 @@ public abstract class Call implements Cloneable {
             key.field.setAccessible(true);
         }
 
-        onInit(converterFactory = new ConverterFactory(scopeFactory));
-
-        Cartrofit.Key parameterKey = key.isCallbackEntry || key.field != null ? rootKey : key;
+        onInit(convertFactory);
 
         if (!inOutConvertDisabled && hasCategory(CATEGORY_SET)) {
-            inputConverter = converterFactory.findInputConverterByKey(parameterKey);
+            inputConverter = convertFactory.findInputConverterByCall(this);
         }
         boolean flowTrack = hasCategory(CATEGORY_TRACK);
         if (flowTrack) {
-            flowOutputConverter = converterFactory.findFlowConverter(parameterKey);
+            flowOutputConverter = convertFactory.findFlowConverter(this);
         }
         if (!inOutConvertDisabled) {
             if (flowTrack) {
-                outputConverter = converterFactory.findOutputConverterByKey(parameterKey, true);
+                outputConverter = convertFactory.findOutputConverterByCall(this, true);
             } else if (hasCategory(CATEGORY_GET)) {
-                outputConverter = converterFactory.findOutputConverterByKey(parameterKey, false);
+                outputConverter = convertFactory.findOutputConverterByCall(this, false);
             }
         }
     }
 
+    public ParameterContext getParameterContext() {
+        if (getParent() != null) {
+            return getParent().getParameterContext();
+        }
+        if (parameterContext == null) {
+            parameterContext = onCreateParameterContext();
+        }
+        return parameterContext;
+    }
+
+    protected ParameterContext onCreateParameterContext() {
+        return new ParameterContext(getKey());
+    }
+
+    void setKey(Cartrofit.Key key) {
+        this.key = key;
+    }
+
     public Cartrofit.Key getKey() {
         return key;
-    }
-
-    protected void disableParameterRequirement() {
-        parameterRequired = false;
-    }
-
-    public boolean isParameterRequired() {
-        return parameterRequired || (!key.isCallbackEntry && key.getParameterCount() > 0);
     }
 
     void enableStickyTrack() {

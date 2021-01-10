@@ -51,8 +51,8 @@ public abstract class CallAdapter {
             return key.record.createAdapterCall(key, category);
         }
 
-        public final void inflateCallback(Class<?> callbackClass, int category,
-                                          Consumer<Call> resultReceiver) {
+        public final <T> void inflateCallback(Class<?> callbackClass,
+                                              int category, Consumer<Call> resultReceiver) {
             ArrayList<Cartrofit.Key> childKeys = getChildKey(callbackClass);
             for (int i = 0; i < childKeys.size(); i++) {
                 Cartrofit.Key childKey = childKeys.get(i);
