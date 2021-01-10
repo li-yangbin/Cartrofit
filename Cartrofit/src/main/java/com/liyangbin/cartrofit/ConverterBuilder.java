@@ -17,6 +17,9 @@ import com.liyangbin.cartrofit.funtion.Union4;
 import com.liyangbin.cartrofit.funtion.Union5;
 
 import java.lang.annotation.Annotation;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.function.Supplier;
 
 public abstract class ConverterBuilder<SERIALIZATION> {
 
@@ -27,6 +30,10 @@ public abstract class ConverterBuilder<SERIALIZATION> {
     }
 
     abstract void onCommit(ConvertSolution builder);
+
+    public final ConverterBuilder0 provide(Supplier<SERIALIZATION> provider) {
+        return new ConverterBuilder0<>(provider);
+    }
 
     public final <FROM> ConverterBuilder1<FROM> convert(Class<FROM> clazz) {
         return new ConverterBuilder1<>(clazz);
@@ -57,8 +64,110 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         return new ConverterBuilderArray(clazzArray);
     }
 
+    public interface Accumulator<V, R, A extends Annotation> {
+        R advance(R old, A annotation, V more);
+    }
+
+    static class AccumulateSolution<V, R, A extends Annotation> {
+        Class<V> moreType;
+        Class<A> annotateType;
+        Accumulator<V, R, A> accumulator;
+        int minMatchCount;
+        int maxMatchCount = 100;
+    }
+
+    class OutputConverter implements Converter<Union, SERIALIZATION> {
+        @Override
+        public SERIALIZATION convert(Union value) {
+            return null;
+        }
+    }
+
+//    static class InitializeSolution<V, R> {
+//        Class<V> moreType;
+//        Class<? extends Annotation> annotateType;
+//        Accumulator<V, R> accumulator;
+//    }
+
     abstract class ConvertSolution {
+
+        Class<? extends Annotation>[] initialedAnnotationArray;
+        Class<? extends Annotation>[] accumulatedAnnotationArray;
+        Class<? extends Annotation>[] extraAnnotationArray;
+        ArrayList<AccumulateSolution<?, ?, ?>> accumulateSolutions;
+//        HashMap<Class<?>>
+
+        boolean takeParameterGroup(Cartrofit.ParameterGroup group) {
+            int initialBits = 0;
+            int accumulatedBits = 0;
+            int extraBits = 0;
+            anchor: for (int i = 0; i < group.getParameterCount(); i++) {
+                Cartrofit.Parameter parameter = group.getParameterAt(i);
+                if (initialedAnnotationArray != null) {
+                    for (Class<? extends Annotation> initialMark : initialedAnnotationArray) {
+                        if (parameter.isAnnotationPresent(initialMark)) {
+                            initialBits |= 1 << i;
+                            continue anchor;
+                        }
+                    }
+                }
+                if (accumulatedAnnotationArray != null) {
+                    for (Class<? extends Annotation> accumulatedMark : accumulatedAnnotationArray) {
+                        if (parameter.isAnnotationPresent(accumulatedMark)) {
+                            accumulatedBits |= 1 << i;
+                            continue anchor;
+                        }
+                    }
+                }
+                if (extraAnnotationArray != null) {
+                    for (Class<? extends Annotation> extraMark : extraAnnotationArray) {
+                        if (parameter.isAnnotationPresent(extraMark)) {
+                            extraBits |= 1 << i;
+                            continue anchor;
+                        }
+                    }
+                }
+                initialBits |= 1 << i;
+            }
+            if ((concernedTypes == null && initialBits != 0)
+                    || Integer.bitCount(initialBits) != concernedTypes.length) {
+                return false;
+            }
+            for (int i = 0, j = 0; i < group.getParameterCount(); i++) {
+                if ((initialBits & i) != 0) {
+                    if (!Cartrofit.classEquals(group.getParameterAt(i).getType(), concernedTypes[j++])) {
+                        return false;
+                    }
+                }
+            }
+            int accumulateSolutionCount = accumulateSolutions != null ?
+                    accumulateSolutions.size() : 0;
+            for (int i = 0; i < accumulateSolutionCount; i++) {
+                AccumulateSolution<?, ?, ?> accumulateSolution = accumulateSolutions.get(i);
+                int matchCount = 0;
+                for (int j = 0; j < group.getParameterCount(); j++) {
+                    if ((accumulatedBits & j) != 0) {
+                        Cartrofit.Parameter parameter = group.getParameterAt(j);
+                        if (parameter.isAnnotationPresent(accumulateSolution.annotateType)
+                                && accumulateSolution.moreType.isAssignableFrom(parameter.getType())) {
+                            matchCount++;
+                        }
+                    }
+                }
+                if (matchCount >= accumulateSolution.minMatchCount
+                        && matchCount <= accumulateSolution.maxMatchCount) {
+
+                }
+            }
+            if ((accumulateSolutions == null || accumulateSolutions.size() == 0)
+                    && accumulatedBits != 0) {
+                return false;
+            }
+            return false;
+        }
+
         Class<?>[] concernedTypes;
+
 
         Converter<?, SERIALIZATION> converterIn;
         Converter<SERIALIZATION, ?> converterOut;
@@ -67,8 +176,12 @@ public abstract class ConverterBuilder<SERIALIZATION> {
 
         Class<? extends Annotation>[] concernedAnnotations;
 
-        private ConvertSolution(Class<?>... clazzArray) {
+        ConvertSolution(Class<?>... clazzArray) {
             this.concernedTypes = clazzArray;
+        }
+
+        ConvertSolution() {
+            this.concernedTypes = new Class<?>[0];
         }
 
         Converter<?, SERIALIZATION> findInputConverter(Cartrofit.ParameterGroup group, Cartrofit.Key key) {
@@ -114,6 +227,10 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             }
             concernedAnnotations = annotations;
         }
+    }
+
+    public final class ConverterBuilder0 extends ConvertSolution {
+//        Supplier
     }
 
     public final class ConverterBuilder1<TARGET> extends ConvertSolution {
