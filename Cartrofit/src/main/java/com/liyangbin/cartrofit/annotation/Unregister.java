@@ -8,7 +8,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 @Target(METHOD)
 @Retention(RUNTIME)
-@Category(Category.CATEGORY_DEFAULT)
+@MethodCategory(MethodCategory.CATEGORY_DEFAULT)
 public @interface Unregister {
     int value() default 0;
 }

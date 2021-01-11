@@ -11,7 +11,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 @Target({METHOD, FIELD})
 @Retention(RUNTIME)
-@Category(Category.CATEGORY_TRACK)
+@MethodCategory(MethodCategory.CATEGORY_TRACK)
 public @interface Track {
     int id();
 

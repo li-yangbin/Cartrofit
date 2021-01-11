@@ -9,7 +9,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 @Target({METHOD, FIELD})
 @Retention(RUNTIME)
-@Category(Category.CATEGORY_SET)
+@MethodCategory(MethodCategory.CATEGORY_SET)
 public @interface Set {
     int id();
 

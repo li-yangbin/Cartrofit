@@ -1,20 +1,13 @@
 package com.liyangbin.cartrofit;
 
+import com.liyangbin.cartrofit.annotation.ParameterCategory;
 import com.liyangbin.cartrofit.funtion.Converter;
 import com.liyangbin.cartrofit.funtion.Converter2;
 import com.liyangbin.cartrofit.funtion.Converter3;
 import com.liyangbin.cartrofit.funtion.Converter4;
 import com.liyangbin.cartrofit.funtion.Converter5;
 import com.liyangbin.cartrofit.funtion.TwoWayConverter;
-import com.liyangbin.cartrofit.funtion.TwoWayConverter2;
-import com.liyangbin.cartrofit.funtion.TwoWayConverter3;
-import com.liyangbin.cartrofit.funtion.TwoWayConverter4;
-import com.liyangbin.cartrofit.funtion.TwoWayConverter5;
 import com.liyangbin.cartrofit.funtion.Union;
-import com.liyangbin.cartrofit.funtion.Union2;
-import com.liyangbin.cartrofit.funtion.Union3;
-import com.liyangbin.cartrofit.funtion.Union4;
-import com.liyangbin.cartrofit.funtion.Union5;
 
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
@@ -28,40 +21,300 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         this.serializeType = serializeType;
     }
 
+    ArrayList<InitializeSolution> initializeSolutions;
+    //        Class<? extends Annotation>[] initialedAnnotationArray;
+//        Class<? extends Annotation>[] extraAnnotationArray;
+    ArrayList<AccumulateSolution<?>> accumulateSolutions;
+
+    Class<?>[] concernedTypes;
+    Converter<Object, SERIALIZATION> converterIn;
+    Converter<SERIALIZATION, Object> converterOut;
+
+//        HashMap<Class<?>>
+
+    Converter<Union, SERIALIZATION> checkConvertIn(Cartrofit.ParameterGroup group) {
+        int initialBits = 0;
+        int accumulatedBits = 0;
+        int extraBits = 0;// TODO
+        int emptyBits = 0;
+
+        OutputConverterImpl outputConverter = new OutputConverterImpl();
+
+        anchor: for (int i = 0; i < group.getParameterCount(); i++) {
+            Cartrofit.Parameter parameter = group.getParameterAt(i);
+            Annotation[] annotations = parameter.getAnnotations();
+            for (Annotation annotation : annotations) {
+                ParameterCategory category = annotation.annotationType()
+                        .getDeclaredAnnotation(ParameterCategory.class);
+                if (category != null) {
+                    switch (category.value()) {
+                        case ParameterCategory.INIT:
+                            initialBits |= 1 << i;
+                            continue anchor;
+                        case ParameterCategory.ACCUMULATE:
+                            accumulatedBits |= 1 << i;
+                            continue anchor;
+                        case ParameterCategory.EXTRA:
+                            extraBits |= 1 << i;
+                            continue anchor;
+                    }
+                }
+            }
+            emptyBits |= 1 << i;
+        }
+
+        int annotatedCount = initialBits != 0 ? Integer.bitCount(initialBits) : 0;
+        int emptyCount = emptyBits != 0 ? Integer.bitCount(emptyBits) : 0;
+        anchor:for (int i = 0; i < initializeSolutions.size(); i++) {
+            InitializeSolution solution = initializeSolutions.get(i);
+            if (solution.size() == annotatedCount + emptyCount) {
+                for (int j = 0, k = 0; j < group.getParameterCount(); j++) {
+                    Cartrofit.Parameter parameter = group.getParameterAt(j);
+                    if ((initialBits & j) != 0) {
+                        Class<? extends Annotation> annotationTypeExpected = solution.get(k).fixedAnnotationType;
+                        Annotation annotation = parameter.getAnnotation(annotationTypeExpected);
+                        if (annotation == null) {
+                            outputConverter.reset();
+                            continue anchor;
+                        }
+                        if (!solution.get(k).fixedType.isAssignableFrom(parameter.getType())) {
+                            outputConverter.reset();
+                            continue anchor;
+                        }
+                        outputConverter.addInitializeElement(annotation, parameter);
+                        k++;
+                    } else if ((emptyBits & j) != 0) {
+                        if (solution.get(k).annotateNecessary) {
+                            outputConverter.reset();
+                            continue anchor;
+                        }
+                        if (!solution.get(k).fixedType.isAssignableFrom(parameter.getType())) {
+                            outputConverter.reset();
+                            continue anchor;
+                        }
+                        outputConverter.addInitializeElement(null, parameter);
+                        k++;
+                    }
+                }
+
+                outputConverter.setInitializer(solution.converterIn);
+                break;
+            }
+        }
+
+        if (outputConverter.isEmpty()) {
+            return null;
+        }
+
+        for (int i = 0; i < group.getParameterCount(); i++) {
+            if ((accumulatedBits & i) != 0) {
+                Cartrofit.Parameter parameter = group.getParameterAt(i);
+                for (int j = 0; j < accumulateSolutions.size(); j++) {
+                    AccumulateSolution<?> accumulateSolution = accumulateSolutions.get(j);
+                    if (accumulateSolution.moreType.isAssignableFrom(parameter.getType())) {
+                        Annotation annotation = parameter
+                                .getAnnotation(accumulateSolution.annotationType);
+                        if (annotation != null) {
+                            outputConverter.addAccumulatedElement(annotation, parameter,
+                                    accumulateSolution);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return outputConverter;
+    }
+
+    public InitBuilder initBuilder() {
+        return new InitBuilder();
+    }
+
+    public class InitBuilder {
+
+        InitializeSolution solution = new InitializeSolution();
+
+        public ConverterBuilder<SERIALIZATION> commit(Supplier<SERIALIZATION> provider) {
+            solution.simpleProvide(provider);
+            initializeSolutions.add(solution);
+            return ConverterBuilder.this;
+        }
+
+        public ConverterBuilder<SERIALIZATION> commit() {
+            initializeSolutions.add(solution);
+            return ConverterBuilder.this;
+        }
+
+        public final <FROM> ConverterBuilder1<FROM> convert(Class<FROM> clazz) {
+            return new ConverterBuilder1<>(new InitElement<>(clazz));
+        }
+
+        public class ConverterBuilder1<TARGET> extends InitBuilder {
+            InitElement<TARGET> element1;
+
+            private ConverterBuilder1(InitElement<TARGET> element) {
+                this.element1 = element;
+            }
+
+            public ConverterBuilder1<TARGET> annotate(Class<? extends Annotation> annotationType, boolean necessary) {
+                element1.fixedAnnotationType = annotationType;
+                element1.annotateNecessary = necessary;
+                return this;
+            }
+
+            public ConverterBuilder<SERIALIZATION> commit(Converter<Arg<TARGET>, SERIALIZATION> converter) {
+                solution.add(element1);
+                solution.with(converterIn);
+                initializeSolutions.add(solution);
+                return ConverterBuilder.this;
+            }
+
+            public <TARGET2> ConverterBuilder2<TARGET, TARGET2> andThen(Class<TARGET2> fromClazz) {
+                return new ConverterBuilder2<>(element1, new InitElement<>(fromClazz));
+            }
+        }
+
+        public final class ConverterBuilder2<TARGET1, TARGET2> {
+            InitElement<TARGET1> element1;
+            InitElement<TARGET2> element2;
+
+            private ConverterBuilder2(InitElement<TARGET1> element1, InitElement<TARGET2> element2) {
+                this.element1 = element1;
+                this.element2 = element2;
+            }
+
+            public ConverterBuilder2<TARGET1, TARGET2> annotate(Class<? extends Annotation> annotationType,
+                                                                boolean necessary) {
+                element2.fixedAnnotationType = annotationType;
+                element2.annotateNecessary = necessary;
+                return this;
+            }
+
+            public ConverterBuilder<SERIALIZATION> commit(
+                    Converter2<Arg<TARGET1>, Arg<TARGET2>, SERIALIZATION> converter) {
+                solution.add(element1);
+                solution.add(element2);
+                solution.with(converterIn);
+                initializeSolutions.add(solution);
+                return ConverterBuilder.this;
+            }
+
+            public <TARGET3> ConverterBuilder3<TARGET1, TARGET2, TARGET3> andThen(Class<TARGET3> fromClazz) {
+                return new ConverterBuilder3<>(this, new InitElement<>(fromClazz));
+            }
+        }
+
+        public final class ConverterBuilder3<TARGET1, TARGET2, TARGET3> {
+            InitElement<TARGET1> element1;
+            InitElement<TARGET2> element2;
+            InitElement<TARGET3> element3;
+
+            private ConverterBuilder3(ConverterBuilder2<TARGET1, TARGET2> others,
+                                      InitElement<TARGET3> element) {
+                this.element1 = others.element1;
+                this.element2 = others.element2;
+                this.element3 = element;
+            }
+
+            public ConverterBuilder3<TARGET1, TARGET2, TARGET3>
+            annotate(Class<? extends Annotation> annotationType, boolean necessary) {
+                element2.fixedAnnotationType = annotationType;
+                element2.annotateNecessary = necessary;
+                return this;
+            }
+
+            public ConverterBuilder<SERIALIZATION> commit(
+                    Converter3<Arg<TARGET1>, Arg<TARGET2>, Arg<TARGET3>, SERIALIZATION> converter) {
+                solution.add(element1);
+                solution.add(element2);
+                solution.add(element3);
+                solution.with(converterIn);
+                initializeSolutions.add(solution);
+                return ConverterBuilder.this;
+            }
+
+            public <TARGET4> ConverterBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> andThen(Class<TARGET4> fromClazz) {
+                return new ConverterBuilder4<>(this, new InitElement<>(fromClazz));
+            }
+        }
+
+        public final class ConverterBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> {
+            InitElement<TARGET1> element1;
+            InitElement<TARGET2> element2;
+            InitElement<TARGET3> element3;
+            InitElement<TARGET4> element4;
+
+            private ConverterBuilder4(ConverterBuilder3<TARGET1, TARGET2, TARGET3> others,
+                                      InitElement<TARGET4> element) {
+                this.element1 = others.element1;
+                this.element2 = others.element2;
+                this.element3 = others.element3;
+                this.element4 = element;
+            }
+
+            public ConverterBuilder4<TARGET1, TARGET2, TARGET3, TARGET4>
+            annotate(Class<? extends Annotation> annotationType, boolean necessary) {
+                element2.fixedAnnotationType = annotationType;
+                element2.annotateNecessary = necessary;
+                return this;
+            }
+
+            public ConverterBuilder<SERIALIZATION> commit(
+                    Converter4<Arg<TARGET1>, Arg<TARGET2>, Arg<TARGET3>, Arg<TARGET4>, SERIALIZATION> converter) {
+                solution.add(element1);
+                solution.add(element2);
+                solution.add(element3);
+                solution.add(element4);
+                solution.with(converterIn);
+                initializeSolutions.add(solution);
+                return ConverterBuilder.this;
+            }
+
+            public <TARGET5> ConverterBuilder5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5>
+            andThen(Class<TARGET5> fromClazz) {
+                return new ConverterBuilder5<>(this, new InitElement<>(fromClazz));
+            }
+        }
+
+        public final class ConverterBuilder5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5> {
+            InitElement<TARGET1> element1;
+            InitElement<TARGET2> element2;
+            InitElement<TARGET3> element3;
+            InitElement<TARGET4> element4;
+            InitElement<TARGET5> element5;
+
+            private ConverterBuilder5(ConverterBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> others,
+                                      InitElement<TARGET5> element) {
+                this.element1 = others.element1;
+                this.element2 = others.element2;
+                this.element3 = others.element3;
+                this.element4 = others.element4;
+                this.element5 = element;
+            }
+
+            public ConverterBuilder5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5>
+            annotate(Class<? extends Annotation> annotationType, boolean necessary) {
+                element2.fixedAnnotationType = annotationType;
+                element2.annotateNecessary = necessary;
+                return this;
+            }
+
+            public ConverterBuilder<SERIALIZATION> commit(
+                    Converter5<Arg<TARGET1>, Arg<TARGET2>, Arg<TARGET3>,
+                            Arg<TARGET4>, Arg<TARGET5>, SERIALIZATION> converter) {
+                solution.add(element1);
+                solution.add(element2);
+                solution.add(element3);
+                solution.add(element4);
+                solution.add(element5);
+                solution.with(converterIn);
+                initializeSolutions.add(solution);
+                return ConverterBuilder.this;
+            }
+        }
+    }
+
     abstract void onCommit(ConvertSolution builder);
-
-//    public final ConverterBuilder0 provide(Supplier<SERIALIZATION> provider) {
-//        return new ConverterBuilder0<>(provider);
-//    }
-
-    public final <FROM> ConverterBuilder1<FROM> convert(Class<FROM> clazz) {
-        return new ConverterBuilder1<>(clazz);
-    }
-
-    public final <FROM1, FROM2> ConverterBuilder2<FROM1, FROM2> convert(Class<FROM1> clazz1,
-                                                                        Class<FROM2> clazz2) {
-        return new ConverterBuilder2<>(clazz1, clazz2);
-    }
-
-    public final <FROM1, FROM2, FROM3> ConverterBuilder3<FROM1, FROM2, FROM3>
-            convert(Class<FROM1> clazz1, Class<FROM2> clazz2, Class<FROM3> clazz3) {
-        return new ConverterBuilder3<>(clazz1, clazz2, clazz3);
-    }
-
-    public final <FROM1, FROM2, FROM3, FROM4> ConverterBuilder4<FROM1, FROM2, FROM3, FROM4>
-            convert(Class<FROM1> clazz1, Class<FROM2> clazz2, Class<FROM3> clazz3, Class<FROM4> clazz4) {
-        return new ConverterBuilder4<>(clazz1, clazz2, clazz3, clazz4);
-    }
-
-    public final <FROM1, FROM2, FROM3, FROM4, FROM5> ConverterBuilder5<FROM1, FROM2, FROM3, FROM4, FROM5>
-            convert(Class<FROM1> clazz1, Class<FROM2> clazz2, Class<FROM3> clazz3, Class<FROM4> clazz4,
-                    Class<FROM5> clazz5) {
-        return new ConverterBuilder5<>(clazz1, clazz2, clazz3, clazz4, clazz5);
-    }
-
-    public final ConverterBuilderArray convert(Class<?>[] clazzArray) {
-        return new ConverterBuilderArray(clazzArray);
-    }
 
     public interface Accumulator<V, R> {
         R advance(R old, Arg<V> more);
@@ -79,11 +332,42 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         Accumulator<V, SERIALIZATION> accumulator;
     }
 
+    static class InitElement<T> {
+        Class<T> fixedType;
+        Class<? extends Annotation> fixedAnnotationType;
+        boolean annotateNecessary;
+
+        InitElement(Class<T> fixedType) {
+            this.fixedType = fixedType;
+        }
+    }
+
     class InitializeSolution {
-        int fixedCount;
-        Class<?>[] fixedType;
-        Class<? extends Annotation>[] fixedAnnotationType;
+        ArrayList<InitElement<?>> fixedElements;
         Converter<Object, SERIALIZATION> converterIn;
+
+        void simpleProvide(Supplier<SERIALIZATION> supplier) {
+            converterIn = value -> supplier.get();
+        }
+
+        int size () {
+            return fixedElements != null ? fixedElements.size() : 0;
+        }
+
+        InitElement<?> get(int index) {
+            return fixedElements.get(index);
+        }
+
+        void add(InitElement<?> element) {
+            if (fixedElements == null) {
+                fixedElements = new ArrayList<>();
+            }
+            fixedElements.add(element);
+        }
+
+        void with(Converter<Object, SERIALIZATION> converterIn) {
+            this.converterIn = converterIn;
+        }
     }
 
     private class OutputConverterImpl implements Converter<Union, SERIALIZATION> {
@@ -158,6 +442,20 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             accumulators.add((Accumulator<Object, SERIALIZATION>) solution.accumulator);
         }
 
+        void reset() {
+            this.initializer = null;
+            if (initializeAnnotationArrayList != null) {
+                initializeAnnotationArrayList.clear();
+            }
+            if (initializeParameters != null) {
+                initializeParameters.clear();
+            }
+        }
+
+        boolean isEmpty() {
+            return initializer == null;
+        }
+
         @Override
         public SERIALIZATION convert(Union value) {
             int inputCount = initializeParameters != null ? initializeParameters.size() : 0;
@@ -194,105 +492,6 @@ public abstract class ConverterBuilder<SERIALIZATION> {
     }
 
     abstract class ConvertSolution {
-
-        ArrayList<InitializeSolution> initializeSolutions;
-//        Class<? extends Annotation>[] initialedAnnotationArray;
-        Class<? extends Annotation>[] extraAnnotationArray;
-        ArrayList<AccumulateSolution<?>> accumulateSolutions;
-
-        Class<?>[] concernedTypes;
-        Converter<Object, SERIALIZATION> converterIn;
-        Converter<SERIALIZATION, Object> converterOut;
-
-//        HashMap<Class<?>>
-
-        Converter<Union, SERIALIZATION> checkConvertIn(Cartrofit.ParameterGroup group) {
-            int initialBits = 0;
-//            int accumulatedBits = 0;
-//            int extraBits = 0;
-
-            OutputConverterImpl outputConverter = new OutputConverterImpl();
-
-            anchor: for (int i = 0; i < group.getParameterCount(); i++) {
-                Cartrofit.Parameter parameter = group.getParameterAt(i);
-                if (initializeSolutions != null) {
-                    for (int j = 0; j < initializeSolution.fixedAnnotationType.length; j++) {
-                        Annotation annotation = parameter.getAnnotation(initializeSolution.fixedAnnotationType[j]);
-                        if (annotation != null
-                                && initializeSolution.fixedType.isAssignableFrom(parameter.getType())) {
-                            outputConverter.addAccumulatedElement(annotation, parameter, accumulateSolution);
-//                            accumulatedBits |= 1 << i;
-                            continue anchor;
-                        }
-                    }
-                    for (Class<? extends Annotation> initialMark : initialedAnnotationArray) {
-                        Annotation annotation = parameter.getAnnotation(initialMark);
-                        if (annotation != null) {
-                            outputConverter.addInitializeElement(annotation, parameter);
-                            initialBits |= 1 << i;
-                            continue anchor;
-                        }
-                    }
-                }
-                if (accumulateSolutions != null) {
-                    for (int j = 0; j < accumulateSolutions.size(); j++) {
-                        AccumulateSolution<?> accumulateSolution = accumulateSolutions.get(i);
-                        Annotation annotation = parameter.getAnnotation(accumulateSolution.annotationType);
-                        if (annotation != null
-                                && accumulateSolution.moreType.isAssignableFrom(parameter.getType())) {
-                            outputConverter.addAccumulatedElement(annotation, parameter, accumulateSolution);
-//                            accumulatedBits |= 1 << i;
-                            continue anchor;
-                        }
-                    }
-                }
-                if (extraAnnotationArray != null) {
-                    for (Class<? extends Annotation> extraMark : extraAnnotationArray) {
-                        if (parameter.isAnnotationPresent(extraMark)) {
-//                            extraBits |= 1 << i;
-                            continue anchor;
-                        }
-                    }
-                }
-                initialBits |= 1 << i;
-            }
-            if ((concernedTypes == null && initialBits != 0)
-                    || Integer.bitCount(initialBits) != concernedTypes.length) {
-                return null;
-            }
-            for (int i = 0, j = 0; i < group.getParameterCount(); i++) {
-                if ((initialBits & i) != 0) {
-                    if (!Cartrofit.classEquals(group.getParameterAt(i).getType(), concernedTypes[j++])) {
-                        return null;
-                    }
-                }
-            }
-
-            outputConverter.setInitializer(converterIn);
-
-//            for (int i = 0; i < accumulateSolutionCount; i++) {
-//                AccumulateSolution<?, ?> accumulateSolution = accumulateSolutions.get(i);
-//                int matchCount = 0;
-//                for (int j = 0; j < group.getParameterCount(); j++) {
-//                    if ((accumulatedBits & j) != 0) {
-//                        Cartrofit.Parameter parameter = group.getParameterAt(j);
-//                        if (parameter.isAnnotationPresent(accumulateSolution.annotationType)
-//                                && accumulateSolution.moreType.isAssignableFrom(parameter.getType())) {
-//                            matchCount++;
-//                        }
-//                    }
-//                }
-//                if (matchCount >= accumulateSolution.minMatchCount
-//                        && matchCount <= accumulateSolution.maxMatchCount) {
-//                    outputConverter.addAccumulatedElement(accumulateSolution.annotationType);
-//                }
-//            }
-//            if ((accumulateSolutions == null || accumulateSolutions.size() == 0)
-//                    && accumulatedBits != 0) {
-//                return false;
-//            }
-            return outputConverter;
-        }
 
         void setConvertIn(Converter<?, SERIALIZATION> converterIn) {
             this.converterIn = (Converter<Object, SERIALIZATION>) converterIn;
@@ -352,147 +551,6 @@ public abstract class ConverterBuilder<SERIALIZATION> {
                         + " does not match type count:" + concernedTypes.length);
             }
             concernedAnnotations = annotations;
-        }
-    }
-
-    public final class ConverterBuilder0 extends ConvertSolution {
-//        Supplier
-    }
-
-    public final class ConverterBuilder1<TARGET> extends ConvertSolution {
-
-        private ConverterBuilder1(Class<TARGET> fromClazz) {
-            super(fromClazz);
-        }
-
-        public void in(Converter<TARGET, SERIALIZATION> converter) {
-            setConvertIn(converterIn);
-            ConverterBuilder.this.onCommit(ConverterBuilder1.this);
-        }
-
-        public void out(Converter<SERIALIZATION, TARGET> converter) {
-            ConverterBuilder1.this.converterOut = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilder1.this);
-        }
-
-        public void inout(TwoWayConverter<TARGET, SERIALIZATION> converter) {
-            ConverterBuilder1.this.twoWayConverter = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilder1.this);
-        }
-
-    }
-
-    public final class ConverterBuilder2<TARGET1, TARGET2> extends ConvertSolution {
-
-        private ConverterBuilder2(Class<TARGET1> fromClazz1, Class<TARGET2> fromClazz2) {
-            super(fromClazz1, fromClazz2);
-        }
-
-        public void in(Converter2<TARGET1, TARGET2, SERIALIZATION> converter) {
-            setConvertIn(converterIn);
-            ConverterBuilder.this.onCommit(ConverterBuilder2.this);
-        }
-
-        public void out(Converter<SERIALIZATION, Union2<TARGET1, TARGET2>> converter) {
-            ConverterBuilder2.this.converterOut = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilder2.this);
-        }
-
-        public void inout(TwoWayConverter2<TARGET1, TARGET2, SERIALIZATION> converter) {
-            ConverterBuilder2.this.twoWayConverter = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilder2.this);
-        }
-    }
-
-    public final class ConverterBuilder3<TARGET1, TARGET2, TARGET3> extends ConvertSolution {
-
-        private ConverterBuilder3(Class<TARGET1> fromClazz1, Class<TARGET2> fromClazz2,
-                                  Class<TARGET3> fromClazz3) {
-            super(fromClazz1, fromClazz2, fromClazz3);
-        }
-
-        public void in(Converter3<TARGET1, TARGET2, TARGET3, SERIALIZATION> converter) {
-            setConvertIn(converterIn);
-            ConverterBuilder.this.onCommit(ConverterBuilder3.this);
-        }
-
-        public void out(Converter<SERIALIZATION, Union3<TARGET1, TARGET2, TARGET3>> converter) {
-            ConverterBuilder3.this.converterOut = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilder3.this);
-        }
-
-        public void inout(TwoWayConverter3<TARGET1, TARGET2, TARGET3, SERIALIZATION> converter) {
-            ConverterBuilder3.this.twoWayConverter = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilder3.this);
-        }
-    }
-
-    public final class ConverterBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> extends ConvertSolution {
-
-        private ConverterBuilder4(Class<TARGET1> fromClazz1, Class<TARGET2> fromClazz2,
-                                  Class<TARGET3> fromClazz3, Class<TARGET4> fromClazz4) {
-            super(fromClazz1, fromClazz2, fromClazz3, fromClazz4);
-        }
-
-        public void in(Converter4<TARGET1, TARGET2, TARGET3, TARGET4, SERIALIZATION> converter) {
-            setConvertIn(converterIn);
-            ConverterBuilder.this.onCommit(ConverterBuilder4.this);
-        }
-
-        public void out(Converter<SERIALIZATION, Union4<TARGET1, TARGET2, TARGET3, TARGET4>> converter) {
-            ConverterBuilder4.this.converterOut = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilder4.this);
-        }
-
-        public void inout(TwoWayConverter4<TARGET1, TARGET2, TARGET3, TARGET4, SERIALIZATION> converter) {
-            ConverterBuilder4.this.twoWayConverter = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilder4.this);
-        }
-    }
-
-    public final class ConverterBuilder5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5> extends ConvertSolution {
-
-        private ConverterBuilder5(Class<TARGET1> fromClazz1, Class<TARGET2> fromClazz2,
-                                  Class<TARGET3> fromClazz3, Class<TARGET4> fromClazz4,
-                                  Class<TARGET5> fromClazz5) {
-            super(fromClazz1, fromClazz2, fromClazz3, fromClazz4, fromClazz5);
-        }
-
-        public void in(Converter5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5, SERIALIZATION> converter) {
-            setConvertIn(converterIn);
-            ConverterBuilder.this.onCommit(ConverterBuilder5.this);
-        }
-
-        public void out(Converter<SERIALIZATION, Union5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5>> converter) {
-            ConverterBuilder5.this.converterOut = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilder5.this);
-        }
-
-        public void inout(TwoWayConverter5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5, SERIALIZATION> converter) {
-            ConverterBuilder5.this.twoWayConverter = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilder5.this);
-        }
-    }
-
-    public final class ConverterBuilderArray extends ConvertSolution {
-
-        private ConverterBuilderArray(Class<?>[] classArray) {
-            super(classArray);
-        }
-
-        public void in(Converter<Union, SERIALIZATION> converter) {
-            setConvertIn(converterIn);
-            ConverterBuilder.this.onCommit(ConverterBuilderArray.this);
-        }
-
-        public void out(Converter<SERIALIZATION, Union> converter) {
-            ConverterBuilderArray.this.converterOut = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilderArray.this);
-        }
-
-        public void inout(TwoWayConverter<Union, SERIALIZATION> converter) {
-            ConverterBuilderArray.this.twoWayConverter = converter;
-            ConverterBuilder.this.onCommit(ConverterBuilderArray.this);
         }
     }
 }

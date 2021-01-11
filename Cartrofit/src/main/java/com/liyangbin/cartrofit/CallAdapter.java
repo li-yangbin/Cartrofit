@@ -1,6 +1,6 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.annotation.Category;
+import com.liyangbin.cartrofit.annotation.MethodCategory;
 import com.liyangbin.cartrofit.funtion.Consumer;
 
 import java.lang.annotation.Annotation;
@@ -81,10 +81,10 @@ public abstract class CallAdapter {
 
         CallSolution(Class<A> candidateClass) {
             this.candidateClass = candidateClass;
-            Category category = candidateClass.getDeclaredAnnotation(Category.class);
+            MethodCategory category = candidateClass.getDeclaredAnnotation(MethodCategory.class);
             if (category != null) {
                 int categoryFlag = category.value();
-                if (categoryFlag == Category.CATEGORY_DEFAULT) {
+                if (categoryFlag == MethodCategory.CATEGORY_DEFAULT) {
                     keepLookingIfNull = true;
                     predictor = flag -> true;
                 } else {

@@ -8,7 +8,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 @Target(METHOD)
 @Retention(RUNTIME)
-@Category(Category.CATEGORY_SET | Category.CATEGORY_GET | Category.CATEGORY_TRACK)
+@MethodCategory(MethodCategory.CATEGORY_SET | MethodCategory.CATEGORY_GET | MethodCategory.CATEGORY_TRACK)
 public @interface Combine {
     int[] elements();
 }

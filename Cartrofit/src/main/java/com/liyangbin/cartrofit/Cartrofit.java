@@ -565,6 +565,7 @@ public final class Cartrofit {
     public interface Parameter {
         boolean isAnnotationPresent(Class<? extends Annotation> clazz);
         <A extends Annotation> A getAnnotation(Class<A> clazz);
+        Annotation[] getAnnotations();
         Class<?> getType();
         Type getGenericType();
         int getDeclaredIndex();
@@ -737,6 +738,11 @@ public final class Cartrofit {
             @Override
             public <A extends Annotation> A getAnnotation(Class<A> clazz) {
                 return find(annotationMatrix[index], clazz);
+            }
+
+            @Override
+            public Annotation[] getAnnotation() {
+                return annotationMatrix[index];
             }
 
             @Override
