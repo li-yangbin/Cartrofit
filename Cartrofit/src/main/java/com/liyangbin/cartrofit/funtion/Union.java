@@ -34,7 +34,7 @@ public abstract class Union {
         return result;
     }
 
-    abstract Union mergeObj(Object obj);
+    protected abstract Union mergeObj(Object obj);
 
     public abstract int getCount();
 
@@ -65,7 +65,7 @@ public abstract class Union {
         }
     }
 
-    public static Union of(Object... array) {
+    public static Union of(Object[] array) {
         if (array == null || array.length == 0) {
             return Union1.NULL_UNION;
         }

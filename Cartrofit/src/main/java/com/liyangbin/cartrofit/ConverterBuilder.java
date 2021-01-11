@@ -18,7 +18,6 @@ import com.liyangbin.cartrofit.funtion.Union5;
 
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.function.Supplier;
 
 public abstract class ConverterBuilder<SERIALIZATION> {
@@ -31,9 +30,9 @@ public abstract class ConverterBuilder<SERIALIZATION> {
 
     abstract void onCommit(ConvertSolution builder);
 
-    public final ConverterBuilder0 provide(Supplier<SERIALIZATION> provider) {
-        return new ConverterBuilder0<>(provider);
-    }
+//    public final ConverterBuilder0 provide(Supplier<SERIALIZATION> provider) {
+//        return new ConverterBuilder0<>(provider);
+//    }
 
     public final <FROM> ConverterBuilder1<FROM> convert(Class<FROM> clazz) {
         return new ConverterBuilder1<>(clazz);
@@ -64,57 +63,185 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         return new ConverterBuilderArray(clazzArray);
     }
 
-    public interface Accumulator<V, R, A extends Annotation> {
-        R advance(R old, A annotation, V more);
+    public interface Accumulator<V, R> {
+        R advance(R old, Arg<V> more);
     }
 
-    static class AccumulateSolution<V, R, A extends Annotation> {
+    interface Arg<V> {
+        <A extends Annotation> A getAnnotation();
+        Cartrofit.Parameter getParameter();
+        V get();
+    }
+
+    class AccumulateSolution<V> {
         Class<V> moreType;
-        Class<A> annotateType;
-        Accumulator<V, R, A> accumulator;
-        int minMatchCount;
-        int maxMatchCount = 100;
+        Class<? extends Annotation> annotationType;
+        Accumulator<V, SERIALIZATION> accumulator;
     }
 
-    class OutputConverter implements Converter<Union, SERIALIZATION> {
+    class InitializeSolution {
+        int fixedCount;
+        Class<?>[] fixedType;
+        Class<? extends Annotation>[] fixedAnnotationType;
+        Converter<Object, SERIALIZATION> converterIn;
+    }
+
+    private class OutputConverterImpl implements Converter<Union, SERIALIZATION> {
+
+        ArrayList<Cartrofit.Parameter> initializeParameters;
+        ArrayList<Annotation> initializeAnnotationArrayList;
+        Converter<Object, SERIALIZATION> initializer;
+
+        ArrayList<Cartrofit.Parameter> accumulatedParameters;
+        ArrayList<Annotation> accumulatedAnnotationArrayList;
+        ArrayList<Accumulator<Object, SERIALIZATION>> accumulators;
+
+        class AnnotatedValueImpl implements Arg<Object> {
+
+            int index;
+            Union parameterHost;
+            ArrayList<Cartrofit.Parameter> parameters;
+            ArrayList<Annotation> annotations;
+
+            AnnotatedValueImpl(int index, Union parameterHost, boolean accumulates) {
+                this.index = index;
+                this.parameterHost = parameterHost;
+                this.parameters = accumulates ? accumulatedParameters : initializeParameters;
+                this.annotations = accumulates ? accumulatedAnnotationArrayList
+                        : initializeAnnotationArrayList;
+            }
+
+            @Override
+            public <A extends Annotation> A getAnnotation() {
+                return (A) annotations.get(index);
+            }
+
+            @Override
+            public Cartrofit.Parameter getParameter() {
+                return parameters.get(index);
+            }
+
+            @Override
+            public Object get() {
+                return parameterHost.get(parameters.get(index).getDeclaredIndex());
+            }
+        }
+
+        void setInitializer(Converter<Object, SERIALIZATION> initializer) {
+            this.initializer = initializer;
+        }
+
+        void addInitializeElement(Annotation annotation, Cartrofit.Parameter parameter) {
+            if (initializeAnnotationArrayList == null) {
+                initializeAnnotationArrayList = new ArrayList<>();
+            }
+            initializeAnnotationArrayList.add(annotation);
+            if (initializeParameters == null) {
+                initializeParameters = new ArrayList<>();
+            }
+            initializeParameters.add(parameter);
+        }
+
+        void addAccumulatedElement(Annotation annotation, Cartrofit.Parameter parameter,
+                                   AccumulateSolution<?> solution) {
+            if (accumulatedAnnotationArrayList == null) {
+                accumulatedAnnotationArrayList = new ArrayList<>();
+            }
+            accumulatedAnnotationArrayList.add(annotation);
+            if (accumulatedParameters == null) {
+                accumulatedParameters = new ArrayList<>();
+            }
+            accumulatedParameters.add(parameter);
+            if (accumulators == null) {
+                accumulators = new ArrayList<>();
+            }
+            accumulators.add((Accumulator<Object, SERIALIZATION>) solution.accumulator);
+        }
+
         @Override
         public SERIALIZATION convert(Union value) {
-            return null;
+            int inputCount = initializeParameters != null ? initializeParameters.size() : 0;
+            int inputCountFromConverter = initializer.getInputCount();
+            if (inputCount != inputCountFromConverter) {
+                throw new RuntimeException("logic impossible");
+            }
+            SERIALIZATION rawMaterial;
+            if (inputCount == 0) {
+                rawMaterial = initializer.convert(null);
+            } else if (inputCount == 1) {
+                rawMaterial = initializer.convert(new AnnotatedValueImpl(0, value, false));
+            } else {
+                Arg<?>[] result = new Arg[inputCount];
+                for (int i = 0; i < inputCount; i++) {
+                    result[i] = new AnnotatedValueImpl(i, value, false);
+                }
+                Union inputUnion = Union.of(result);
+                rawMaterial = initializer.convert(inputUnion);
+                inputUnion.recycle();
+            }
+            if (rawMaterial == null) {
+                throw new NullPointerException("Failed to initialize SERIALIZATION obj");
+            }
+
+            int accumulateCount = accumulators != null ? accumulators.size() : 0;
+            SERIALIZATION finalResult = rawMaterial;
+            for (int i = 0; i < accumulateCount; i++) {
+                finalResult = accumulators.get(i).advance(finalResult,
+                        new AnnotatedValueImpl(i, value, true));
+            }
+            return finalResult;
         }
     }
 
-//    static class InitializeSolution<V, R> {
-//        Class<V> moreType;
-//        Class<? extends Annotation> annotateType;
-//        Accumulator<V, R> accumulator;
-//    }
-
     abstract class ConvertSolution {
 
-        Class<? extends Annotation>[] initialedAnnotationArray;
-        Class<? extends Annotation>[] accumulatedAnnotationArray;
+        ArrayList<InitializeSolution> initializeSolutions;
+//        Class<? extends Annotation>[] initialedAnnotationArray;
         Class<? extends Annotation>[] extraAnnotationArray;
-        ArrayList<AccumulateSolution<?, ?, ?>> accumulateSolutions;
+        ArrayList<AccumulateSolution<?>> accumulateSolutions;
+
+        Class<?>[] concernedTypes;
+        Converter<Object, SERIALIZATION> converterIn;
+        Converter<SERIALIZATION, Object> converterOut;
+
 //        HashMap<Class<?>>
 
-        boolean takeParameterGroup(Cartrofit.ParameterGroup group) {
+        Converter<Union, SERIALIZATION> checkConvertIn(Cartrofit.ParameterGroup group) {
             int initialBits = 0;
-            int accumulatedBits = 0;
-            int extraBits = 0;
+//            int accumulatedBits = 0;
+//            int extraBits = 0;
+
+            OutputConverterImpl outputConverter = new OutputConverterImpl();
+
             anchor: for (int i = 0; i < group.getParameterCount(); i++) {
                 Cartrofit.Parameter parameter = group.getParameterAt(i);
-                if (initialedAnnotationArray != null) {
+                if (initializeSolutions != null) {
+                    for (int j = 0; j < initializeSolution.fixedAnnotationType.length; j++) {
+                        Annotation annotation = parameter.getAnnotation(initializeSolution.fixedAnnotationType[j]);
+                        if (annotation != null
+                                && initializeSolution.fixedType.isAssignableFrom(parameter.getType())) {
+                            outputConverter.addAccumulatedElement(annotation, parameter, accumulateSolution);
+//                            accumulatedBits |= 1 << i;
+                            continue anchor;
+                        }
+                    }
                     for (Class<? extends Annotation> initialMark : initialedAnnotationArray) {
-                        if (parameter.isAnnotationPresent(initialMark)) {
+                        Annotation annotation = parameter.getAnnotation(initialMark);
+                        if (annotation != null) {
+                            outputConverter.addInitializeElement(annotation, parameter);
                             initialBits |= 1 << i;
                             continue anchor;
                         }
                     }
                 }
-                if (accumulatedAnnotationArray != null) {
-                    for (Class<? extends Annotation> accumulatedMark : accumulatedAnnotationArray) {
-                        if (parameter.isAnnotationPresent(accumulatedMark)) {
-                            accumulatedBits |= 1 << i;
+                if (accumulateSolutions != null) {
+                    for (int j = 0; j < accumulateSolutions.size(); j++) {
+                        AccumulateSolution<?> accumulateSolution = accumulateSolutions.get(i);
+                        Annotation annotation = parameter.getAnnotation(accumulateSolution.annotationType);
+                        if (annotation != null
+                                && accumulateSolution.moreType.isAssignableFrom(parameter.getType())) {
+                            outputConverter.addAccumulatedElement(annotation, parameter, accumulateSolution);
+//                            accumulatedBits |= 1 << i;
                             continue anchor;
                         }
                     }
@@ -122,7 +249,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
                 if (extraAnnotationArray != null) {
                     for (Class<? extends Annotation> extraMark : extraAnnotationArray) {
                         if (parameter.isAnnotationPresent(extraMark)) {
-                            extraBits |= 1 << i;
+//                            extraBits |= 1 << i;
                             continue anchor;
                         }
                     }
@@ -131,46 +258,45 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             }
             if ((concernedTypes == null && initialBits != 0)
                     || Integer.bitCount(initialBits) != concernedTypes.length) {
-                return false;
+                return null;
             }
             for (int i = 0, j = 0; i < group.getParameterCount(); i++) {
                 if ((initialBits & i) != 0) {
                     if (!Cartrofit.classEquals(group.getParameterAt(i).getType(), concernedTypes[j++])) {
-                        return false;
+                        return null;
                     }
                 }
             }
-            int accumulateSolutionCount = accumulateSolutions != null ?
-                    accumulateSolutions.size() : 0;
-            for (int i = 0; i < accumulateSolutionCount; i++) {
-                AccumulateSolution<?, ?, ?> accumulateSolution = accumulateSolutions.get(i);
-                int matchCount = 0;
-                for (int j = 0; j < group.getParameterCount(); j++) {
-                    if ((accumulatedBits & j) != 0) {
-                        Cartrofit.Parameter parameter = group.getParameterAt(j);
-                        if (parameter.isAnnotationPresent(accumulateSolution.annotateType)
-                                && accumulateSolution.moreType.isAssignableFrom(parameter.getType())) {
-                            matchCount++;
-                        }
-                    }
-                }
-                if (matchCount >= accumulateSolution.minMatchCount
-                        && matchCount <= accumulateSolution.maxMatchCount) {
 
-                }
-            }
-            if ((accumulateSolutions == null || accumulateSolutions.size() == 0)
-                    && accumulatedBits != 0) {
-                return false;
-            }
-            return false;
+            outputConverter.setInitializer(converterIn);
+
+//            for (int i = 0; i < accumulateSolutionCount; i++) {
+//                AccumulateSolution<?, ?> accumulateSolution = accumulateSolutions.get(i);
+//                int matchCount = 0;
+//                for (int j = 0; j < group.getParameterCount(); j++) {
+//                    if ((accumulatedBits & j) != 0) {
+//                        Cartrofit.Parameter parameter = group.getParameterAt(j);
+//                        if (parameter.isAnnotationPresent(accumulateSolution.annotationType)
+//                                && accumulateSolution.moreType.isAssignableFrom(parameter.getType())) {
+//                            matchCount++;
+//                        }
+//                    }
+//                }
+//                if (matchCount >= accumulateSolution.minMatchCount
+//                        && matchCount <= accumulateSolution.maxMatchCount) {
+//                    outputConverter.addAccumulatedElement(accumulateSolution.annotationType);
+//                }
+//            }
+//            if ((accumulateSolutions == null || accumulateSolutions.size() == 0)
+//                    && accumulatedBits != 0) {
+//                return false;
+//            }
+            return outputConverter;
         }
 
-        Class<?>[] concernedTypes;
-
-
-        Converter<?, SERIALIZATION> converterIn;
-        Converter<SERIALIZATION, ?> converterOut;
+        void setConvertIn(Converter<?, SERIALIZATION> converterIn) {
+            this.converterIn = (Converter<Object, SERIALIZATION>) converterIn;
+        }
 
         TwoWayConverter<?, SERIALIZATION> twoWayConverter;
 
@@ -240,7 +366,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         }
 
         public void in(Converter<TARGET, SERIALIZATION> converter) {
-            ConverterBuilder1.this.converterIn = converter;
+            setConvertIn(converterIn);
             ConverterBuilder.this.onCommit(ConverterBuilder1.this);
         }
 
@@ -263,7 +389,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         }
 
         public void in(Converter2<TARGET1, TARGET2, SERIALIZATION> converter) {
-            ConverterBuilder2.this.converterIn = converter;
+            setConvertIn(converterIn);
             ConverterBuilder.this.onCommit(ConverterBuilder2.this);
         }
 
@@ -286,7 +412,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         }
 
         public void in(Converter3<TARGET1, TARGET2, TARGET3, SERIALIZATION> converter) {
-            ConverterBuilder3.this.converterIn = converter;
+            setConvertIn(converterIn);
             ConverterBuilder.this.onCommit(ConverterBuilder3.this);
         }
 
@@ -309,7 +435,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         }
 
         public void in(Converter4<TARGET1, TARGET2, TARGET3, TARGET4, SERIALIZATION> converter) {
-            ConverterBuilder4.this.converterIn = converter;
+            setConvertIn(converterIn);
             ConverterBuilder.this.onCommit(ConverterBuilder4.this);
         }
 
@@ -333,7 +459,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         }
 
         public void in(Converter5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5, SERIALIZATION> converter) {
-            ConverterBuilder5.this.converterIn = converter;
+            setConvertIn(converterIn);
             ConverterBuilder.this.onCommit(ConverterBuilder5.this);
         }
 
@@ -355,7 +481,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         }
 
         public void in(Converter<Union, SERIALIZATION> converter) {
-            ConverterBuilderArray.this.converterIn = converter;
+            setConvertIn(converterIn);
             ConverterBuilder.this.onCommit(ConverterBuilderArray.this);
         }
 

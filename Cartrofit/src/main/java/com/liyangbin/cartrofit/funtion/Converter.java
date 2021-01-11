@@ -5,6 +5,10 @@ import java.util.Objects;
 public interface Converter<T, R> {
     R convert(T value);
 
+    default int getInputCount() {
+        return 1;
+    }
+
     default <V> Converter<T, V> andThen(Converter<? super R, ? extends V> after) {
         Objects.requireNonNull(after);
         return (T t) -> after.convert(convert(t));

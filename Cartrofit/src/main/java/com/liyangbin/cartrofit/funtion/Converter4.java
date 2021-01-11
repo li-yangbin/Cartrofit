@@ -6,5 +6,10 @@ public interface Converter4<T1, T2, T3, T4, R> extends Converter<Union4<T1, T2, 
         return convert(union.value1, union.value2, union.value3, union.value4);
     }
 
+    @Override
+    default int getInputCount() {
+        return 4;
+    }
+
     R convert(T1 t1, T2 t2, T3 t3, T4 t4);
 }
