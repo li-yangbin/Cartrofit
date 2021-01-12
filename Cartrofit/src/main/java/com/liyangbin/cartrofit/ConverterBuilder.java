@@ -21,14 +21,15 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         this.serializeType = serializeType;
     }
 
-    ArrayList<InitializeSolution> initializeSolutions;
+    ArrayList<EssentialSolution> essentialSolutions = new ArrayList<>();
     //        Class<? extends Annotation>[] initialedAnnotationArray;
 //        Class<? extends Annotation>[] extraAnnotationArray;
-    ArrayList<AccumulateSolution<?>> accumulateSolutions;
+    ArrayList<AttributeSolution<?, ?>> accumulateSolutions;
 
     Class<?>[] concernedTypes;
     Converter<Object, SERIALIZATION> converterIn;
     Converter<SERIALIZATION, Object> converterOut;
+    EssentialSolution tempSolution;
 
 //        HashMap<Class<?>>
 
@@ -37,8 +38,6 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         int attributeBits = 0;
         int extraBits = 0;// TODO
         int emptyBits = 0;
-
-        OutputConverterImpl outputConverter = new OutputConverterImpl();
 
         anchor: for (int i = 0; i < group.getParameterCount(); i++) {
             Cartrofit.Parameter parameter = group.getParameterAt(i);
@@ -65,9 +64,17 @@ public abstract class ConverterBuilder<SERIALIZATION> {
 
         int annotatedCount = essentialBits != 0 ? Integer.bitCount(essentialBits) : 0;
         int emptyCount = emptyBits != 0 ? Integer.bitCount(emptyBits) : 0;
-        anchor:for (int i = 0; i < initializeSolutions.size(); i++) {
-            InitializeSolution solution = initializeSolutions.get(i);
-            if (solution.size() == annotatedCount + emptyCount) {
+        final int essentialElementCount = annotatedCount + emptyCount;
+        OutputConverterImpl outputConverter = new OutputConverterImpl();
+
+        anchor:for (int i = 0; i < essentialSolutions.size(); i++) {
+            EssentialSolution solution = essentialSolutions.get(i);
+            if (essentialElementCount == 0) {
+                if (solution.simpleProviderMode) {
+                    outputConverter.setInitializer(solution.converterIn);
+                    break;
+                }
+            } else if (solution.size() == essentialElementCount) {
                 int k = 0;
                 for (int j = 0; j < group.getParameterCount() && k < solution.size(); j++) {
                     Cartrofit.Parameter parameter = group.getParameterAt(j);
@@ -114,13 +121,13 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             if ((attributeBits & i) != 0) {
                 Cartrofit.Parameter parameter = group.getParameterAt(i);
                 for (int j = 0; j < accumulateSolutions.size(); j++) {
-                    AccumulateSolution<?> accumulateSolution = accumulateSolutions.get(j);
-                    if (accumulateSolution.moreType.isAssignableFrom(parameter.getType())) {
+                    AttributeSolution<?, ?> attributeSolution = accumulateSolutions.get(j);
+                    if (attributeSolution.moreType.isAssignableFrom(parameter.getType())) {
                         Annotation annotation = parameter
-                                .getAnnotation(accumulateSolution.annotationType);
+                                .getAnnotation(attributeSolution.annotationType);
                         if (annotation != null) {
                             outputConverter.addAccumulatedElement(annotation, parameter,
-                                    accumulateSolution);
+                                    attributeSolution);
                             break;
                         }
                     }
@@ -130,202 +137,198 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         return outputConverter;
     }
 
-    public InitBuilder essential() {
-        return new InitBuilder();
+    public ConverterBuilder<SERIALIZATION> essential(Supplier<SERIALIZATION> provider) {
+        EssentialSolution tempSolution = new EssentialSolution();
+        tempSolution.simpleProvide(provider);
+        essentialSolutions.add(tempSolution);
+        return ConverterBuilder.this;
     }
 
-    public class InitBuilder {
+    public final <FROM> EssentialBuilder1<FROM> essential(Class<FROM> clazz) {
+        tempSolution = new EssentialSolution();
+        return new EssentialBuilder1<>(new InitElement<>(clazz));
+    }
 
-        InitializeSolution solution = new InitializeSolution();
+    public class EssentialBuilder1<TARGET> {
+        InitElement<TARGET> element1;
 
-        public ConverterBuilder<SERIALIZATION> commit(Supplier<SERIALIZATION> provider) {
-            solution.simpleProvide(provider);
-            initializeSolutions.add(solution);
+        private EssentialBuilder1(InitElement<TARGET> element) {
+            this.element1 = element;
+        }
+
+        public EssentialBuilder1<TARGET> annotate(Class<? extends Annotation> annotationType, boolean necessary) {
+            element1.fixedAnnotationType = annotationType;
+            element1.annotateNecessary = necessary;
+            return this;
+        }
+
+        public ConverterBuilder<SERIALIZATION> commitIn(Converter<ParaVal<TARGET>, SERIALIZATION> converter) {
+            tempSolution.add(element1);
+            tempSolution.withIn(converter);
+            essentialSolutions.add(tempSolution);
             return ConverterBuilder.this;
         }
 
-        public ConverterBuilder<SERIALIZATION> commit() {
-            initializeSolutions.add(solution);
+        public ConverterBuilder<SERIALIZATION> commitOut(Converter<SERIALIZATION, ParaVal<TARGET>> converter) {
+            tempSolution.add(element1);
+            tempSolution.withOut(converter);
+            essentialSolutions.add(tempSolution);
             return ConverterBuilder.this;
         }
 
-        public final <FROM> ConverterBuilder1<FROM> convert(Class<FROM> clazz) {
-            return new ConverterBuilder1<>(new InitElement<>(clazz));
-        }
-
-        public class ConverterBuilder1<TARGET> extends InitBuilder {
-            InitElement<TARGET> element1;
-
-            private ConverterBuilder1(InitElement<TARGET> element) {
-                this.element1 = element;
-            }
-
-            public ConverterBuilder1<TARGET> annotate(Class<? extends Annotation> annotationType, boolean necessary) {
-                element1.fixedAnnotationType = annotationType;
-                element1.annotateNecessary = necessary;
-                return this;
-            }
-
-            public ConverterBuilder<SERIALIZATION> commit(Converter<ParaVal<TARGET>, SERIALIZATION> converter) {
-                solution.add(element1);
-                solution.with(converterIn);
-                initializeSolutions.add(solution);
-                return ConverterBuilder.this;
-            }
-
-            public <TARGET2> ConverterBuilder2<TARGET, TARGET2> and(Class<TARGET2> fromClazz) {
-                return new ConverterBuilder2<>(element1, new InitElement<>(fromClazz));
-            }
-        }
-
-        public final class ConverterBuilder2<TARGET1, TARGET2> {
-            InitElement<TARGET1> element1;
-            InitElement<TARGET2> element2;
-
-            private ConverterBuilder2(InitElement<TARGET1> element1, InitElement<TARGET2> element2) {
-                this.element1 = element1;
-                this.element2 = element2;
-            }
-
-            public ConverterBuilder2<TARGET1, TARGET2> annotate(Class<? extends Annotation> annotationType,
-                                                                boolean necessary) {
-                element2.fixedAnnotationType = annotationType;
-                element2.annotateNecessary = necessary;
-                return this;
-            }
-
-            public ConverterBuilder<SERIALIZATION> commit(
-                    Converter2<ParaVal<TARGET1>, ParaVal<TARGET2>, SERIALIZATION> converter) {
-                solution.add(element1);
-                solution.add(element2);
-                solution.with(converterIn);
-                initializeSolutions.add(solution);
-                return ConverterBuilder.this;
-            }
-
-            public <TARGET3> ConverterBuilder3<TARGET1, TARGET2, TARGET3> and(Class<TARGET3> fromClazz) {
-                return new ConverterBuilder3<>(this, new InitElement<>(fromClazz));
-            }
-        }
-
-        public final class ConverterBuilder3<TARGET1, TARGET2, TARGET3> {
-            InitElement<TARGET1> element1;
-            InitElement<TARGET2> element2;
-            InitElement<TARGET3> element3;
-
-            private ConverterBuilder3(ConverterBuilder2<TARGET1, TARGET2> others,
-                                      InitElement<TARGET3> element) {
-                this.element1 = others.element1;
-                this.element2 = others.element2;
-                this.element3 = element;
-            }
-
-            public ConverterBuilder3<TARGET1, TARGET2, TARGET3>
-            annotate(Class<? extends Annotation> annotationType, boolean necessary) {
-                element2.fixedAnnotationType = annotationType;
-                element2.annotateNecessary = necessary;
-                return this;
-            }
-
-            public ConverterBuilder<SERIALIZATION> commit(
-                    Converter3<ParaVal<TARGET1>, ParaVal<TARGET2>,
-                            ParaVal<TARGET3>, SERIALIZATION> converter) {
-                solution.add(element1);
-                solution.add(element2);
-                solution.add(element3);
-                solution.with(converterIn);
-                initializeSolutions.add(solution);
-                return ConverterBuilder.this;
-            }
-
-            public <TARGET4> ConverterBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> and(Class<TARGET4> fromClazz) {
-                return new ConverterBuilder4<>(this, new InitElement<>(fromClazz));
-            }
-        }
-
-        public final class ConverterBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> {
-            InitElement<TARGET1> element1;
-            InitElement<TARGET2> element2;
-            InitElement<TARGET3> element3;
-            InitElement<TARGET4> element4;
-
-            private ConverterBuilder4(ConverterBuilder3<TARGET1, TARGET2, TARGET3> others,
-                                      InitElement<TARGET4> element) {
-                this.element1 = others.element1;
-                this.element2 = others.element2;
-                this.element3 = others.element3;
-                this.element4 = element;
-            }
-
-            public ConverterBuilder4<TARGET1, TARGET2, TARGET3, TARGET4>
-            annotate(Class<? extends Annotation> annotationType, boolean necessary) {
-                element2.fixedAnnotationType = annotationType;
-                element2.annotateNecessary = necessary;
-                return this;
-            }
-
-            public ConverterBuilder<SERIALIZATION> commit(
-                    Converter4<ParaVal<TARGET1>, ParaVal<TARGET2>, ParaVal<TARGET3>,
-                            ParaVal<TARGET4>, SERIALIZATION> converter) {
-                solution.add(element1);
-                solution.add(element2);
-                solution.add(element3);
-                solution.add(element4);
-                solution.with(converterIn);
-                initializeSolutions.add(solution);
-                return ConverterBuilder.this;
-            }
-
-            public <TARGET5> ConverterBuilder5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5>
-            and(Class<TARGET5> fromClazz) {
-                return new ConverterBuilder5<>(this, new InitElement<>(fromClazz));
-            }
-        }
-
-        public final class ConverterBuilder5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5> {
-            InitElement<TARGET1> element1;
-            InitElement<TARGET2> element2;
-            InitElement<TARGET3> element3;
-            InitElement<TARGET4> element4;
-            InitElement<TARGET5> element5;
-
-            private ConverterBuilder5(ConverterBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> others,
-                                      InitElement<TARGET5> element) {
-                this.element1 = others.element1;
-                this.element2 = others.element2;
-                this.element3 = others.element3;
-                this.element4 = others.element4;
-                this.element5 = element;
-            }
-
-            public ConverterBuilder5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5>
-            annotate(Class<? extends Annotation> annotationType, boolean necessary) {
-                element2.fixedAnnotationType = annotationType;
-                element2.annotateNecessary = necessary;
-                return this;
-            }
-
-            public ConverterBuilder<SERIALIZATION> commit(
-                    Converter5<ParaVal<TARGET1>, ParaVal<TARGET2>, ParaVal<TARGET3>,
-                            ParaVal<TARGET4>, ParaVal<TARGET5>, SERIALIZATION> converter) {
-                solution.add(element1);
-                solution.add(element2);
-                solution.add(element3);
-                solution.add(element4);
-                solution.add(element5);
-                solution.with(converterIn);
-                initializeSolutions.add(solution);
-                return ConverterBuilder.this;
-            }
+        public <TARGET2> EssentialBuilder2<TARGET, TARGET2> and(Class<TARGET2> fromClazz) {
+            return new EssentialBuilder2<>(element1, new InitElement<>(fromClazz));
         }
     }
 
-    public AttributeBuilder attribute() {
-        return new AttributeBuilder();
+    public final class EssentialBuilder2<TARGET1, TARGET2> {
+        InitElement<TARGET1> element1;
+        InitElement<TARGET2> element2;
+
+        private EssentialBuilder2(InitElement<TARGET1> element1, InitElement<TARGET2> element2) {
+            this.element1 = element1;
+            this.element2 = element2;
+        }
+
+        public EssentialBuilder2<TARGET1, TARGET2> annotate(Class<? extends Annotation> annotationType,
+                                                            boolean necessary) {
+            element2.fixedAnnotationType = annotationType;
+            element2.annotateNecessary = necessary;
+            return this;
+        }
+
+        public ConverterBuilder<SERIALIZATION> commitIn(
+                Converter2<ParaVal<TARGET1>, ParaVal<TARGET2>, SERIALIZATION> converter) {
+            tempSolution.add(element1);
+            tempSolution.add(element2);
+            tempSolution.withIn(converterIn);
+            essentialSolutions.add(tempSolution);
+            return ConverterBuilder.this;
+        }
+
+        public <TARGET3> EssentialBuilder3<TARGET1, TARGET2, TARGET3> and(Class<TARGET3> fromClazz) {
+            return new EssentialBuilder3<>(this, new InitElement<>(fromClazz));
+        }
     }
 
-    public class AttributeBuilder {
+    public final class EssentialBuilder3<TARGET1, TARGET2, TARGET3> {
+        InitElement<TARGET1> element1;
+        InitElement<TARGET2> element2;
+        InitElement<TARGET3> element3;
 
+        private EssentialBuilder3(EssentialBuilder2<TARGET1, TARGET2> others,
+                                  InitElement<TARGET3> element) {
+            this.element1 = others.element1;
+            this.element2 = others.element2;
+            this.element3 = element;
+        }
+
+        public EssentialBuilder3<TARGET1, TARGET2, TARGET3>
+        annotate(Class<? extends Annotation> annotationType, boolean necessary) {
+            element2.fixedAnnotationType = annotationType;
+            element2.annotateNecessary = necessary;
+            return this;
+        }
+
+        public ConverterBuilder<SERIALIZATION> commitIn(
+                Converter3<ParaVal<TARGET1>, ParaVal<TARGET2>,
+                        ParaVal<TARGET3>, SERIALIZATION> converter) {
+            tempSolution.add(element1);
+            tempSolution.add(element2);
+            tempSolution.add(element3);
+            tempSolution.withIn(converterIn);
+            essentialSolutions.add(tempSolution);
+            return ConverterBuilder.this;
+        }
+
+        public <TARGET4> EssentialBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> and(Class<TARGET4> fromClazz) {
+            return new EssentialBuilder4<>(this, new InitElement<>(fromClazz));
+        }
+    }
+
+    public final class EssentialBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> {
+        InitElement<TARGET1> element1;
+        InitElement<TARGET2> element2;
+        InitElement<TARGET3> element3;
+        InitElement<TARGET4> element4;
+
+        private EssentialBuilder4(EssentialBuilder3<TARGET1, TARGET2, TARGET3> others,
+                                  InitElement<TARGET4> element) {
+            this.element1 = others.element1;
+            this.element2 = others.element2;
+            this.element3 = others.element3;
+            this.element4 = element;
+        }
+
+        public EssentialBuilder4<TARGET1, TARGET2, TARGET3, TARGET4>
+        annotate(Class<? extends Annotation> annotationType, boolean necessary) {
+            element2.fixedAnnotationType = annotationType;
+            element2.annotateNecessary = necessary;
+            return this;
+        }
+
+        public ConverterBuilder<SERIALIZATION> commitIn(
+                Converter4<ParaVal<TARGET1>, ParaVal<TARGET2>, ParaVal<TARGET3>,
+                        ParaVal<TARGET4>, SERIALIZATION> converter) {
+            tempSolution.add(element1);
+            tempSolution.add(element2);
+            tempSolution.add(element3);
+            tempSolution.add(element4);
+            tempSolution.withIn(converterIn);
+            essentialSolutions.add(tempSolution);
+            return ConverterBuilder.this;
+        }
+
+        public <TARGET5> EssentialBuilder5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5>
+        and(Class<TARGET5> fromClazz) {
+            return new EssentialBuilder5<>(this, new InitElement<>(fromClazz));
+        }
+    }
+
+    public final class EssentialBuilder5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5> {
+        InitElement<TARGET1> element1;
+        InitElement<TARGET2> element2;
+        InitElement<TARGET3> element3;
+        InitElement<TARGET4> element4;
+        InitElement<TARGET5> element5;
+
+        private EssentialBuilder5(EssentialBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> others,
+                                  InitElement<TARGET5> element) {
+            this.element1 = others.element1;
+            this.element2 = others.element2;
+            this.element3 = others.element3;
+            this.element4 = others.element4;
+            this.element5 = element;
+        }
+
+        public EssentialBuilder5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5>
+        annotate(Class<? extends Annotation> annotationType, boolean necessary) {
+            element2.fixedAnnotationType = annotationType;
+            element2.annotateNecessary = necessary;
+            return this;
+        }
+
+        public ConverterBuilder<SERIALIZATION> commitIn(
+                Converter5<ParaVal<TARGET1>, ParaVal<TARGET2>, ParaVal<TARGET3>,
+                        ParaVal<TARGET4>, ParaVal<TARGET5>, SERIALIZATION> converter) {
+            tempSolution.add(element1);
+            tempSolution.add(element2);
+            tempSolution.add(element3);
+            tempSolution.add(element4);
+            tempSolution.add(element5);
+            tempSolution.withIn(converterIn);
+            essentialSolutions.add(tempSolution);
+            return ConverterBuilder.this;
+        }
+    }
+
+    public <A extends Annotation> AttributeSolution<Object, A> attribute(Class<A> annotationType) {
+        return new AttributeSolution<>(Object.class, annotationType);
+    }
+
+    public <T, A extends Annotation> AttributeSolution<T, A> attribute(Class<A> annotationType,
+                                                                       Class<T> valueType) {
+        return new AttributeSolution<>(valueType, annotationType);
     }
 
     abstract void onCommit(ConvertSolution builder);
@@ -340,10 +343,20 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         V get();
     }
 
-    class AccumulateSolution<V> {
+    public class AttributeSolution<V, A extends Annotation> {
         Class<V> moreType;
-        Class<? extends Annotation> annotationType;
+        Class<A> annotationType;
         Accumulator<V, SERIALIZATION> accumulator;
+
+        AttributeSolution(Class<V> moreType, Class<A> annotationType) {
+            this.moreType = moreType;
+            this.annotationType = annotationType;
+        }
+
+        public ConverterBuilder<SERIALIZATION> commitIn(Accumulator<V, SERIALIZATION> accumulator) {
+            this.accumulator = accumulator;
+            return ConverterBuilder.this;
+        }
     }
 
     static class InitElement<T> {
@@ -356,11 +369,19 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         }
     }
 
-    class InitializeSolution {
+    class EssentialSolution {
+        boolean simpleProviderMode;
         ArrayList<InitElement<?>> fixedElements;
+
         Converter<Object, SERIALIZATION> converterIn;
 
+        Converter<SERIALIZATION, Object> converterOut;
+
+        TwoWayConverter<Object, SERIALIZATION> convertTwoWay;
+
         void simpleProvide(Supplier<SERIALIZATION> supplier) {
+            simpleProviderMode = true;
+            fixedElements = null;
             converterIn = value -> supplier.get();
         }
 
@@ -379,8 +400,16 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             fixedElements.add(element);
         }
 
-        void with(Converter<Object, SERIALIZATION> converterIn) {
-            this.converterIn = converterIn;
+        void withIn(Converter<?, SERIALIZATION> converterIn) {
+            this.converterIn = (Converter<Object, SERIALIZATION>) converterIn;
+        }
+
+        void withOut(Converter<SERIALIZATION, ?> converterIn) {
+            this.converterOut = (Converter<SERIALIZATION, Object>) converterIn;
+        }
+
+        void withBoth(TwoWayConverter<?, SERIALIZATION> converter) {
+            this.convertTwoWay = (TwoWayConverter<Object, SERIALIZATION>) converter;
         }
     }
 
@@ -441,7 +470,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         }
 
         void addAccumulatedElement(Annotation annotation, Cartrofit.Parameter parameter,
-                                   AccumulateSolution<?> solution) {
+                                   AttributeSolution<?, ?> solution) {
             if (accumulatedAnnotationArrayList == null) {
                 accumulatedAnnotationArrayList = new ArrayList<>();
             }
