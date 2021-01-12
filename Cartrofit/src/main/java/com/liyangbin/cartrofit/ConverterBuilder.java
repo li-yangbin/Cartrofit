@@ -33,8 +33,8 @@ public abstract class ConverterBuilder<SERIALIZATION> {
 //        HashMap<Class<?>>
 
     Converter<Union, SERIALIZATION> checkConvertIn(Cartrofit.ParameterGroup group) {
-        int initialBits = 0;
-        int accumulatedBits = 0;
+        int essentialBits = 0;
+        int attributeBits = 0;
         int extraBits = 0;// TODO
         int emptyBits = 0;
 
@@ -48,11 +48,11 @@ public abstract class ConverterBuilder<SERIALIZATION> {
                         .getDeclaredAnnotation(ParameterCategory.class);
                 if (category != null) {
                     switch (category.value()) {
-                        case ParameterCategory.INIT:
-                            initialBits |= 1 << i;
+                        case ParameterCategory.ESSENTIAL:
+                            essentialBits |= 1 << i;
                             continue anchor;
-                        case ParameterCategory.ACCUMULATE:
-                            accumulatedBits |= 1 << i;
+                        case ParameterCategory.ATTRIBUTE:
+                            attributeBits |= 1 << i;
                             continue anchor;
                         case ParameterCategory.EXTRA:
                             extraBits |= 1 << i;
@@ -63,14 +63,15 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             emptyBits |= 1 << i;
         }
 
-        int annotatedCount = initialBits != 0 ? Integer.bitCount(initialBits) : 0;
+        int annotatedCount = essentialBits != 0 ? Integer.bitCount(essentialBits) : 0;
         int emptyCount = emptyBits != 0 ? Integer.bitCount(emptyBits) : 0;
         anchor:for (int i = 0; i < initializeSolutions.size(); i++) {
             InitializeSolution solution = initializeSolutions.get(i);
             if (solution.size() == annotatedCount + emptyCount) {
-                for (int j = 0, k = 0; j < group.getParameterCount(); j++) {
+                int k = 0;
+                for (int j = 0; j < group.getParameterCount() && k < solution.size(); j++) {
                     Cartrofit.Parameter parameter = group.getParameterAt(j);
-                    if ((initialBits & j) != 0) {
+                    if ((essentialBits & j) != 0) {
                         Class<? extends Annotation> annotationTypeExpected = solution.get(k).fixedAnnotationType;
                         Annotation annotation = parameter.getAnnotation(annotationTypeExpected);
                         if (annotation == null) {
@@ -96,9 +97,12 @@ public abstract class ConverterBuilder<SERIALIZATION> {
                         k++;
                     }
                 }
-
-                outputConverter.setInitializer(solution.converterIn);
-                break;
+                if (k == solution.size()) {
+                    outputConverter.setInitializer(solution.converterIn);
+                    break;
+                } else {
+                    outputConverter.reset();
+                }
             }
         }
 
@@ -107,7 +111,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         }
 
         for (int i = 0; i < group.getParameterCount(); i++) {
-            if ((accumulatedBits & i) != 0) {
+            if ((attributeBits & i) != 0) {
                 Cartrofit.Parameter parameter = group.getParameterAt(i);
                 for (int j = 0; j < accumulateSolutions.size(); j++) {
                     AccumulateSolution<?> accumulateSolution = accumulateSolutions.get(j);
@@ -126,7 +130,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         return outputConverter;
     }
 
-    public InitBuilder initBuilder() {
+    public InitBuilder essential() {
         return new InitBuilder();
     }
 
@@ -162,14 +166,14 @@ public abstract class ConverterBuilder<SERIALIZATION> {
                 return this;
             }
 
-            public ConverterBuilder<SERIALIZATION> commit(Converter<Arg<TARGET>, SERIALIZATION> converter) {
+            public ConverterBuilder<SERIALIZATION> commit(Converter<ParaVal<TARGET>, SERIALIZATION> converter) {
                 solution.add(element1);
                 solution.with(converterIn);
                 initializeSolutions.add(solution);
                 return ConverterBuilder.this;
             }
 
-            public <TARGET2> ConverterBuilder2<TARGET, TARGET2> andThen(Class<TARGET2> fromClazz) {
+            public <TARGET2> ConverterBuilder2<TARGET, TARGET2> and(Class<TARGET2> fromClazz) {
                 return new ConverterBuilder2<>(element1, new InitElement<>(fromClazz));
             }
         }
@@ -191,7 +195,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             }
 
             public ConverterBuilder<SERIALIZATION> commit(
-                    Converter2<Arg<TARGET1>, Arg<TARGET2>, SERIALIZATION> converter) {
+                    Converter2<ParaVal<TARGET1>, ParaVal<TARGET2>, SERIALIZATION> converter) {
                 solution.add(element1);
                 solution.add(element2);
                 solution.with(converterIn);
@@ -199,7 +203,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
                 return ConverterBuilder.this;
             }
 
-            public <TARGET3> ConverterBuilder3<TARGET1, TARGET2, TARGET3> andThen(Class<TARGET3> fromClazz) {
+            public <TARGET3> ConverterBuilder3<TARGET1, TARGET2, TARGET3> and(Class<TARGET3> fromClazz) {
                 return new ConverterBuilder3<>(this, new InitElement<>(fromClazz));
             }
         }
@@ -224,7 +228,8 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             }
 
             public ConverterBuilder<SERIALIZATION> commit(
-                    Converter3<Arg<TARGET1>, Arg<TARGET2>, Arg<TARGET3>, SERIALIZATION> converter) {
+                    Converter3<ParaVal<TARGET1>, ParaVal<TARGET2>,
+                            ParaVal<TARGET3>, SERIALIZATION> converter) {
                 solution.add(element1);
                 solution.add(element2);
                 solution.add(element3);
@@ -233,7 +238,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
                 return ConverterBuilder.this;
             }
 
-            public <TARGET4> ConverterBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> andThen(Class<TARGET4> fromClazz) {
+            public <TARGET4> ConverterBuilder4<TARGET1, TARGET2, TARGET3, TARGET4> and(Class<TARGET4> fromClazz) {
                 return new ConverterBuilder4<>(this, new InitElement<>(fromClazz));
             }
         }
@@ -260,7 +265,8 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             }
 
             public ConverterBuilder<SERIALIZATION> commit(
-                    Converter4<Arg<TARGET1>, Arg<TARGET2>, Arg<TARGET3>, Arg<TARGET4>, SERIALIZATION> converter) {
+                    Converter4<ParaVal<TARGET1>, ParaVal<TARGET2>, ParaVal<TARGET3>,
+                            ParaVal<TARGET4>, SERIALIZATION> converter) {
                 solution.add(element1);
                 solution.add(element2);
                 solution.add(element3);
@@ -271,7 +277,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             }
 
             public <TARGET5> ConverterBuilder5<TARGET1, TARGET2, TARGET3, TARGET4, TARGET5>
-            andThen(Class<TARGET5> fromClazz) {
+            and(Class<TARGET5> fromClazz) {
                 return new ConverterBuilder5<>(this, new InitElement<>(fromClazz));
             }
         }
@@ -300,8 +306,8 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             }
 
             public ConverterBuilder<SERIALIZATION> commit(
-                    Converter5<Arg<TARGET1>, Arg<TARGET2>, Arg<TARGET3>,
-                            Arg<TARGET4>, Arg<TARGET5>, SERIALIZATION> converter) {
+                    Converter5<ParaVal<TARGET1>, ParaVal<TARGET2>, ParaVal<TARGET3>,
+                            ParaVal<TARGET4>, ParaVal<TARGET5>, SERIALIZATION> converter) {
                 solution.add(element1);
                 solution.add(element2);
                 solution.add(element3);
@@ -314,13 +320,21 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         }
     }
 
+    public AttributeBuilder attribute() {
+        return new AttributeBuilder();
+    }
+
+    public class AttributeBuilder {
+
+    }
+
     abstract void onCommit(ConvertSolution builder);
 
     public interface Accumulator<V, R> {
-        R advance(R old, Arg<V> more);
+        R advance(R old, ParaVal<V> more);
     }
 
-    interface Arg<V> {
+    interface ParaVal<V> {
         <A extends Annotation> A getAnnotation();
         Cartrofit.Parameter getParameter();
         V get();
@@ -380,14 +394,14 @@ public abstract class ConverterBuilder<SERIALIZATION> {
         ArrayList<Annotation> accumulatedAnnotationArrayList;
         ArrayList<Accumulator<Object, SERIALIZATION>> accumulators;
 
-        class AnnotatedValueImpl implements Arg<Object> {
+        class ParameterValueImpl implements ParaVal<Object> {
 
             int index;
             Union parameterHost;
             ArrayList<Cartrofit.Parameter> parameters;
             ArrayList<Annotation> annotations;
 
-            AnnotatedValueImpl(int index, Union parameterHost, boolean accumulates) {
+            ParameterValueImpl(int index, Union parameterHost, boolean accumulates) {
                 this.index = index;
                 this.parameterHost = parameterHost;
                 this.parameters = accumulates ? accumulatedParameters : initializeParameters;
@@ -467,11 +481,11 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             if (inputCount == 0) {
                 rawMaterial = initializer.convert(null);
             } else if (inputCount == 1) {
-                rawMaterial = initializer.convert(new AnnotatedValueImpl(0, value, false));
+                rawMaterial = initializer.convert(new ParameterValueImpl(0, value, false));
             } else {
-                Arg<?>[] result = new Arg[inputCount];
+                ParaVal<?>[] result = new ParaVal[inputCount];
                 for (int i = 0; i < inputCount; i++) {
-                    result[i] = new AnnotatedValueImpl(i, value, false);
+                    result[i] = new ParameterValueImpl(i, value, false);
                 }
                 Union inputUnion = Union.of(result);
                 rawMaterial = initializer.convert(inputUnion);
@@ -485,7 +499,7 @@ public abstract class ConverterBuilder<SERIALIZATION> {
             SERIALIZATION finalResult = rawMaterial;
             for (int i = 0; i < accumulateCount; i++) {
                 finalResult = accumulators.get(i).advance(finalResult,
-                        new AnnotatedValueImpl(i, value, true));
+                        new ParameterValueImpl(i, value, true));
             }
             return finalResult;
         }

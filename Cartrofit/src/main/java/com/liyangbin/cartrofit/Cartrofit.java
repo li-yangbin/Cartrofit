@@ -3,6 +3,8 @@ package com.liyangbin.cartrofit;
 import android.car.hardware.CarPropertyValue;
 import android.os.Build;
 
+import androidx.annotation.RequiresApi;
+
 import com.liyangbin.cartrofit.annotation.Bind;
 import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.Restore;
@@ -569,6 +571,9 @@ public final class Cartrofit {
         Class<?> getType();
         Type getGenericType();
         int getDeclaredIndex();
+
+        @RequiresApi(Build.VERSION_CODES.O)
+        String getName();
     }
 
     public interface ParameterGroup {
@@ -662,8 +667,8 @@ public final class Cartrofit {
                 Type[] parameterType = method.getGenericParameterTypes();
                 Annotation[][] annotationMatrix = method.getParameterAnnotations();
                 for (int i = 0; i < count; i++) {
-                    parameters[i] = new ParameterImpl(parameterClass, parameterType,
-                            annotationMatrix, i);
+                    parameters[i] = new ParameterImpl(method, parameterClass,
+                            parameterType, annotationMatrix, i);
                 }
             }
             if (index < 0 || index >= parameters.length) {
@@ -721,13 +726,16 @@ public final class Cartrofit {
             final Type[] parameterType;
             final Annotation[][] annotationMatrix;
             final int index;
+            final Method method;
+            java.lang.reflect.Parameter parameterRef;
 
-            ParameterImpl(Class<?>[] parameterClass, Type[] parameterType,
-                          Annotation[][] annotationMatrix, int index) {
+            ParameterImpl(Method method, Class<?>[] parameterClass,
+                          Type[] parameterType, Annotation[][] annotationMatrix, int index) {
                 this.parameterClass = parameterClass;
                 this.parameterType = parameterType;
                 this.annotationMatrix = annotationMatrix;
                 this.index = index;
+                this.method = method;
             }
 
             @Override
@@ -741,7 +749,7 @@ public final class Cartrofit {
             }
 
             @Override
-            public Annotation[] getAnnotation() {
+            public Annotation[] getAnnotations() {
                 return annotationMatrix[index];
             }
 
@@ -758,6 +766,18 @@ public final class Cartrofit {
             @Override
             public int getDeclaredIndex() {
                 return index;
+            }
+
+            @Override
+            public String getName() {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (parameterRef == null) {
+                        parameterRef = method.getParameters()[index];
+                    }
+                    return parameterRef.getName();
+                } else {
+                    return null;
+                }
             }
         }
 

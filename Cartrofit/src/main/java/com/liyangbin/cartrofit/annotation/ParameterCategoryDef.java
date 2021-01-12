@@ -6,7 +6,7 @@ import androidx.annotation.IntDef;
 
 import static java.lang.annotation.RetentionPolicy.SOURCE;
 
-@IntDef(value = {ParameterCategory.INIT, ParameterCategory.ACCUMULATE, ParameterCategory.EXTRA})
+@IntDef(value = {ParameterCategory.ESSENTIAL, ParameterCategory.ATTRIBUTE, ParameterCategory.EXTRA})
 @Retention(SOURCE)
 @interface ParameterCategoryDef {
 }

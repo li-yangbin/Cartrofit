@@ -11,7 +11,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 public @interface ParameterCategory {
     @ParameterCategoryDef int value();
 
-    int INIT = 0;
-    int ACCUMULATE = 1;
+    int ESSENTIAL = 0;
+    int ATTRIBUTE = 1;
     int EXTRA = 2;
 }
