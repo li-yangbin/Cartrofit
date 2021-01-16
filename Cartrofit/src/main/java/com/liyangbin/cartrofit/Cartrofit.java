@@ -568,6 +568,7 @@ public final class Cartrofit {
         boolean isAnnotationPresent(Class<? extends Annotation> clazz);
         <A extends Annotation> A getAnnotation(Class<A> clazz);
         Annotation[] getAnnotations();
+        boolean hasNoAnnotation();
         Class<?> getType();
         Type getGenericType();
         int getDeclaredIndex();
@@ -751,6 +752,11 @@ public final class Cartrofit {
             @Override
             public Annotation[] getAnnotations() {
                 return annotationMatrix[index];
+            }
+
+            @Override
+            public boolean hasNoAnnotation() {
+                return annotationMatrix[index] == null || annotationMatrix[index].length == 0;
             }
 
             @Override

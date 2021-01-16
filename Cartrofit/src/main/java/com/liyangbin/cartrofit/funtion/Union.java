@@ -34,11 +34,13 @@ public abstract class Union {
         return result;
     }
 
-    protected abstract Union mergeObj(Object obj);
+    abstract Union mergeObj(Object obj);
 
     public abstract int getCount();
 
     public abstract Object get(int index);
+
+    public abstract void set(int index, Object value);
 
     public abstract void recycle();
 

@@ -23,6 +23,15 @@ public class Union2<T1, T2> extends Union1<T1> {
     }
 
     @Override
+    public void set(int index, Object value) {
+        if (index == 1) {
+            value2 = (T2) value;
+        } else {
+            super.set(index, value);
+        }
+    }
+
+    @Override
     Union mergeObj(Object obj) {
         return new Union3<>(value1, value2, obj);
     }

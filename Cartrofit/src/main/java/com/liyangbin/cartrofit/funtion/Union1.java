@@ -53,6 +53,13 @@ public class Union1<T> extends Union {
     }
 
     @Override
+    public void set(int index, Object value) {
+        if (index == 0) {
+            value1 = (T) value;
+        }
+    }
+
+    @Override
     public void recycle() {
         value1 = null;
 

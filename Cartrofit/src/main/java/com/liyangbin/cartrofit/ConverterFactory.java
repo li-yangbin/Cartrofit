@@ -1,6 +1,7 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.funtion.Converter;
+import com.liyangbin.cartrofit.funtion.Union;
 
 import java.util.ArrayList;
 
@@ -21,16 +22,7 @@ public final class ConverterFactory {
         mContext = context;
     }
 
-    public <SERIAL_TYPE> ConverterBuilder<SERIAL_TYPE> builder(Class<SERIAL_TYPE> serialTypeClass) {
-        return new ConverterBuilder<SERIAL_TYPE>(serialTypeClass) {
-            @Override
-            void onCommit(ConvertSolution solution) {
-                mSolutionList.add(solution);
-            }
-        };
-    }
-
-    public Converter<?, ?> findInputConverterByCall(Call call) {
+    public Converter<Union, ?> findInputConverterByCall(Call call) {
         for (int i = 0; i < mSolutionList.size(); i++) {
             Cartrofit.ParameterGroup targetGroup = mContext != null ?
                     mContext.extractParameterFromCall(call) : call.getKey();
@@ -42,7 +34,7 @@ public final class ConverterFactory {
         return mParentFactory != null ? mParentFactory.findInputConverterByCall(call) : null;
     }
 
-    public Converter<?, ?> findOutputConverterByCall(Call call, boolean flowMap) {
+    public Converter<?, Union> findOutputConverterByCall(Call call, boolean flowMap) {
         for (int i = 0; i < mSolutionList.size(); i++) {
             Cartrofit.ParameterGroup targetGroup = mContext != null ?
                     mContext.extractParameterFromCall(call) : call.getKey();

@@ -23,6 +23,15 @@ public class Union5<T1, T2, T3, T4, T5> extends Union4<T1, T2, T3, T4> {
     }
 
     @Override
+    public void set(int index, Object value) {
+        if (index == 4) {
+            value5 = (T5) value;
+        } else {
+            super.set(index, value);
+        }
+    }
+
+    @Override
     Union mergeObj(Object obj) {
         throw new RuntimeException("At most 5 elements inside");
     }
