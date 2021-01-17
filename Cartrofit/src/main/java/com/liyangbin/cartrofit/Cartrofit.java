@@ -3,8 +3,6 @@ package com.liyangbin.cartrofit;
 import android.car.hardware.CarPropertyValue;
 import android.os.Build;
 
-import androidx.annotation.RequiresApi;
-
 import com.liyangbin.cartrofit.annotation.Bind;
 import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.Restore;
@@ -31,6 +29,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
+import androidx.annotation.RequiresApi;
+
 @SuppressWarnings("unchecked")
 public final class Cartrofit {
 
@@ -46,7 +46,6 @@ public final class Cartrofit {
     private final HashMap<Key, Call> mCallCache = new HashMap<>();
     private final ArrayList<CallAdapter> mCallAdapterList = new ArrayList<>();
     private final HashMap<String, ArrayList<Interceptor>> mInterceptorByCategory = new HashMap<>();
-    private Key mRootKey;
     private final CallAdapter mBuildInCallAdapter = new BuildInCallAdapter();
 
     static {
@@ -170,14 +169,10 @@ public final class Cartrofit {
 
         CallAdapter callAdapter;
         Object scopeObj;
-        ConverterFactory scopeFactory;
-        ConverterFactory inflateContextFactory;
-        ParameterContext parameterContext;
 
-        ApiRecord(CallAdapter adapter, Object scopeObj, ConverterFactory scopeFactory, Class<T> clazz) {
+        ApiRecord(CallAdapter adapter, Object scopeObj, Class<T> clazz) {
             this.callAdapter = adapter;
             this.scopeObj = scopeObj;
-            this.scopeFactory = scopeFactory;
             this.clazz = clazz;
 
             if (clazz.isAnnotationPresent(GenerateId.class)) {
@@ -210,7 +205,7 @@ public final class Cartrofit {
 //                    inflateContextFactory = new ConverterFactory(scopeFactory,
 //                            call.getParameterContext());
 //                }
-                call.setKey(key);
+                call.setKey(key, callAdapter);
 //                call.init(key, inflateContextFactory);
 
                 for (int i = 0; i < mGlobalInterceptorList.size(); i++) {
@@ -246,20 +241,12 @@ public final class Cartrofit {
 
                 Call wrappedCall = ((BuildInCallAdapter) mBuildInCallAdapter).wrapNormalTrack2RegisterIfNeeded(call);
                 if (wrappedCall != null) {
-                    wrappedCall.setKey(key);
+                    wrappedCall.setKey(key, callAdapter);
 //                    wrappedCall.init(key, inflateContextFactory);
                     return wrappedCall;
                 }
             }
             return call;
-        }
-
-        void prepareInflateContext(Call parentScope) {
-            parameterContext = parentScope.getParameterContext();
-        }
-
-        void cleanupInflateContext() {
-            inflateContextFactory = null;
         }
 
         void importDependency(Class<?> target) {
@@ -342,8 +329,8 @@ public final class Cartrofit {
         }
     }
 
-    FlowConverter<?> findFlowConverter(Class<?> target) {
-        return mFlowConverterMap.get(target);
+    <OUTPUT> TypedFlowConverter<OUTPUT, ?> findFlowConverter(Class<?> target) {
+        return (TypedFlowConverter<OUTPUT, ?>) mFlowConverterMap.get(target);
     }
 
     static Class<?> findFlowConverterTarget(FlowConverter<?> converter) {
@@ -512,12 +499,11 @@ public final class Cartrofit {
     <T> ApiRecord<T> getApi(Class<T> api, boolean throwIfNotDeclareScope) {
         ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
         if (record == null) {
-            ConverterFactory scopeFactory = new ConverterFactory(this);
             for (int i = 0; i < mCallAdapterList.size(); i++) {
                 CallAdapter adapter = mCallAdapterList.get(i);
-                Object scope = adapter.extractScope(api, scopeFactory);
+                Object scope = adapter.extractScope(api);
                 if (scope != null) {
-                    record = new ApiRecord<>(adapter, scope, scopeFactory, api);
+                    record = new ApiRecord<>(adapter, scope, api);
                     mApiCache.put(api, record);
                     return record;
                 }
@@ -530,11 +516,15 @@ public final class Cartrofit {
     }
 
     private Call getOrCreateCall(ApiRecord<?> record, Key key) {
-        Call call = getOrCreateCall(record, key, CallAdapter.CATEGORY_DEFAULT);
+        Call call = mCallCache.get(key);
         if (call == null) {
-            throw new CartrofitGrammarException("Can not parse call from:" + key);
+            call = record.createAdapterCall(key, CallAdapter.CATEGORY_DEFAULT);
+            if (call == null) {
+                throw new CartrofitGrammarException("Can not parse call from:" + key);
+            }
+            mCallCache.put(key, call);
+            call.dispatchInit(call.getParameterContext());
         }
-        call.dispatchInit(new ConverterFactory(record.scopeFactory, call.getParameterContext()));
         return call;
     }
 

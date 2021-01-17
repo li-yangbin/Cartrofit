@@ -2,13 +2,13 @@ package com.liyangbin.cartrofit.call;
 
 import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
-import com.liyangbin.cartrofit.ConverterFactory;
+import com.liyangbin.cartrofit.funtion.Union;
 
 public class UnregisterCall extends Call {
     private RegisterCall trackCall;
 
     @Override
-    public void onInit(ConverterFactory scopeFactory) {
+    public void onInit() {
         if (key.method != null && key.method.getReturnType() == void.class) {
             Class<?>[] classArray = key.method.getParameterTypes();
             if (classArray.length == 1) {
@@ -25,8 +25,8 @@ public class UnregisterCall extends Call {
     }
 
     @Override
-    public Object doInvoke(Object callback) {
-        trackCall.untrack(callback);
+    public Object mapInvoke(Union parameter) {
+        trackCall.untrack(parameter.get(0));
         return null;
     }
 }

@@ -2,6 +2,7 @@ package com.liyangbin.cartrofit.call;
 
 import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.Flow;
+import com.liyangbin.cartrofit.funtion.Union;
 
 import java.util.HashMap;
 import java.util.TimerTask;
@@ -16,7 +17,7 @@ public class TimeoutCall extends Call {
     }
 
     @Override
-    protected Object doInvoke(Object arg) {
+    public Object mapInvoke(Union parameter) {
         return new TimeoutFlow();
     }
 

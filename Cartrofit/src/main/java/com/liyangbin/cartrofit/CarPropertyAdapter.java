@@ -7,6 +7,7 @@ import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
+import com.liyangbin.cartrofit.funtion.Union;
 
 public abstract class CarPropertyAdapter extends CallAdapter {
 
@@ -17,7 +18,7 @@ public abstract class CarPropertyAdapter extends CallAdapter {
     }
 
     @Override
-    public Scope extractScope(Class<?> apiClass, ConverterFactory factory) {
+    public Scope extractScope(Class<?> apiClass) {
         Scope scope = findScopeByClass(Scope.class, apiClass);
         if (scope != null && scope.value().equals(key)) {
             return scope;
@@ -189,6 +190,11 @@ public abstract class CarPropertyAdapter extends CallAdapter {
 
         private int resolveArea(int handleArea, int scopeArea) {
             return handleArea == Scope.DEFAULT_AREA_ID ? scopeArea : handleArea;
+        }
+
+        @Override
+        public Object mapInvoke(Union parameter) {
+            return super.mapInvoke(parameter);
         }
 
         @Override

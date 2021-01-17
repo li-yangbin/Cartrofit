@@ -4,7 +4,6 @@ import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CallGroup;
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
-import com.liyangbin.cartrofit.ConverterFactory;
 import com.liyangbin.cartrofit.Flow;
 import com.liyangbin.cartrofit.ParameterContext;
 import com.liyangbin.cartrofit.annotation.Callback;
@@ -109,8 +108,8 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
     }
 
     @Override
-    public void onInit(ConverterFactory scopeFactory) {
-        super.onInit(scopeFactory);
+    public void onInit() {
+        super.onInit();
         Cartrofit.Parameter parameter = getKey().findParameterByAnnotation(Callback.class);
         if (parameter != null) {
             callbackParaIndex = parameter.getDeclaredIndex();

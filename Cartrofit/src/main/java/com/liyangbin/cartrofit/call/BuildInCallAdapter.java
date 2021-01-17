@@ -4,7 +4,6 @@ import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CallAdapter;
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
-import com.liyangbin.cartrofit.ConverterFactory;
 import com.liyangbin.cartrofit.annotation.Bind;
 import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.Combine;
@@ -24,7 +23,7 @@ public class BuildInCallAdapter extends CallAdapter {
     private static final Object STABLE_SCOPE = new Object();
 
     @Override
-    public Object extractScope(Class<?> scopeClass, ConverterFactory factory) {
+    public Object extractScope(Class<?> scopeClass) {
         return STABLE_SCOPE;
     }
 
@@ -141,6 +140,10 @@ public class BuildInCallAdapter extends CallAdapter {
                         return delegateTarget != null ? new DelegateCall(delegateTarget) : null;
                     }
                 });
+    }
+
+    @Override
+    public void onProvideConvertSolution(ConverterSolutionBuilder builder) {
     }
 
     public Call wrapNormalTrack2RegisterIfNeeded(Call call) {

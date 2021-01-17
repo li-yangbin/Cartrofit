@@ -3,7 +3,6 @@ package com.liyangbin.cartrofit.call;
 import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CallAdapter;
 import com.liyangbin.cartrofit.CallGroup;
-import com.liyangbin.cartrofit.ConverterFactory;
 import com.liyangbin.cartrofit.Flow;
 import com.liyangbin.cartrofit.funtion.Union;
 
@@ -21,8 +20,8 @@ public class CombineCall extends CallGroup<Call> {
     }
 
     @Override
-    public void onInit(ConverterFactory scopeFactory) {
-        super.onInit(scopeFactory);
+    public void onInit() {
+        super.onInit();
         boolean resultDetected = false;
         for (int i = 0; i < getChildCount(); i++) {
             Call call = getChildAt(i);
@@ -52,14 +51,14 @@ public class CombineCall extends CallGroup<Call> {
 //    }
 
     @Override
-    protected Object doInvoke(Object parameter) {
+    public Object mapInvoke(Union parameter) {
         for (int i = 0; i < startConcernResultIndex; i++) {
-            childInvoke(getChildAt(i), (Union) parameter);
+            childInvoke(getChildAt(i), parameter);
         }
         if (startConcernResultIndex == getChildCount()) {
             return null;
         }
-        return new CombineFlow((Union) parameter).castAsUnionIfNeeded();
+        return new CombineFlow(parameter).castAsUnionIfNeeded();
     }
 
     private static class CombineData {

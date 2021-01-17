@@ -10,7 +10,7 @@ public class FlowWrapper implements Flow<Object>, Consumer<Object> {
     private ArrayList<Consumer<Object>> consumerList = new ArrayList<>();
     private Flow<Object> base;
 
-    FlowWrapper(Flow<?> base) {
+    public FlowWrapper(Flow<?> base) {
         this.base = (Flow<Object>) base;
     }
 
@@ -39,6 +39,7 @@ public class FlowWrapper implements Flow<Object>, Consumer<Object> {
         if (receiverList.size() == 0) {
             dispatchResult(value);
         } else {
+            // TODO: intercept after advance
             receiverList.get(0).invokeWithFlow(this, value);
         }
     }

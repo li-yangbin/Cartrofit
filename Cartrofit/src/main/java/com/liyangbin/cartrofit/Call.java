@@ -1,9 +1,9 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Token;
-import com.liyangbin.cartrofit.funtion.Converter;
 import com.liyangbin.cartrofit.funtion.Union;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,7 +13,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.WeakHashMap;
 
-import static com.liyangbin.cartrofit.CallAdapter.CATEGORY_GET;
 import static com.liyangbin.cartrofit.CallAdapter.CATEGORY_SET;
 import static com.liyangbin.cartrofit.CallAdapter.CATEGORY_TRACK;
 
@@ -24,22 +23,17 @@ public abstract class Call implements Cloneable {
     protected Cartrofit.Key key;
     protected int category;
     InterceptorChain interceptorChain;
-    private boolean inOutConvertDisabled;
-    private Converter<Union, ?> inputConverter;
-    private FlowConverter<?> flowOutputConverter;
-    private Converter outputConverter;
     private ParameterContext parameterContext;
 
     private ArrayList<Call> restoreSchedulerList = new ArrayList<>();
-    private Call restoreReceiver;
     private CallGroup<?> parentCall;
     private TimerTask task;
-    private OnReceiveCall onReceiveCall;
+    private CallAdapter callAdapter;
+    OnReceiveCall onReceiveCall;
     private boolean stickyTrackSupport;
-    private Object mTag;
     private List<String> tokenList;
 
-    void dispatchInit(ConverterFactory convertFactory) {
+    void dispatchInit(ParameterContext parameterContext) {
         if (hasCategory(CATEGORY_TRACK)) {
             onReceiveCall = new OnReceiveCall(this);
         }
@@ -47,23 +41,9 @@ public abstract class Call implements Cloneable {
         if (key.field != null) {
             key.field.setAccessible(true);
         }
+        this.parameterContext = parameterContext;
 
-        onInit(convertFactory);
-
-        if (!inOutConvertDisabled && hasCategory(CATEGORY_SET)) {
-            inputConverter = convertFactory.findInputConverterByCall(this);
-        }
-        boolean flowTrack = hasCategory(CATEGORY_TRACK);
-        if (flowTrack) {
-            flowOutputConverter = convertFactory.findFlowConverter(this);
-        }
-        if (!inOutConvertDisabled) {
-            if (flowTrack) {
-                outputConverter = convertFactory.findOutputConverterByCall(this, true);
-            } else if (hasCategory(CATEGORY_GET)) {
-                outputConverter = convertFactory.findOutputConverterByCall(this, false);
-            }
-        }
+        onInit();
     }
 
     public ParameterContext getParameterContext() {
@@ -80,12 +60,17 @@ public abstract class Call implements Cloneable {
         return new ParameterContext(getKey());
     }
 
-    void setKey(Cartrofit.Key key) {
+    void setKey(Cartrofit.Key key, CallAdapter adapter) {
         this.key = key;
+        this.callAdapter = adapter;
     }
 
-    public Cartrofit.Key getKey() {
+    public final Cartrofit.Key getKey() {
         return key;
+    }
+
+    public final CallAdapter getAdapter() {
+        return callAdapter;
     }
 
     void enableStickyTrack() {
@@ -108,6 +93,10 @@ public abstract class Call implements Cloneable {
             tokenList = new ArrayList<>();
         }
         tokenList.add(token);
+    }
+
+    public Class<? extends Annotation> getDeclaredAnnotationType() {
+        return null;
     }
 
     public boolean hasToken(String token) {
@@ -161,10 +150,9 @@ public abstract class Call implements Cloneable {
     }
 
     void attachReceiver(Call restoreReceiver) {
-        this.restoreReceiver = restoreReceiver;
     }
 
-    public void onInit(ConverterFactory scopeFactory) {
+    public void onInit() {
     }
 
     protected final void addCategory(int category) {
@@ -191,25 +179,7 @@ public abstract class Call implements Cloneable {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    public Object mapInvoke(Union parameter) {
-        parameter = parameter != null && inputConverter != null ?
-                inputConverter.convert(parameter) : parameter;
-        final Object result = doInvoke(parameter);
-        if (result instanceof Flow) {
-            Flow<?> flowResult = (Flow<?>) result;
-            if (stickyTrackSupport) {
-                flowResult = flowResult.sticky();
-            }
-            flowResult = flowResult.untilReceive(onReceiveCall);
-            flowResult = outputConverter != null ? flowResult.map(outputConverter) : flowResult;
-            return flowOutputConverter != null ?
-                    flowOutputConverter.convert((Flow<Object>) flowResult) : flowResult;
-        } else {
-            return result != null && outputConverter != null ?
-                    outputConverter.convert(result) : result;
-        }
-    }
+    public abstract Object mapInvoke(Union parameter);
 
     void attachParent(CallGroup<?> parent) {
         parentCall = parent;
@@ -219,10 +189,6 @@ public abstract class Call implements Cloneable {
         return parentCall;
     }
 
-    protected Object doInvoke(Object arg) {
-        return null;
-    }
-
     protected Interceptor.InvokeSession onCreateInvokeSession() {
         return new Interceptor.InvokeSession(this);
     }
@@ -230,7 +196,6 @@ public abstract class Call implements Cloneable {
     public Call copyByHost(Call host) {
         try {
             Call call = (Call) clone();
-            call.flowOutputConverter = null;
             host.disableInOutConvert();
             return call;
         } catch (CloneNotSupportedException error) {
@@ -239,8 +204,6 @@ public abstract class Call implements Cloneable {
     }
 
     private void disableInOutConvert() {
-        inOutConvertDisabled = true;
-        inputConverter = outputConverter = null;
     }
 
     public final Method getMethod() {
@@ -263,15 +226,6 @@ public abstract class Call implements Cloneable {
         return (this.category & category) != 0;
     }
 
-    public void setTag(Object obj) {
-        mTag = obj;
-    }
-
-    @SuppressWarnings("unchecked")
-    public <T> T getTag() {
-        return (T) mTag;
-    }
-
     public final int getId() {
         return key.getId();
     }
@@ -289,11 +243,6 @@ public abstract class Call implements Cloneable {
 
         @Override
         public Object mapInvoke(Union parameter) {
-            return null;
-        }
-
-        @Override
-        protected Object doInvoke(Object arg) {
             return null;
         }
 

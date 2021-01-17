@@ -8,10 +8,10 @@ public abstract class CallGroup<T> extends Call {
     private ArrayList<T> childrenCallList = new ArrayList<>();
 
     @Override
-    void dispatchInit(ConverterFactory scopeFactory) {
-        super.dispatchInit(scopeFactory);
+    void dispatchInit(ParameterContext context) {
+        super.dispatchInit(context);
         for (int i = 0; i < getChildCount(); i++) {
-            asCall(getChildAt(i)).dispatchInit(scopeFactory);
+            asCall(getChildAt(i)).dispatchInit(context);
         }
     }
 
