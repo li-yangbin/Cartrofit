@@ -27,64 +27,64 @@ class RxJavaConverter {
     }
 }
 
-class RxJavaConverterDefault implements FlowConverter<Observable<Object>> {
+class RxJavaConverterDefault implements FlowConverter<Observable<?>> {
 
     @Override
-    public Observable<Object> convert(Flow<Object> flow) {
-        return new FlowObservable(flow);
+    public Observable<?> convert(Flow<?> flow) {
+        return new FlowObservable<>(flow);
     }
 }
 
-class RxJavaConverterSingle implements FlowConverter<Single<Object>> {
+class RxJavaConverterSingle implements FlowConverter<Single<?>> {
 
     @Override
-    public Single<Object> convert(Flow<Object> flow) {
-        return new FlowObservable(flow, true).singleOrError();
+    public Single<?> convert(Flow<?> flow) {
+        return new FlowObservable<>(flow, true).singleOrError();
     }
 }
 
-class RxJavaConverterFlowable implements FlowConverter<Flowable<Object>> {
+class RxJavaConverterFlowable implements FlowConverter<Flowable<?>> {
 
     @Override
-    public Flowable<Object> convert(Flow<Object> flow) {
-        return new FlowObservable(flow).toFlowable(BackpressureStrategy.LATEST);
+    public Flowable<?> convert(Flow<?> flow) {
+        return new FlowObservable<>(flow).toFlowable(BackpressureStrategy.LATEST);
     }
 }
 
-class RxJavaConverterMaybe implements FlowConverter<Maybe<Object>> {
+class RxJavaConverterMaybe implements FlowConverter<Maybe<?>> {
 
     @Override
-    public Maybe<Object> convert(Flow<Object> flow) {
-        return new FlowObservable(flow, true).singleElement();
+    public Maybe<?> convert(Flow<?> flow) {
+        return new FlowObservable<>(flow, true).singleElement();
     }
 }
 
 class RxJavaConverterCompletable implements FlowConverter<Completable> {
 
     @Override
-    public Completable convert(Flow<Object> flow) {
-        return new FlowObservable(flow, true).ignoreElements();
+    public Completable convert(Flow<?> flow) {
+        return new FlowObservable<>(flow, true).ignoreElements();
     }
 }
 
-class FlowObservable extends Observable<Object> implements Consumer<Object>, Disposable {
+class FlowObservable<T> extends Observable<T> implements Consumer<T>, Disposable {
 
-    Flow<Object> flow;
+    Flow<T> flow;
     AtomicBoolean disposed = new AtomicBoolean();
     boolean singleShot;
-    private Observer<? super Object> observer;
+    private Observer<? super T> observer;
 
-    FlowObservable(Flow<Object> flow, boolean singleShot) {
+    FlowObservable(Flow<T> flow, boolean singleShot) {
         this.flow = flow;
         this.singleShot = singleShot;
     }
 
-    FlowObservable(Flow<Object> flow) {
+    FlowObservable(Flow<T> flow) {
         this(flow, false);
     }
 
     @Override
-    protected void subscribeActual(Observer<? super Object> observer) {
+    protected void subscribeActual(Observer<? super T> observer) {
         observer.onSubscribe(this);
         if (!disposed.get()) {
             try {
@@ -97,7 +97,7 @@ class FlowObservable extends Observable<Object> implements Consumer<Object>, Dis
     }
 
     @Override
-    public void accept(Object t) {
+    public void accept(T t) {
         if (!disposed.get()) {
             try {
                 observer.onNext(t);

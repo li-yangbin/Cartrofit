@@ -1,7 +1,8 @@
 package com.liyangbin.cartrofit;
 
-import android.car.hardware.CarPropertyValue;
 import android.os.Build;
+
+import androidx.annotation.RequiresApi;
 
 import com.liyangbin.cartrofit.annotation.Bind;
 import com.liyangbin.cartrofit.annotation.GenerateId;
@@ -29,12 +30,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-import androidx.annotation.RequiresApi;
-
 @SuppressWarnings("unchecked")
 public final class Cartrofit {
 
-    private static final ArrayList<FlowConverter<?>> GLOBAL_CONVERTER = new ArrayList<>();
+    private static final HashMap<Class<?>, FlowConverter<?>> FLOW_CONVERTER_MAP = new HashMap<>();
     private static Cartrofit sDefault;
 
     private static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
@@ -42,7 +41,6 @@ public final class Cartrofit {
 
     private final ArrayList<Interceptor> mGlobalInterceptorList = new ArrayList<>();
     private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
-    private final HashMap<Class<?>, FlowConverter<?>> mFlowConverterMap = new HashMap<>();
     private final HashMap<Key, Call> mCallCache = new HashMap<>();
     private final ArrayList<CallAdapter> mCallAdapterList = new ArrayList<>();
     private final HashMap<String, ArrayList<Interceptor>> mInterceptorByCategory = new HashMap<>();
@@ -55,11 +53,6 @@ public final class Cartrofit {
     }
 
     private Cartrofit() {
-        for (int i = 0; i < GLOBAL_CONVERTER.size(); i++) {
-            FlowConverter<?> flowConverter = GLOBAL_CONVERTER.get(i);
-            Class<?> targetClass = findFlowConverterTarget(flowConverter);
-            mFlowConverterMap.put(targetClass, flowConverter);
-        }
         mBuildInCallAdapter.init(this);
     }
 
@@ -68,11 +61,6 @@ public final class Cartrofit {
             CallAdapter adapter = builder.dataAdapterList.get(i);
             adapter.init(this);
             mCallAdapterList.add(adapter);
-        }
-        for (int i = 0; i < builder.flowConverters.size(); i++) {
-            FlowConverter<?> flowConverter = builder.flowConverters.get(i);
-            Class<?> targetClass = findFlowConverterTarget(flowConverter);
-            mFlowConverterMap.put(targetClass, flowConverter);
         }
         mGlobalInterceptorList.addAll(builder.interceptors);
         HashMap<String, ArrayList<Interceptor>> interceptorFromBuilder = builder.interceptorByCategory;
@@ -329,8 +317,8 @@ public final class Cartrofit {
         }
     }
 
-    <OUTPUT> TypedFlowConverter<OUTPUT, ?> findFlowConverter(Class<?> target) {
-        return (TypedFlowConverter<OUTPUT, ?>) mFlowConverterMap.get(target);
+    FlowConverter<?> findFlowConverter(Class<?> target) {
+        return FLOW_CONVERTER_MAP.get(target);
     }
 
     static Class<?> findFlowConverterTarget(FlowConverter<?> converter) {
@@ -399,7 +387,6 @@ public final class Cartrofit {
         private final ArrayList<CallAdapter> dataAdapterList = new ArrayList<>();
         private final ArrayList<Interceptor> interceptors = new ArrayList<>();
         private final HashMap<String, ArrayList<Interceptor>> interceptorByCategory = new HashMap<>();
-        private final ArrayList<FlowConverter<?>> flowConverters = new ArrayList<>();
 
         private Builder() {
         }
@@ -425,11 +412,6 @@ public final class Cartrofit {
             return this;
         }
 
-        public Builder addFlowConverter(FlowConverter<?> converter) {
-            flowConverters.add(converter);
-            return this;
-        }
-
         public void buildAsDefault() {
             if (sDefault == null) {
                 sDefault = new Cartrofit();
@@ -437,12 +419,13 @@ public final class Cartrofit {
             sDefault.append(this);
             interceptors.clear();
             interceptorByCategory.clear();
-            flowConverters.clear();
         }
     }
 
-    static void addGlobalConverter(FlowConverter<?>... converters) {
-        GLOBAL_CONVERTER.addAll(Arrays.asList(converters));
+    public static void addGlobalConverter(FlowConverter<?>... converters) {
+        for (FlowConverter<?> converter : converters) {
+            FLOW_CONVERTER_MAP.put(findFlowConverterTarget(converter), converter);
+        }
     }
 
     private <T> T fromInternal(Class<T> api) {
@@ -562,6 +545,8 @@ public final class Cartrofit {
         Class<?> getType();
         Type getGenericType();
         int getDeclaredIndex();
+        Key getDeclaredKey();
+        ParameterGroup getParameterGroup();
 
         @RequiresApi(Build.VERSION_CODES.O)
         String getName();
@@ -571,6 +556,7 @@ public final class Cartrofit {
         String token();
         int getParameterCount();
         Parameter getParameterAt(int index);
+        Key getDeclaredKey();
     }
 
     public static class Key implements ParameterGroup {
@@ -584,6 +570,7 @@ public final class Cartrofit {
 
         private int parameterCount = -1;
         private int parameterGroupCount = -1;
+        private Parameter returnParameter;
         private Parameter[] parameters;
         private ParameterGroup[] parameterGroups;
 
@@ -635,6 +622,123 @@ public final class Cartrofit {
             return "";
         }
 
+        public Parameter getReturnAsParameter() {
+            if (returnParameter != null) {
+                return returnParameter;
+            }
+            if (method == null) {
+                return null;
+            }
+            Class<?> declaredReturnType = method.getReturnType();
+            if (declaredReturnType == void.class) {
+                return null;
+            }
+            if (FLOW_CONVERTER_MAP.containsKey(declaredReturnType)
+                    || Flow.class.isAssignableFrom(declaredReturnType)) {
+                Class<?> userTargetType;
+                WrappedData dataAnnotation = declaredReturnType.getAnnotation(WrappedData.class);
+                if (dataAnnotation != null) {
+                    userTargetType = dataAnnotation.type();
+                } else {
+                    userTargetType = WRAPPER_CLASS_MAP.get(declaredReturnType);
+                }
+                if (userTargetType != null) {
+                    returnParameter = new ReturnAsParameter(userTargetType, userTargetType);
+                } else {
+                    Type declaredGenericType = method.getGenericReturnType();
+                    if (declaredGenericType instanceof ParameterizedType) {
+                        Type[] typeArray = ((ParameterizedType) declaredGenericType).getActualTypeArguments();
+                        Type typeInFlow = typeArray.length > 0 ? typeArray[0] : null;
+                        returnParameter = new ReturnAsParameter(getClassFromType(typeInFlow), typeInFlow);
+                    } else {
+                        throw new CartrofitGrammarException("Unsupported type:" + declaredGenericType);
+                    }
+                }
+            } else {
+                returnParameter = new ReturnAsParameter(declaredReturnType,
+                        method.getGenericReturnType());
+            }
+            return returnParameter;
+        }
+
+        private class ReturnAsParameter implements Parameter, ParameterGroup {
+
+            final Class<?> type;
+            final Type genericType;
+
+            Annotation[] annotations = method.getDeclaredAnnotations();
+
+            ReturnAsParameter(Class<?> type, Type genericType) {
+                this.type = type;
+                this.genericType = genericType;
+            }
+
+            @Override
+            public boolean isAnnotationPresent(Class<? extends Annotation> clazz) {
+                return find(annotations, clazz) != null;
+            }
+
+            @Override
+            public <A extends Annotation> A getAnnotation(Class<A> clazz) {
+                return find(annotations, clazz);
+            }
+
+            @Override
+            public Annotation[] getAnnotations() {
+                return annotations;
+            }
+
+            @Override
+            public boolean hasNoAnnotation() {
+                return annotations == null || annotations.length == 0;
+            }
+
+            @Override
+            public Class<?> getType() {
+                return type;
+            }
+
+            @Override
+            public Type getGenericType() {
+                return genericType;
+            }
+
+            @Override
+            public int getDeclaredIndex() {
+                return 0;
+            }
+
+            @Override
+            public String token() {
+                return "";
+            }
+
+            @Override
+            public int getParameterCount() {
+                return 1;
+            }
+
+            @Override
+            public Parameter getParameterAt(int index) {
+                return this;
+            }
+
+            @Override
+            public Key getDeclaredKey() {
+                return Key.this;
+            }
+
+            @Override
+            public ParameterGroup getParameterGroup() {
+                return this;
+            }
+
+            @Override
+            public String getName() {
+                return "";
+            }
+        }
+
         @Override
         public int getParameterCount() {
             if (parameterCount != -1) {
@@ -666,6 +770,11 @@ public final class Cartrofit {
                 return null;
             }
             return parameters[index];
+        }
+
+        @Override
+        public Key getDeclaredKey() {
+            return this;
         }
 
         public int getParameterGroupCount() {
@@ -711,7 +820,7 @@ public final class Cartrofit {
             return parameterGroups[index];
         }
 
-        private static class ParameterImpl implements Parameter {
+        private class ParameterImpl implements Parameter {
 
             final Class<?>[] parameterClass;
             final Type[] parameterType;
@@ -765,6 +874,16 @@ public final class Cartrofit {
             }
 
             @Override
+            public Key getDeclaredKey() {
+                return Key.this;
+            }
+
+            @Override
+            public ParameterGroup getParameterGroup() {
+                return Key.this;
+            }
+
+            @Override
             public String getName() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     if (parameterRef == null) {
@@ -777,7 +896,7 @@ public final class Cartrofit {
             }
         }
 
-        private static class ParameterGroupImpl implements ParameterGroup {
+        private class ParameterGroupImpl implements ParameterGroup {
 
             private final String token;
             private final ArrayList<Parameter> parameters;
@@ -800,6 +919,11 @@ public final class Cartrofit {
             @Override
             public Parameter getParameterAt(int index) {
                 return parameters.get(index);
+            }
+
+            @Override
+            public Key getDeclaredKey() {
+                return Key.this;
             }
         }
 
@@ -865,115 +989,8 @@ public final class Cartrofit {
                     : field.isAnnotationPresent(annotationClass);
         }
 
-        public Class<?>[] getParameterType() {
-            return method != null ? method.getParameterTypes() : new Class<?>[] {field.getType()};
-        }
-
         public Class<?> getReturnType() {
             return method != null ? method.getReturnType() : field.getType();
-        }
-
-        Class<?> getGetClass() {
-            if (field != null) {
-                return field.getType();
-            } else if (method.getReturnType() != void.class) {
-                return method.getReturnType();
-            } else {
-                Class<?>[] classArray = method.getParameterTypes();
-                if (classArray.length != 1) {
-                    throw new CartrofitGrammarException("Invalid parameter:"
-                            + Arrays.toString(classArray));
-                }
-                return classArray[0];
-            }
-        }
-
-        public Class<?> getSetClass() {
-            if (field != null) {
-                return field.getType();
-            } else if (isCallbackEntry) {
-                return method.getReturnType();
-            } else {
-                Class<?>[] classArray = method.getParameterTypes();
-                if (classArray.length != 1) {
-                    throw new CartrofitGrammarException("Invalid parameter:"
-                            + Arrays.toString(classArray));
-                }
-                if (method.getReturnType() != void.class) {
-                    throw new CartrofitGrammarException("Invalid return type:"
-                            + method.getReturnType());
-                }
-                return classArray[0];
-            }
-        }
-
-        Class<?> getTrackClass() {
-            if (field != null) {
-                return field.getType();
-            } else if (isCallbackEntry) {
-                return method.getParameterTypes()[0];
-            } else {
-                Class<?> returnType = method.getReturnType();
-                if (returnType == void.class) {
-                    throw new CartrofitGrammarException("Invalid return void type");
-                }
-                return returnType;
-            }
-        }
-
-        Type getTrackType() {
-            if (field != null) {
-                return field.getGenericType();
-            } else if (method.getReturnType() != void.class) {
-                Type returnType = method.getGenericReturnType();
-                if (returnType == void.class) {
-                    throw new CartrofitGrammarException("Invalid return void type");
-                }
-                return returnType;
-            } else {
-                Type[] parameterArray = method.getGenericParameterTypes();
-                if (parameterArray.length != 1) {
-                    throw new CartrofitGrammarException("Invalid parameter:"
-                            + Arrays.toString(parameterArray));
-                }
-                return parameterArray[0];
-            }
-        }
-
-        Class<?> getUserConcernClass() {
-            Type originalType = getTrackType();
-            if (hasUnresolvableType(originalType)) {
-                throw new CartrofitGrammarException("Can not parse type:" + originalType + " from:" + this);
-            }
-            Class<?> wrapperClass = getClassFromType(originalType);
-            if (wrapperClass == null) {
-                throw new IllegalStateException("invalid type:" + originalType);
-            }
-            Class<?> userTargetType;
-            WrappedData dataAnnotation = wrapperClass.getAnnotation(WrappedData.class);
-            if (dataAnnotation != null) {
-                userTargetType = dataAnnotation.type();
-            } else {
-                userTargetType = WRAPPER_CLASS_MAP.get(wrapperClass);
-            }
-            if (userTargetType == null && originalType instanceof ParameterizedType) {
-                Type[] typeArray = ((ParameterizedType) originalType).getActualTypeArguments();
-                if (typeArray.length > 1) {
-                    throw new CartrofitGrammarException("Can not extract target type:"
-                            + originalType + " from:" + this);
-                }
-                Type typeInFlow = typeArray.length > 0 ? typeArray[0] : null;
-                boolean carRawTypeClass = getClassFromType(typeInFlow) == CarPropertyValue.class;
-                if (carRawTypeClass) {
-                    if (typeInFlow instanceof ParameterizedType) {
-                        typeArray = ((ParameterizedType) typeInFlow).getActualTypeArguments();
-                        userTargetType = getClassFromType(typeArray[0]);
-                    }
-                } else {
-                    userTargetType = typeInFlow != null ? getClassFromType(typeInFlow) : null;
-                }
-            }
-            return userTargetType;
         }
 
         String getName() {

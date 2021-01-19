@@ -7,7 +7,8 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
 
     private Converter<Union, INPUT> inputConverter;
     private Converter<OUTPUT, Union> outputConverter;
-    private TypedFlowConverter<OUTPUT, ?> flowConverter;
+    private Converter<OUTPUT, ?> returnConverter;
+    private FlowConverter<?> flowConverter;
 
     @Override
     public void onInit() {
@@ -16,10 +17,13 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
         inputConverter = adapter.findInputConverter(this);
         if (hasCategory(CallAdapter.CATEGORY_TRACK)) {
             if (key.isCallbackEntry) {
-                outputConverter = adapter.findOutputConverter(this);
+                outputConverter = adapter.findCallbackOutputConverter(this);
             } else {
                 flowConverter = adapter.findFlowConverter(this);
+                returnConverter = adapter.findReturnOutputConverter(this);
             }
+        } else {
+            returnConverter = adapter.findReturnOutputConverter(this);
         }
     }
 
@@ -35,18 +39,23 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
             if (key.isCallbackEntry) {
                 return result.map(outputConverter);
             } else {
-                return flowConverter != null ? flowConverter.convert(result) : null;
+                if (returnConverter != null) {
+                    return flowConverter != null ? flowConverter.convert(result.map(returnConverter)) : null;
+                } else {
+                    return flowConverter != null ? flowConverter.convert(result) : null;
+                }
             }
         } else {
-            return doTypedInvoke(input);
+            OUTPUT output = doTypedInvoke(input);
+            return returnConverter != null ? returnConverter.convert(output) : output;
         }
     }
 
-    protected Flow<OUTPUT> doTrackInvoke(INPUT arg) {
+    protected Flow<OUTPUT> doTrackInvoke(INPUT input) {
         return null;
     }
 
-    protected OUTPUT doTypedInvoke(INPUT arg) {
+    protected OUTPUT doTypedInvoke(INPUT input) {
         return null;
     }
 }

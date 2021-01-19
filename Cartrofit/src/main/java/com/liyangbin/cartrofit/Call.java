@@ -65,11 +65,11 @@ public abstract class Call implements Cloneable {
         this.callAdapter = adapter;
     }
 
-    public final Cartrofit.Key getKey() {
+    public Cartrofit.Key getKey() {
         return key;
     }
 
-    public final CallAdapter getAdapter() {
+    public CallAdapter getAdapter() {
         return callAdapter;
     }
 

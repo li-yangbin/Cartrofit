@@ -31,12 +31,7 @@ public class BuildInCallAdapter extends CallAdapter {
     public void onProvideCallSolution(CallSolutionBuilder builder) {
         builder.create(Inject.class)
                 .checkParameterIncluded(In.class, Out.class)
-                .provide(new CallProvider<Inject>() {
-                    @Override
-                    public Call provide(int category, Inject inject, Cartrofit.Key key) {
-                        return createInjectCommand(this, key);
-                    }
-                });
+                .provide((category, inject, key) -> createInjectCommand(key));
 
         builder.create(Combine.class)
                 .checkParameter((combine, key) -> {
@@ -51,25 +46,17 @@ public class BuildInCallAdapter extends CallAdapter {
                         }
                     }
                 })
-                .provide(new CallProvider<Combine>() {
-                    @Override
-                    public Call provide(int category, Combine combine, Cartrofit.Key key) {
-                        CombineCall combineCall = new CombineCall();
-                        for (int element : combine.elements()) {
-                            combineCall.addChildCall(inflateByIdIfThrow(key, element,
-                                    category & (CATEGORY_TRACK | CATEGORY_GET)));
-                        }
-                        return combineCall;
+                .provide((category, combine, key) -> {
+                    CombineCall combineCall = new CombineCall();
+                    for (int element : combine.elements()) {
+                        combineCall.addChildCall(inflateByIdIfThrow(key, element,
+                                category & (CATEGORY_TRACK | CATEGORY_GET)));
                     }
+                    return combineCall;
                 });
 
         builder.create(Timeout.class)
-                .provide(new CallProvider<Timeout>() {
-                    @Override
-                    public Call provide(int category, Timeout timeout, Cartrofit.Key key) {
-                        return new TimeoutCall(timeout.value());
-                    }
-                });
+                .provide((category, timeout, key) -> new TimeoutCall(timeout.value()));
 
         builder.create(Register.class)
                 .checkParameter((register, key) -> {
@@ -93,26 +80,23 @@ public class BuildInCallAdapter extends CallAdapter {
                         }
                     }
                 })
-                .provide(new CallProvider<Register>() {
-                    @Override
-                    public Call provide(int category, Register register, Cartrofit.Key key) {
-                        Cartrofit.Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
-                        if (callbackParameter == null) {
-                            callbackParameter = key.getParameterAt(0);
-                        }
-                        final RegisterCall registerCall = new RegisterCall();
-                        inflateCallback(callbackParameter.getType(), CATEGORY_TRACK,
-                                call -> {
-                            Call returnCall = reInflate(key, CATEGORY_SET);
-                            Call parameterCall = createInjectCommand(this, key);
-                            registerCall.addChildCall(call, returnCall, parameterCall);
-                        });
-                        if (registerCall.getChildCount() == 0) {
-                            throw new CartrofitGrammarException("Failed to resolve callback entry point in "
-                                    + callbackParameter.getType());
-                        }
-                        return registerCall;
+                .provide((category, register, key) -> {
+                    Cartrofit.Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
+                    if (callbackParameter == null) {
+                        callbackParameter = key.getParameterAt(0);
                     }
+                    final RegisterCall registerCall = new RegisterCall();
+                    inflateCallback(callbackParameter.getType(), CATEGORY_TRACK,
+                            call -> {
+                        Call returnCall = reInflate(key, CATEGORY_SET);
+                        Call parameterCall = createInjectCommand(key);
+                        registerCall.addChildCall(call, returnCall, parameterCall);
+                    });
+                    if (registerCall.getChildCount() == 0) {
+                        throw new CartrofitGrammarException("Failed to resolve callback entry point in "
+                                + callbackParameter.getType());
+                    }
+                    return registerCall;
                 });
 
         builder.create(Unregister.class)
@@ -122,28 +106,18 @@ public class BuildInCallAdapter extends CallAdapter {
                         throw new CartrofitGrammarException("Declare a Callback parameter as an interface " + key);
                     }
                 })
-                .provide(new CallProvider<Unregister>() {
-                    @Override
-                    public Call provide(int category, Unregister unregister, Cartrofit.Key key) {
-                        UnregisterCall unregisterCall = new UnregisterCall();
-                        unregisterCall.setRegisterCall((RegisterCall) inflateByIdIfThrow(key,
-                                unregister.value(), CATEGORY_TRACK));
-                        return unregisterCall;
-                    }
+                .provide((category, unregister, key) -> {
+                    UnregisterCall unregisterCall = new UnregisterCall();
+                    unregisterCall.setRegisterCall((RegisterCall) inflateByIdIfThrow(key,
+                            unregister.value(), CATEGORY_TRACK));
+                    return unregisterCall;
                 });
 
         builder.create(Delegate.class)
-                .provide(new CallProvider<Delegate>() {
-                    @Override
-                    public Call provide(int category, Delegate delegate, Cartrofit.Key key) {
-                        Call delegateTarget = inflateById(key, delegate.value(), category);
-                        return delegateTarget != null ? new DelegateCall(delegateTarget) : null;
-                    }
+                .provide((category, delegate, key) -> {
+                    Call delegateTarget = inflateById(key, delegate.value(), category);
+                    return delegateTarget != null ? new DelegateCall(delegateTarget) : null;
                 });
-    }
-
-    @Override
-    public void onProvideConvertSolution(ConverterSolutionBuilder builder) {
     }
 
     public Call wrapNormalTrack2RegisterIfNeeded(Call call) {
@@ -175,7 +149,7 @@ public class BuildInCallAdapter extends CallAdapter {
         return new RegisterCall(call, trackKey, timeoutKey);
     }
 
-    private Call createInjectCommand(CallProvider<?> provider, Cartrofit.Key key) {
+    private Call createInjectCommand(Cartrofit.Key key) {
         if (key.method != null) {
             InjectGroupCall injectGroupCall = null;
             final int parameterCount = key.getParameterCount();
@@ -186,7 +160,7 @@ public class BuildInCallAdapter extends CallAdapter {
 
                 if (inDeclared || outDeclared) {
                     Class<?> targetClass = parameter.getType();
-                    InjectCall injectCall = createInjectCallByClass(provider, targetClass);
+                    InjectCall injectCall = createInjectCallByClass(targetClass);
 
                     if (injectGroupCall == null) {
                         injectGroupCall = new InjectGroupCall(parameterCount);
@@ -201,19 +175,19 @@ public class BuildInCallAdapter extends CallAdapter {
             }
             return injectGroupCall;
         } else if (key.field != null) {
-            return createInjectCallByClass(provider, key.field.getType());
+            return createInjectCallByClass(key.field.getType());
         } else {
             throw new RuntimeException("impossible condition key:" + key);
         }
     }
 
-    private InjectCall createInjectCallByClass(CallProvider<?> provider, Class<?> clazz) {
+    private InjectCall createInjectCallByClass(Class<?> clazz) {
         if (clazz.isPrimitive() || clazz.isArray() || clazz == String.class) {
             throw new CartrofitGrammarException("Can not use Inject operator on class type:" + clazz);
         }
         InjectCall injectCall = new InjectCall(clazz);
         // TODO: category wrong
-        provider.inflateCallback(clazz, CATEGORY_SET | CATEGORY_GET | CATEGORY_TRACK,
+        inflateCallback(clazz, CATEGORY_SET | CATEGORY_GET | CATEGORY_TRACK,
                 injectCall::addChildCall);
         if (injectCall.getChildCount() == 0) {
             throw new CartrofitGrammarException("Failed to parse Inject call from type:"

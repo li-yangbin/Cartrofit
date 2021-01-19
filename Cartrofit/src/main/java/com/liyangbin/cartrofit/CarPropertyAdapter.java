@@ -9,6 +9,8 @@ import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
 import com.liyangbin.cartrofit.funtion.Union;
 
+import io.reactivex.annotations.Experimental;
+
 public abstract class CarPropertyAdapter extends CallAdapter {
 
     private final String key;
@@ -29,28 +31,13 @@ public abstract class CarPropertyAdapter extends CallAdapter {
     @Override
     public void onProvideCallSolution(CallSolutionBuilder builder) {
         builder.create(Get.class)
-                .provide(new CallProvider<Get>() {
-                    @Override
-                    public Call provide(int category, Get get, Cartrofit.Key key) {
-                        return new PropertyCall(key.getScopeObj(), get);
-                    }
-                });
+                .provide((category, get, key) -> new PropertyCall(key.getScopeObj(), get));
 
         builder.create(Set.class)
-                .provide(new CallProvider<Set>() {
-                    @Override
-                    public Call provide(int category, Set set, Cartrofit.Key key) {
-                        return new PropertyCall(key.getScopeObj(), set);
-                    }
-                });
+                .provide((category, set, key) -> new PropertyCall(key.getScopeObj(), set));
 
         builder.create(Track.class)
-                .provide(new CallProvider<Track>() {
-                    @Override
-                    public Call provide(int category, Track track, Cartrofit.Key key) {
-                        return new PropertyCall(key.getScopeObj(), track);
-                    }
-                });
+                .provide((category, track, key) -> new PropertyCall(key.getScopeObj(), track));
     }
 
     public abstract Object get(int propertyId, int area, CarType type);
@@ -194,17 +181,12 @@ public abstract class CarPropertyAdapter extends CallAdapter {
 
         @Override
         public Object mapInvoke(Union parameter) {
-            return super.mapInvoke(parameter);
-        }
-
-        @Override
-        public Object doInvoke(Object arg) {
             switch (type) {
                 case PropertyCall.TYPE_GET:
                     return CarPropertyAdapter.this.get(propertyId, areaId, carType);
                 case PropertyCall.TYPE_SET:
                     CarPropertyAdapter.this.set(propertyId, areaId,
-                            buildInSetValue != null ? buildInSetValue : arg);
+                            buildInSetValue != null ? buildInSetValue : parameter.get(0));
                     return null;
                 case PropertyCall.TYPE_TRACK:
                     Flow<CarPropertyValue<?>> flow = CarPropertyAdapter.this.track(propertyId, areaId);

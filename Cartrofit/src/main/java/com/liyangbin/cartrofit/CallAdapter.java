@@ -30,10 +30,10 @@ public abstract class CallAdapter {
 
     private Cartrofit mCartrofit;
     private final ArrayList<CallSolution<?>> mCallSolutionList = new ArrayList<>();
-    private final HashMap<Class<?>, ConverterBuilder<?>> mConverterInputMap = new HashMap<>();
-    private final HashMap<Class<?>, ConverterBuilder<?>> mConverterOutputMap = new HashMap<>();
-    private Converter<Union, Object> mDummyInputConverter = value -> value.getCount() > 0 ? value.get(0) : null;
-    private Converter<Object, Union> mDummyOutputConverter = Union::of;
+    private final HashMap<Class<?>, ConverterBuilder<?, ?>> mConverterInputMap = new HashMap<>();
+    private final HashMap<Class<?>, ConverterBuilder<?, ?>> mConverterOutputMap = new HashMap<>();
+    private final Converter<Union, Object> mDummyInputConverter = value -> value.getCount() > 0 ? value.get(0) : null;
+    private final Converter<Object, Union> mDummyOutputConverter = Union::of;
 
     public final class CallSolutionBuilder {
 
@@ -45,86 +45,68 @@ public abstract class CallAdapter {
         }
     }
 
-    public final class ConverterSolutionBuilder {
+    public final Call inflateByIdIfThrow(Cartrofit.Key key, int id, int category) {
+        return mCartrofit.getOrCreateCallById(key.record, id, category, true);
+    }
 
-        private ConverterSolutionBuilder() {
-        }
+    public final Call inflateById(Cartrofit.Key key, int id, int category) {
+        return mCartrofit.getOrCreateCallById(key.record, id, category, false);
+    }
 
-        public <INPUT> ConverterBuilder<INPUT> fromInput(Class<FixedTypeCall<INPUT, ?>> inputCallType) {
-            ConverterBuilder<INPUT> builder =
-                    (ConverterBuilder<INPUT>) mConverterInputMap.get(inputCallType);
-            if (builder == null) {
-                builder = ConverterBuilder.fromInput();
-                mConverterInputMap.put(inputCallType, builder);
+    public final Call reInflate(Cartrofit.Key key, int category) {
+        return key.record.createAdapterCall(key, category);
+    }
+
+    public final <T> void inflateCallback(Class<?> callbackClass,
+                                          int category, Consumer<Call> resultReceiver) {
+        ArrayList<Cartrofit.Key> childKeys = getChildKey(callbackClass);
+        for (int i = 0; i < childKeys.size(); i++) {
+            Cartrofit.Key childKey = childKeys.get(i);
+            Call call = mCartrofit.getOrCreateCall(childKey.record, childKey, category);
+            if (call != null) {
+                resultReceiver.accept(call);
             }
-            return builder;
-        }
-
-        public <OUTPUT> ConverterBuilder<OUTPUT> fromOutput(Class<FixedTypeCall<?, OUTPUT>> outputCallType) {
-            ConverterBuilder<OUTPUT> builder =
-                    (ConverterBuilder<OUTPUT>) mConverterOutputMap.get(outputCallType);
-            if (builder == null) {
-                builder = ConverterBuilder.fromOutput();
-                mConverterOutputMap.put(outputCallType, builder);
-            }
-            return builder;
         }
     }
 
-    public abstract class CallProvider<A extends Annotation> {
-
-        public abstract Call provide(int category, A annotation, Cartrofit.Key key);
-
-        public final Call inflateByIdIfThrow(Cartrofit.Key key, int id, int category) {
-            return mCartrofit.getOrCreateCallById(key.record, id, category, true);
-        }
-
-        public final Call inflateById(Cartrofit.Key key, int id, int category) {
-            return mCartrofit.getOrCreateCallById(key.record, id, category, false);
-        }
-
-        public final Call reInflate(Cartrofit.Key key, int category) {
-            return key.record.createAdapterCall(key, category);
-        }
-
-        public final <T> void inflateCallback(Class<?> callbackClass,
-                                              int category, Consumer<Call> resultReceiver) {
-            ArrayList<Cartrofit.Key> childKeys = getChildKey(callbackClass);
-            for (int i = 0; i < childKeys.size(); i++) {
-                Cartrofit.Key childKey = childKeys.get(i);
-                Call call = mCartrofit.getOrCreateCall(childKey.record, childKey, category);
-                if (call != null) {
-                    resultReceiver.accept(call);
-                }
-            }
-        }
+    public interface CallProvider<A extends Annotation, T extends Call> {
+        T provide(int category, A annotation, Cartrofit.Key key);
     }
 
     public final <INPUT> Converter<Union, INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
-        ConverterBuilder<INPUT> builder = (ConverterBuilder<INPUT>) mConverterInputMap.get(call.getClass());
+        ConverterBuilder<INPUT, ?> builder = (ConverterBuilder<INPUT, ?>) mConverterInputMap.get(call.getClass());
         if (builder != null) {
-            return builder.checkConvertIn(call.getParameterContext()
+            return builder.checkIn(call.getParameterContext()
                     .extractParameterFromCall(call));
         } else {
             return (Converter<Union, INPUT>) mDummyInputConverter;
         }
     }
 
-    public final <OUTPUT> Converter<OUTPUT, Union> findOutputConverter(FixedTypeCall<?, OUTPUT> call) {
-        ConverterBuilder<OUTPUT> builder = (ConverterBuilder<OUTPUT>) mConverterOutputMap.get(call.getClass());
+    public final <OUTPUT> Converter<OUTPUT, Union> findCallbackOutputConverter(FixedTypeCall<?, OUTPUT> call) {
+        ConverterBuilder<?, OUTPUT> builder = (ConverterBuilder<?, OUTPUT>) mConverterOutputMap.get(call.getClass());
         if (builder != null) {
-            return builder.checkConvertOut(call.getParameterContext()
+            return builder.checkOutCallback(call.getParameterContext()
                     .extractParameterFromCall(call));
         } else {
             return (Converter<OUTPUT, Union>) mDummyOutputConverter;
         }
     }
 
-    public <OUTPUT> TypedFlowConverter<OUTPUT, ?> findFlowConverter(Call call) {
+    public FlowConverter<?> findFlowConverter(Call call) {
         if (call.getKey().isCallbackEntry) {
             return null;
         }
         return mCartrofit.findFlowConverter(call.getKey().getReturnType());
+    }
+
+    public final <OUTPUT> Converter<OUTPUT, ?> findReturnOutputConverter(FixedTypeCall<?, OUTPUT> call) {
+        ConverterBuilder<?, OUTPUT> builder = (ConverterBuilder<?, OUTPUT>) mConverterOutputMap.get(call.getClass());
+        if (builder != null) {
+            return builder.checkOutReturn(call.getKey());
+        } else {
+            return null;
+        }
     }
 
     public ArrayList<Cartrofit.Key> getChildKey(Class<?> callbackClass) {
@@ -135,7 +117,7 @@ public abstract class CallAdapter {
         IntPredicate predictor;
         Class<A> candidateClass;
         int expectedCategory;
-        CallProvider<A> provider;
+        CallProvider<A, ?> provider;
         BiConsumer<A, Cartrofit.Key> keyGrammarChecker;
         List<Class<? extends Annotation>[]> withInAnnotationCandidates;
         List<Class<? extends Annotation>> withAnnotationCandidates;
@@ -207,7 +189,23 @@ public abstract class CallAdapter {
             return this;
         }
 
-        public void provide(CallProvider<A> provider) {
+        public <INPUT, OUTPUT, T extends FixedTypeCall<INPUT, OUTPUT>>
+                ConverterBuilder<INPUT, OUTPUT> buildParameter(Class<T> callType) {
+            if (mConverterInputMap.containsKey(callType) || mConverterOutputMap.containsKey(callType)) {
+                throw new CartrofitGrammarException("There is a parameter solution exists already");
+            }
+            return new ConverterBuilder<>(callType, this);
+        }
+
+        void commitInputConverter(Class<?> callType, ConverterBuilder<?, ?> builder) {
+            mConverterInputMap.put(callType, builder);
+        }
+
+        void commitOutputConverter(Class<?> callType, ConverterBuilder<?, ?> builder) {
+            mConverterOutputMap.put(callType, builder);
+        }
+
+        public <T extends Call> void provide(CallProvider<A, T> provider) {
             this.provider = provider;
             mCallSolutionList.add(this);
         }
@@ -281,14 +279,11 @@ public abstract class CallAdapter {
     void init(Cartrofit cartrofit) {
         mCartrofit = cartrofit;
         onProvideCallSolution(new CallSolutionBuilder());
-        onProvideConvertSolution(new ConverterSolutionBuilder());
     }
 
     public abstract Object extractScope(Class<?> scopeClass);
 
     public abstract void onProvideCallSolution(CallSolutionBuilder builder);
-
-    public abstract void onProvideConvertSolution(ConverterSolutionBuilder builder);
 
     Call createCall(Cartrofit.Key key, int category) {
         for (int i = 0; i < mCallSolutionList.size(); i++) {

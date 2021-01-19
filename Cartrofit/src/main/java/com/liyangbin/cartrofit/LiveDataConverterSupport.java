@@ -17,16 +17,16 @@ class LiveDataConverter {
     }
 }
 
-class LiveDataConverterDefault implements FlowConverter<LiveData<Object>> {
+class LiveDataConverterDefault implements FlowConverter<LiveData<?>> {
     @Override
-    public LiveData<Object> convert(Flow<Object> value) {
+    public LiveData<?> convert(Flow<?> value) {
         return new FlowLiveData<>(value);
     }
 }
 
-class LiveDataConverterMutable implements FlowConverter<MutableLiveData<Object>> {
+class LiveDataConverterMutable implements FlowConverter<MutableLiveData<?>> {
     @Override
-    public MutableLiveData<Object> convert(Flow<Object> value) {
+    public MutableLiveData<?> convert(Flow<?> value) {
         return new FlowLiveData<>(value);
     }
 }

@@ -1,10 +1,5 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.annotation.WrappedData;
-
-import java.lang.reflect.Field;
-import java.util.function.Consumer;
-
 import androidx.annotation.NonNull;
 import androidx.databinding.BaseObservable;
 import androidx.databinding.ObservableBoolean;
@@ -14,6 +9,11 @@ import androidx.databinding.ObservableFloat;
 import androidx.databinding.ObservableInt;
 import androidx.databinding.ObservableLong;
 import androidx.databinding.PropertyChangeRegistry;
+
+import com.liyangbin.cartrofit.annotation.WrappedData;
+
+import java.lang.reflect.Field;
+import java.util.function.Consumer;
 
 class ObservableConverter {
     static void addSupport() {
@@ -42,10 +42,10 @@ class ObservableConverter {
     }
 }
 
-class ObservableConverterField implements FlowConverter<ObservableField<Object>> {
+class ObservableConverterField implements FlowConverter<ObservableField<?>> {
 
     @Override
-    public ObservableField<Object> convert(Flow<Object> value) {
+    public ObservableField<?> convert(Flow<?> value) {
         return new FlowObservableField<>(value);
     }
 
@@ -86,15 +86,15 @@ class ObservableConverterField implements FlowConverter<ObservableField<Object>>
 class ObservableConverterInt implements FlowConverter<ObservableInt> {
 
     @Override
-    public ObservableInt convert(Flow<Object> value) {
-        return new FlowObservableInt(value);
+    public ObservableInt convert(Flow<?> value) {
+        return new FlowObservableInt<>(value);
     }
 
-    private static class FlowObservableInt extends ObservableInt implements Consumer<Object> {
-        Flow<Object> flow;
+    private static class FlowObservableInt<T> extends ObservableInt implements Consumer<T> {
+        Flow<T> flow;
         boolean hasCallback;
 
-        FlowObservableInt(Flow<Object> flow) {
+        FlowObservableInt(Flow<T> flow) {
             this.flow = flow;
         }
 
@@ -117,7 +117,7 @@ class ObservableConverterInt implements FlowConverter<ObservableInt> {
         }
 
         @Override
-        public void accept(Object value) {
+        public void accept(T value) {
             set((Integer) value);
         }
     }
@@ -127,15 +127,15 @@ class ObservableConverterInt implements FlowConverter<ObservableInt> {
 class ObservableConverterByte implements FlowConverter<ObservableByte> {
 
     @Override
-    public ObservableByte convert(Flow<Object> value) {
-        return new FlowObservableByte(value);
+    public ObservableByte convert(Flow<?> value) {
+        return new FlowObservableByte<>(value);
     }
 
-    private static class FlowObservableByte extends ObservableByte implements Consumer<Object> {
-        Flow<Object> flow;
+    private static class FlowObservableByte<T> extends ObservableByte implements Consumer<T> {
+        Flow<T> flow;
         boolean hasCallback;
 
-        FlowObservableByte(Flow<Object> flow) {
+        FlowObservableByte(Flow<T> flow) {
             this.flow = flow;
         }
 
@@ -158,7 +158,7 @@ class ObservableConverterByte implements FlowConverter<ObservableByte> {
         }
 
         @Override
-        public void accept(Object value) {
+        public void accept(T value) {
             set((Byte) value);
         }
     }
@@ -168,15 +168,15 @@ class ObservableConverterByte implements FlowConverter<ObservableByte> {
 class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
 
     @Override
-    public ObservableBoolean convert(Flow<Object> value) {
-        return new FlowObservableBoolean(value);
+    public ObservableBoolean convert(Flow<?> value) {
+        return new FlowObservableBoolean<>(value);
     }
 
-    private static class FlowObservableBoolean extends ObservableBoolean implements Consumer<Object> {
-        Flow<Object> flow;
+    private static class FlowObservableBoolean<T> extends ObservableBoolean implements Consumer<T> {
+        Flow<T> flow;
         boolean hasCallback;
 
-        FlowObservableBoolean(Flow<Object> flow) {
+        FlowObservableBoolean(Flow<T> flow) {
             this.flow = flow;
         }
 
@@ -199,7 +199,7 @@ class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
         }
 
         @Override
-        public void accept(Object value) {
+        public void accept(T value) {
             set((Boolean) value);
         }
     }
@@ -209,15 +209,15 @@ class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
 class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
 
     @Override
-    public ObservableFloat convert(Flow<Object> value) {
-        return new FlowObservableFloat(value);
+    public ObservableFloat convert(Flow<?> value) {
+        return new FlowObservableFloat<>(value);
     }
 
-    private static class FlowObservableFloat extends ObservableFloat implements Consumer<Object> {
-        Flow<Object> flow;
+    private static class FlowObservableFloat<T> extends ObservableFloat implements Consumer<T> {
+        Flow<T> flow;
         boolean hasCallback;
 
-        FlowObservableFloat(Flow<Object> flow) {
+        FlowObservableFloat(Flow<T> flow) {
             this.flow = flow;
         }
 
@@ -240,7 +240,7 @@ class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
         }
 
         @Override
-        public void accept(Object value) {
+        public void accept(T value) {
             set((Float) value);
         }
     }
@@ -250,15 +250,15 @@ class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
 class ObservableConverterLong implements FlowConverter<ObservableLong> {
 
     @Override
-    public ObservableLong convert(Flow<Object> value) {
-        return new FlowObservableLong(value);
+    public ObservableLong convert(Flow<?> value) {
+        return new FlowObservableLong<>(value);
     }
 
-    private static class FlowObservableLong extends ObservableLong implements Consumer<Object> {
-        Flow<Object> flow;
+    private static class FlowObservableLong<T> extends ObservableLong implements Consumer<T> {
+        Flow<T> flow;
         boolean hasCallback;
 
-        FlowObservableLong(Flow<Object> flow) {
+        FlowObservableLong(Flow<T> flow) {
             this.flow = flow;
         }
 
@@ -281,7 +281,7 @@ class ObservableConverterLong implements FlowConverter<ObservableLong> {
         }
 
         @Override
-        public void accept(Object value) {
+        public void accept(T value) {
             set((Long) value);
         }
     }

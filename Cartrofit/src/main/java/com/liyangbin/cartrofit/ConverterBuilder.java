@@ -14,48 +14,61 @@ import java.util.Arrays;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-public class ConverterBuilder<SERIALIZATION> {
+public class ConverterBuilder<INPUT, OUTPUT> {
 
-    private Supplier<SERIALIZATION> provider;
-    private final boolean input;
-    private ArrayList<AbsParameterSolution> solutions = new ArrayList<>();
+    private Supplier<INPUT> inputProvider;
+    private final ArrayList<AbsParameterSolution> forwardSolutions = new ArrayList<>();
+    private final ArrayList<AbsParameterSolution> backwardSolutions = new ArrayList<>();
+    private final Class<?> callType;
+    private final CallAdapter.CallSolution<?> caller;
+    private final AbsParameterSolution plainOutSolution = takeAny().backward((old, more) -> {
+        more.set(old);
+        return old;
+    }).noAnnotate();
 
-    private ConverterBuilder(boolean input) {
-        this.input = input;
-    }
-
-    static <SERIALIZATION> ConverterBuilder<SERIALIZATION> fromInput() {
-        return new ConverterBuilder<>(true);
-    }
-
-    static <SERIALIZATION> ConverterBuilder<SERIALIZATION> fromOutput() {
-        return new ConverterBuilder<>(false);
+    ConverterBuilder(Class<? extends FixedTypeCall<INPUT, OUTPUT>> callType, CallAdapter.CallSolution<?> caller) {
+        this.callType = callType;
+        this.caller = caller;
     }
 
     private void commitSolution(AbsParameterSolution solution) {
-        if (solution.hasSyntax()) {
+        if (solution.hasForward()) {
             boolean inserted = false;
-            for (int i = 0; i < solutions.size(); i++) {
-                if (solutions.get(i).size() > solution.size()) {
-                    solutions.add(i, solution);
+            for (int i = 0; i < forwardSolutions.size(); i++) {
+                if (forwardSolutions.get(i).size() > solution.size()) {
+                    forwardSolutions.add(i, solution);
                     inserted = true;
                     break;
                 }
             }
             if (!inserted) {
-                solutions.add(solution);
+                forwardSolutions.add(solution);
+            }
+        }
+
+        if (solution.hasBackward()) {
+            boolean inserted = false;
+            for (int i = 0; i < backwardSolutions.size(); i++) {
+                if (backwardSolutions.get(i).size() > solution.size()) {
+                    backwardSolutions.add(i, solution);
+                    inserted = true;
+                    break;
+                }
+            }
+            if (!inserted) {
+                backwardSolutions.add(solution);
             }
         }
     }
 
-    private void findSolutionDependency(Cartrofit.ParameterGroup group, SolutionRecordKeeper resultReceiver) {
-        // TODO add one clean only check
+    private <T> void findSolutionDependency(boolean input, Cartrofit.ParameterGroup group, SolutionRecordKeeper<T> resultReceiver) {
         final int paraCount = group.getParameterCount();
         if (paraCount == 0) {
             return;
         }
         boolean[] occupy = new boolean[paraCount];
         int occupyExpected = paraCount;
+        final ArrayList<AbsParameterSolution> solutions = input ? forwardSolutions : backwardSolutions;
         for (int i = solutions.size() - 1; i >= 0 && occupyExpected != 0; i--) {
             AbsParameterSolution solution = solutions.get(i);
 
@@ -97,31 +110,69 @@ public class ConverterBuilder<SERIALIZATION> {
                 }
             }
         }
+
+        if (occupyExpected == 1 && !input) {
+            for (int i = 0; i < occupy.length; i++) {
+                if (!occupy[i] && group.getParameterAt(i).hasNoAnnotation()) {
+                    resultReceiver.assembleSolution(plainOutSolution, i, 1);
+                    occupyExpected--;
+                    occupy[i] = true;
+                }
+            }
+        }
+
+        if (occupyExpected != 0) {
+            throw new CartrofitGrammarException("Invalid parameter declaration " + group.getDeclaredKey());
+        }
     }
 
-    Converter<Union, SERIALIZATION> checkConvertIn(Cartrofit.ParameterGroup group) {
+    Converter<Union, INPUT> checkIn(Cartrofit.ParameterGroup group) {
         InputConverterImpl inputConverter = new InputConverterImpl(group);
-        findSolutionDependency(group, inputConverter);
+        findSolutionDependency(true, group, inputConverter);
         return inputConverter;
     }
 
-    Converter<SERIALIZATION, Union> checkConvertOut(Cartrofit.ParameterGroup group) {
+    Converter<OUTPUT, Union> checkOutCallback(Cartrofit.ParameterGroup group) {
         OutputConverterImpl outputConverter = new OutputConverterImpl(group);
-        findSolutionDependency(group, outputConverter);
+        findSolutionDependency(false, group, outputConverter);
         return outputConverter;
     }
 
-    public ConverterBuilder<SERIALIZATION> provideBasic(Supplier<SERIALIZATION> provider) {
-        this.provider = provider;
+    Converter<OUTPUT, Object> checkOutReturn(Cartrofit.Key key) {
+        Cartrofit.Parameter returnParameter = key.getReturnAsParameter();
+        if (returnParameter == null) {
+            return null;
+        }
+        for (int i = 0; i < backwardSolutions.size(); i++) {
+            AbsParameterSolution solution = backwardSolutions.get(i);
+            if (solution.size() == 1 && solution.isInterestedToStart(returnParameter)) {
+                return new ReturnConverterImpl(solution, returnParameter);
+            }
+        }
+        return null;
+    }
+
+    public ConverterBuilder<INPUT, OUTPUT> provideBasic(Supplier<INPUT> provider) {
+        this.inputProvider = provider;
         return ConverterBuilder.this;
     }
 
-    public final <FROM> ParameterSolution1<FROM> take(Class<FROM> clazz) {
+    public <FROM> ParameterSolution1<FROM> take(Class<FROM> clazz) {
         return new ParameterSolution1<>(clazz);
     }
 
-    public final ParameterSolution1<Object> takeAny() {
+    public ParameterSolution1<Object> takeAny() {
         return new ParameterSolution1<>(Object.class);
+    }
+
+    public CallAdapter.CallSolution<?> commit() {
+        if (forwardSolutions.size() > 0) {
+            caller.commitInputConverter(callType, this);
+        }
+        if (backwardSolutions.size() > 0) {
+            caller.commitOutputConverter(callType, this);
+        }
+        return caller;
     }
 
     interface AbsAccumulator<V extends Union, R> {
@@ -206,8 +257,13 @@ public class ConverterBuilder<SERIALIZATION> {
 
         boolean markedAsTogetherHead;
         boolean indeterminateMode;
-        AbsAccumulator<?, SERIALIZATION> syntax;
-        AbsAccumulator<?, SERIALIZATION> syntaxTogether;
+        boolean annotateNothing;
+
+        AbsAccumulator<?, INPUT> forward;
+        AbsAccumulator<?, INPUT> forwardTogether;
+
+        AbsAccumulator<?, OUTPUT> backward;
+        AbsAccumulator<?, OUTPUT> backwardTogether;
 
         AbsParameterSolution(AbsParameterSolution parent, Class<?> fixedType) {
             this.parent = parent;
@@ -216,14 +272,19 @@ public class ConverterBuilder<SERIALIZATION> {
 
         abstract int size();
 
-        boolean hasSyntax() {
-            return syntax != null || syntaxTogether != null;
+        boolean hasForward() {
+            return forward != null || forwardTogether != null;
+        }
+
+        boolean hasBackward() {
+            return backward != null || backwardTogether != null;
         }
 
         boolean isInterestedToStart(Cartrofit.Parameter parameter) {
             if (fixedType.isAssignableFrom(parameter.getType())) {
-                if (syntax != null || markedAsTogetherHead) {
-                    return parameter.isAnnotationPresent(fixedAnnotationType)
+                if (forward != null || backward != null || markedAsTogetherHead) {
+                    return ((annotateNothing && fixedAnnotationType == null)
+                            || parameter.isAnnotationPresent(fixedAnnotationType))
                             && (extraCheck == null || extraCheck.test(parameter));
                 }
             }
@@ -234,8 +295,8 @@ public class ConverterBuilder<SERIALIZATION> {
             return fixedType == parameter.getType() && parameter.hasNoAnnotation();
         }
 
-        public final ConverterBuilder<SERIALIZATION> build() {
-            if (fixedAnnotationType == null) {
+        public final ConverterBuilder<INPUT, OUTPUT> build() {
+            if (parent == null && fixedAnnotationType == null) {
                 throw new CartrofitGrammarException("Must specify an annotation type before build()");
             }
             commitSolution(this);
@@ -259,13 +320,29 @@ public class ConverterBuilder<SERIALIZATION> {
             return this;
         }
 
-        public ParameterSolution1<T> advance(Accumulator<T, SERIALIZATION> forward) {
-            this.syntax = forward;
+        ParameterSolution1<T> noAnnotate() {
+            this.annotateNothing = true;
             return this;
         }
 
-        public ParameterSolution1<T> advanceIndeterminate(AccumulatorIndeterminate<T, SERIALIZATION> forward) {
-            this.syntax = forward;
+        public ParameterSolution1<T> forward(Accumulator<T, INPUT> forward) {
+            this.forward = forward;
+            return this;
+        }
+
+        public ParameterSolution1<T> backward(Accumulator<T, OUTPUT> backward) {
+            this.backward = backward;
+            return this;
+        }
+
+        public ParameterSolution1<T> forwardIndeterminate(AccumulatorIndeterminate<T, INPUT> forward) {
+            this.forward = forward;
+            this.indeterminateMode = true;
+            return this;
+        }
+
+        public ParameterSolution1<T> backwardIndeterminate(AccumulatorIndeterminate<T, OUTPUT> backward) {
+            this.backward = backward;
             this.indeterminateMode = true;
             return this;
         }
@@ -290,8 +367,13 @@ public class ConverterBuilder<SERIALIZATION> {
             return 2;
         }
 
-        public ParameterSolution2<T1, T2> syntaxTogether(Accumulator2<T1, T2, SERIALIZATION> forward) {
-            this.syntaxTogether = forward;
+        public ParameterSolution2<T1, T2> forwardTogether(Accumulator2<T1, T2, INPUT> forward) {
+            this.forwardTogether = forward;
+            return this;
+        }
+
+        public ParameterSolution2<T1, T2> backwardTogether(Accumulator2<T1, T2, OUTPUT> backward) {
+            this.backwardTogether = backward;
             return this;
         }
 
@@ -311,8 +393,13 @@ public class ConverterBuilder<SERIALIZATION> {
             return 3;
         }
 
-        public ParameterSolution3<T1, T2, T3> syntaxTogether(Accumulator3<T1, T2, T3, SERIALIZATION> forward) {
-            this.syntaxTogether = forward;
+        public ParameterSolution3<T1, T2, T3> forwardTogether(Accumulator3<T1, T2, T3, INPUT> forward) {
+            this.forwardTogether = forward;
+            return this;
+        }
+
+        public ParameterSolution3<T1, T2, T3> backwardTogether(Accumulator3<T1, T2, T3, OUTPUT> backward) {
+            this.backwardTogether = backward;
             return this;
         }
 
@@ -332,8 +419,13 @@ public class ConverterBuilder<SERIALIZATION> {
             return 4;
         }
 
-        public ParameterSolution4<T1, T2, T3, T4> syntaxTogether(Accumulator4<T1, T2, T3, T4, SERIALIZATION> forward) {
-            this.syntaxTogether = forward;
+        public ParameterSolution4<T1, T2, T3, T4> forwardTogether(Accumulator4<T1, T2, T3, T4, INPUT> forward) {
+            this.forwardTogether = forward;
+            return this;
+        }
+
+        public ParameterSolution4<T1, T2, T3, T4> backwardTogether(Accumulator4<T1, T2, T3, T4, OUTPUT> backward) {
+            this.backwardTogether = backward;
             return this;
         }
 
@@ -353,8 +445,13 @@ public class ConverterBuilder<SERIALIZATION> {
             return 5;
         }
 
-        public ParameterSolution5<T1, T2, T3, T4, T5> syntaxTogether(Accumulator5<T1, T2, T3, T4, T5, SERIALIZATION> forward) {
-            this.syntaxTogether = forward;
+        public ParameterSolution5<T1, T2, T3, T4, T5> forwardTogether(Accumulator5<T1, T2, T3, T4, T5, INPUT> forward) {
+            this.forwardTogether = forward;
+            return this;
+        }
+
+        public ParameterSolution5<T1, T2, T3, T4, T5> backwardTogether(Accumulator5<T1, T2, T3, T4, T5, OUTPUT> backward) {
+            this.backwardTogether = backward;
             return this;
         }
     }
@@ -371,11 +468,13 @@ public class ConverterBuilder<SERIALIZATION> {
         }
     }
 
-    private abstract class SolutionRecordKeeper {
+    private abstract class SolutionRecordKeeper<SERIALIZATION> {
         Cartrofit.ParameterGroup parameterGroup;
         ArrayList<SolutionRecord> solutionRecords = new ArrayList<>();
+        boolean input;
 
-        SolutionRecordKeeper(Cartrofit.ParameterGroup parameterGroup) {
+        SolutionRecordKeeper(boolean input, Cartrofit.ParameterGroup parameterGroup) {
+            this.input = input;
             this.parameterGroup = parameterGroup;
         }
 
@@ -393,19 +492,19 @@ public class ConverterBuilder<SERIALIZATION> {
                         array[j] = onCreateAccessibleParameter(record.start + j, avengers);
                     }
                     if (record.solution.indeterminateMode) {
-                        AccumulatorIndeterminate<Object, SERIALIZATION> accumulator =
-                                (AccumulatorIndeterminate<Object, SERIALIZATION>) record.solution.syntax;
+                        AccumulatorIndeterminate<Object, SERIALIZATION> accumulator = (AccumulatorIndeterminate<Object, SERIALIZATION>)
+                                (input ? record.solution.forward : record.solution.backward);
                         rawInput = accumulator.advance(rawInput, array);
                     } else {
-                        AbsAccumulator<Union, SERIALIZATION> accumulator =
-                                (AbsAccumulator<Union, SERIALIZATION>) record.solution.syntax;
+                        AbsAccumulator<Union, SERIALIZATION> accumulator = (AbsAccumulator<Union, SERIALIZATION>)
+                                (input ? record.solution.forwardTogether : record.solution.backwardTogether);
                         Union union = Union.of(array);
                         rawInput = accumulator.advanceDefault(rawInput, union);
                         union.recycle();
                     }
                 } else {
-                    Accumulator<Object, SERIALIZATION> accumulator
-                            = (Accumulator<Object, SERIALIZATION>) record.solution.syntax;
+                    Accumulator<Object, SERIALIZATION> accumulator = (Accumulator<Object, SERIALIZATION>)
+                            (input ? record.solution.forward : record.solution.backward);
                     rawInput = accumulator.advance(rawInput, onCreateAccessibleParameter(record.start, avengers));
                 }
             }
@@ -440,10 +539,10 @@ public class ConverterBuilder<SERIALIZATION> {
         }
     }
 
-    private class OutputConverterImpl extends SolutionRecordKeeper implements Converter<SERIALIZATION, Union> {
+    private class OutputConverterImpl extends SolutionRecordKeeper<OUTPUT> implements Converter<OUTPUT, Union> {
 
         OutputConverterImpl(Cartrofit.ParameterGroup parameterGroup) {
-            super(parameterGroup);
+            super(false, parameterGroup);
         }
 
         @Override
@@ -464,7 +563,7 @@ public class ConverterBuilder<SERIALIZATION> {
         }
 
         @Override
-        public Union convert(SERIALIZATION rawData) {
+        public Union convert(OUTPUT rawData) {
             final int count = parameterGroup.getParameterCount();
             if (count == 0) {
                 return Union.ofNull();
@@ -475,10 +574,10 @@ public class ConverterBuilder<SERIALIZATION> {
         }
     }
 
-    private class InputConverterImpl extends SolutionRecordKeeper implements Converter<Union, SERIALIZATION> {
+    private class InputConverterImpl extends SolutionRecordKeeper<INPUT> implements Converter<Union, INPUT> {
 
         InputConverterImpl(Cartrofit.ParameterGroup parameterGroup) {
-            super(parameterGroup);
+            super(true, parameterGroup);
         }
 
         @Override
@@ -499,13 +598,52 @@ public class ConverterBuilder<SERIALIZATION> {
         }
 
         @Override
-        public SERIALIZATION convert(Union parameterInput) {
-            SERIALIZATION rawInput = provider != null ? provider.get() : null;
+        public INPUT convert(Union parameterInput) {
+            INPUT rawInput = inputProvider != null ? inputProvider.get() : null;
             final int count = parameterGroup.getParameterCount();
             if (count == 0) {
                 return rawInput;
             }
             return assemble(rawInput, parameterInput);
+        }
+    }
+
+    private class ReturnConverterImpl implements Converter<OUTPUT, Object>, ParaVal<Object> {
+
+        AbsParameterSolution targetSolution;
+        Cartrofit.Parameter returnAsParameter;
+        Object tmpResult;
+
+        ReturnConverterImpl(AbsParameterSolution targetSolution, Cartrofit.Parameter returnAsParameter) {
+            this.targetSolution = targetSolution;
+            this.returnAsParameter = returnAsParameter;
+        }
+
+        @Override
+        public Object convert(OUTPUT value) {
+            Accumulator<Object, OUTPUT> accumulator
+                    = (Accumulator<Object, OUTPUT>) targetSolution.backward;
+            synchronized (this) {
+                accumulator.advance(value, this);
+                Object result = tmpResult;
+                tmpResult = null;
+                return result;
+            }
+        }
+
+        @Override
+        public Cartrofit.Parameter getParameter() {
+            return returnAsParameter;
+        }
+
+        @Override
+        public Object get() {
+            throw new UnsupportedOperationException("Invalid call");
+        }
+
+        @Override
+        public void set(Object value) {
+            tmpResult = value;
         }
     }
 }
