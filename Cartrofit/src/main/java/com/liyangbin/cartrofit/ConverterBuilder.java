@@ -14,19 +14,19 @@ import java.util.Arrays;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-public class ConverterBuilder<INPUT, OUTPUT> {
+public class ConverterBuilder<IN, OUT, A extends Annotation> {
 
-    private Supplier<INPUT> inputProvider;
+    private Supplier<IN> inputProvider;
     private final ArrayList<AbsParameterSolution> forwardSolutions = new ArrayList<>();
     private final ArrayList<AbsParameterSolution> backwardSolutions = new ArrayList<>();
     private final Class<?> callType;
-    private final CallAdapter.CallSolution<?> caller;
-    private final AbsParameterSolution plainOutSolution = takeAny().backward((old, more) -> {
-        more.set(old);
+    private final CallAdapter.CallSolution<A> caller;
+    private final AbsParameterSolution plainOutSolution = takeAny().output((old, para) -> {
+        para.set(old);
         return old;
     }).noAnnotate();
 
-    ConverterBuilder(Class<? extends FixedTypeCall<INPUT, OUTPUT>> callType, CallAdapter.CallSolution<?> caller) {
+    ConverterBuilder(Class<? extends FixedTypeCall<IN, OUT>> callType, CallAdapter.CallSolution<A> caller) {
         this.callType = callType;
         this.caller = caller;
     }
@@ -126,19 +126,19 @@ public class ConverterBuilder<INPUT, OUTPUT> {
         }
     }
 
-    Converter<Union, INPUT> checkIn(Cartrofit.ParameterGroup group) {
+    Converter<Union, IN> checkIn(Cartrofit.ParameterGroup group) {
         InputConverterImpl inputConverter = new InputConverterImpl(group);
         findSolutionDependency(true, group, inputConverter);
         return inputConverter;
     }
 
-    Converter<OUTPUT, Union> checkOutCallback(Cartrofit.ParameterGroup group) {
+    Converter<OUT, Union> checkOutCallback(Cartrofit.ParameterGroup group) {
         OutputConverterImpl outputConverter = new OutputConverterImpl(group);
         findSolutionDependency(false, group, outputConverter);
         return outputConverter;
     }
 
-    Converter<OUTPUT, Object> checkOutReturn(Cartrofit.Key key) {
+    Converter<OUT, Object> checkOutReturn(Cartrofit.Key key) {
         Cartrofit.Parameter returnParameter = key.getReturnAsParameter();
         if (returnParameter == null) {
             return null;
@@ -152,7 +152,7 @@ public class ConverterBuilder<INPUT, OUTPUT> {
         return null;
     }
 
-    public ConverterBuilder<INPUT, OUTPUT> provideBasic(Supplier<INPUT> provider) {
+    public ConverterBuilder<IN, OUT, A> provideBasic(Supplier<IN> provider) {
         this.inputProvider = provider;
         return ConverterBuilder.this;
     }
@@ -165,7 +165,7 @@ public class ConverterBuilder<INPUT, OUTPUT> {
         return new ParameterSolution1<>(Object.class);
     }
 
-    public CallAdapter.CallSolution<?> commit() {
+    private CallAdapter.CallSolution<A> commitParameter() {
         if (forwardSolutions.size() > 0) {
             caller.commitInputConverter(callType, this);
         }
@@ -176,34 +176,34 @@ public class ConverterBuilder<INPUT, OUTPUT> {
     }
 
     interface AbsAccumulator<V extends Union, R> {
-        R advanceDefault(R old, V more);
+        R advanceDefault(R old, V para);
     }
 
     public interface AccumulatorIndeterminate<V, R> extends AbsAccumulator<Union, R> {
 
         @Override
-        default R advanceDefault(R old, Union more) {
+        default R advanceDefault(R old, Union para) {
             throw new UnsupportedOperationException();
         }
 
-        R advance(R old, ParaVal<V>[] more);
+        R advance(R old, ParaVal<V>[] para);
     }
 
     public interface Accumulator<V, R> extends AbsAccumulator<Union1<ParaVal<V>>, R> {
 
         @Override
-        default R advanceDefault(R old, Union1<ParaVal<V>> more) {
-            return advance(old, more.value1);
+        default R advanceDefault(R old, Union1<ParaVal<V>> para) {
+            return advance(old, para.value1);
         }
 
-        R advance(R old, ParaVal<V> more);
+        R advance(R old, ParaVal<V> para);
     }
 
     public interface Accumulator2<V1, V2, R> extends AbsAccumulator<Union2<ParaVal<V1>, ParaVal<V2>>, R> {
 
         @Override
-        default R advanceDefault(R old, Union2<ParaVal<V1>, ParaVal<V2>> more) {
-            return advance(old, more.value1, more.value2);
+        default R advanceDefault(R old, Union2<ParaVal<V1>, ParaVal<V2>> para) {
+            return advance(old, para.value1, para.value2);
         }
 
         R advance(R old, ParaVal<V1> more1, ParaVal<V2> more2);
@@ -213,8 +213,8 @@ public class ConverterBuilder<INPUT, OUTPUT> {
             extends AbsAccumulator<Union3<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>>, R> {
 
         @Override
-        default R advanceDefault(R old, Union3<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>> more) {
-            return advance(old, more.value1, more.value2, more.value3);
+        default R advanceDefault(R old, Union3<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>> para) {
+            return advance(old, para.value1, para.value2, para.value3);
         }
 
         R advance(R old, ParaVal<V1> more1, ParaVal<V2> more2, ParaVal<V3> more3);
@@ -224,8 +224,8 @@ public class ConverterBuilder<INPUT, OUTPUT> {
             extends AbsAccumulator<Union4<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>, ParaVal<V4>>, R> {
 
         @Override
-        default R advanceDefault(R old, Union4<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>, ParaVal<V4>> more) {
-            return advance(old, more.value1, more.value2, more.value3, more.value4);
+        default R advanceDefault(R old, Union4<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>, ParaVal<V4>> para) {
+            return advance(old, para.value1, para.value2, para.value3, para.value4);
         }
 
         R advance(R old, ParaVal<V1> more1, ParaVal<V2> more2, ParaVal<V3> more3, ParaVal<V4> more4);
@@ -235,8 +235,8 @@ public class ConverterBuilder<INPUT, OUTPUT> {
             extends AbsAccumulator<Union5<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>, ParaVal<V4>, ParaVal<V5>>, R> {
 
         @Override
-        default R advanceDefault(R old, Union5<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>, ParaVal<V4>, ParaVal<V5>> more) {
-            return advance(old, more.value1, more.value2, more.value3, more.value4, more.value5);
+        default R advanceDefault(R old, Union5<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>, ParaVal<V4>, ParaVal<V5>> para) {
+            return advance(old, para.value1, para.value2, para.value3, para.value4, para.value5);
         }
 
         R advance(R old, ParaVal<V1> more1, ParaVal<V2> more2, ParaVal<V3> more3, ParaVal<V4> more4, ParaVal<V5> more5);
@@ -259,11 +259,11 @@ public class ConverterBuilder<INPUT, OUTPUT> {
         boolean indeterminateMode;
         boolean annotateNothing;
 
-        AbsAccumulator<?, INPUT> forward;
-        AbsAccumulator<?, INPUT> forwardTogether;
+        AbsAccumulator<?, IN> forward;
+        AbsAccumulator<?, IN> inputTogether;
 
-        AbsAccumulator<?, OUTPUT> backward;
-        AbsAccumulator<?, OUTPUT> backwardTogether;
+        AbsAccumulator<?, OUT> backward;
+        AbsAccumulator<?, OUT> outputTogether;
 
         AbsParameterSolution(AbsParameterSolution parent, Class<?> fixedType) {
             this.parent = parent;
@@ -273,11 +273,11 @@ public class ConverterBuilder<INPUT, OUTPUT> {
         abstract int size();
 
         boolean hasForward() {
-            return forward != null || forwardTogether != null;
+            return forward != null || inputTogether != null;
         }
 
         boolean hasBackward() {
-            return backward != null || backwardTogether != null;
+            return backward != null || outputTogether != null;
         }
 
         boolean isInterestedToStart(Cartrofit.Parameter parameter) {
@@ -295,12 +295,16 @@ public class ConverterBuilder<INPUT, OUTPUT> {
             return fixedType == parameter.getType() && parameter.hasNoAnnotation();
         }
 
-        public final ConverterBuilder<INPUT, OUTPUT> build() {
+        public final ConverterBuilder<IN, OUT, A> build() {
             if (parent == null && fixedAnnotationType == null) {
                 throw new CartrofitGrammarException("Must specify an annotation type before build()");
             }
             commitSolution(this);
             return parent != null ? parent.build() : ConverterBuilder.this;
+        }
+
+        public final CallAdapter.CallSolution<A> buildAndCommitParameter() {
+            return build().commitParameter();
         }
     }
 
@@ -320,28 +324,28 @@ public class ConverterBuilder<INPUT, OUTPUT> {
             return this;
         }
 
-        ParameterSolution1<T> noAnnotate() {
+        public ParameterSolution1<T> noAnnotate() {
             this.annotateNothing = true;
             return this;
         }
 
-        public ParameterSolution1<T> forward(Accumulator<T, INPUT> forward) {
+        public ParameterSolution1<T> input(Accumulator<T, IN> forward) {
             this.forward = forward;
             return this;
         }
 
-        public ParameterSolution1<T> backward(Accumulator<T, OUTPUT> backward) {
+        public ParameterSolution1<T> output(Accumulator<T, OUT> backward) {
             this.backward = backward;
             return this;
         }
 
-        public ParameterSolution1<T> forwardIndeterminate(AccumulatorIndeterminate<T, INPUT> forward) {
+        public ParameterSolution1<T> forwardIndeterminate(AccumulatorIndeterminate<T, IN> forward) {
             this.forward = forward;
             this.indeterminateMode = true;
             return this;
         }
 
-        public ParameterSolution1<T> backwardIndeterminate(AccumulatorIndeterminate<T, OUTPUT> backward) {
+        public ParameterSolution1<T> backwardIndeterminate(AccumulatorIndeterminate<T, OUT> backward) {
             this.backward = backward;
             this.indeterminateMode = true;
             return this;
@@ -367,13 +371,13 @@ public class ConverterBuilder<INPUT, OUTPUT> {
             return 2;
         }
 
-        public ParameterSolution2<T1, T2> forwardTogether(Accumulator2<T1, T2, INPUT> forward) {
-            this.forwardTogether = forward;
+        public ParameterSolution2<T1, T2> inputTogether(Accumulator2<T1, T2, IN> forward) {
+            this.inputTogether = forward;
             return this;
         }
 
-        public ParameterSolution2<T1, T2> backwardTogether(Accumulator2<T1, T2, OUTPUT> backward) {
-            this.backwardTogether = backward;
+        public ParameterSolution2<T1, T2> outputTogether(Accumulator2<T1, T2, OUT> backward) {
+            this.outputTogether = backward;
             return this;
         }
 
@@ -393,13 +397,13 @@ public class ConverterBuilder<INPUT, OUTPUT> {
             return 3;
         }
 
-        public ParameterSolution3<T1, T2, T3> forwardTogether(Accumulator3<T1, T2, T3, INPUT> forward) {
-            this.forwardTogether = forward;
+        public ParameterSolution3<T1, T2, T3> inputTogether(Accumulator3<T1, T2, T3, IN> forward) {
+            this.inputTogether = forward;
             return this;
         }
 
-        public ParameterSolution3<T1, T2, T3> backwardTogether(Accumulator3<T1, T2, T3, OUTPUT> backward) {
-            this.backwardTogether = backward;
+        public ParameterSolution3<T1, T2, T3> outputTogether(Accumulator3<T1, T2, T3, OUT> backward) {
+            this.outputTogether = backward;
             return this;
         }
 
@@ -419,13 +423,13 @@ public class ConverterBuilder<INPUT, OUTPUT> {
             return 4;
         }
 
-        public ParameterSolution4<T1, T2, T3, T4> forwardTogether(Accumulator4<T1, T2, T3, T4, INPUT> forward) {
-            this.forwardTogether = forward;
+        public ParameterSolution4<T1, T2, T3, T4> inputTogether(Accumulator4<T1, T2, T3, T4, IN> forward) {
+            this.inputTogether = forward;
             return this;
         }
 
-        public ParameterSolution4<T1, T2, T3, T4> backwardTogether(Accumulator4<T1, T2, T3, T4, OUTPUT> backward) {
-            this.backwardTogether = backward;
+        public ParameterSolution4<T1, T2, T3, T4> outputTogether(Accumulator4<T1, T2, T3, T4, OUT> backward) {
+            this.outputTogether = backward;
             return this;
         }
 
@@ -445,13 +449,13 @@ public class ConverterBuilder<INPUT, OUTPUT> {
             return 5;
         }
 
-        public ParameterSolution5<T1, T2, T3, T4, T5> forwardTogether(Accumulator5<T1, T2, T3, T4, T5, INPUT> forward) {
-            this.forwardTogether = forward;
+        public ParameterSolution5<T1, T2, T3, T4, T5> inputTogether(Accumulator5<T1, T2, T3, T4, T5, IN> forward) {
+            this.inputTogether = forward;
             return this;
         }
 
-        public ParameterSolution5<T1, T2, T3, T4, T5> backwardTogether(Accumulator5<T1, T2, T3, T4, T5, OUTPUT> backward) {
-            this.backwardTogether = backward;
+        public ParameterSolution5<T1, T2, T3, T4, T5> outputTogether(Accumulator5<T1, T2, T3, T4, T5, OUT> backward) {
+            this.outputTogether = backward;
             return this;
         }
     }
@@ -497,11 +501,12 @@ public class ConverterBuilder<INPUT, OUTPUT> {
                         rawInput = accumulator.advance(rawInput, array);
                     } else {
                         AbsAccumulator<Union, SERIALIZATION> accumulator = (AbsAccumulator<Union, SERIALIZATION>)
-                                (input ? record.solution.forwardTogether : record.solution.backwardTogether);
+                                (input ? record.solution.inputTogether : record.solution.outputTogether);
                         Union union = Union.of(array);
                         rawInput = accumulator.advanceDefault(rawInput, union);
                         union.recycle();
                     }
+                    // TODO： warning if user does not call set
                 } else {
                     Accumulator<Object, SERIALIZATION> accumulator = (Accumulator<Object, SERIALIZATION>)
                             (input ? record.solution.forward : record.solution.backward);
@@ -539,7 +544,7 @@ public class ConverterBuilder<INPUT, OUTPUT> {
         }
     }
 
-    private class OutputConverterImpl extends SolutionRecordKeeper<OUTPUT> implements Converter<OUTPUT, Union> {
+    private class OutputConverterImpl extends SolutionRecordKeeper<OUT> implements Converter<OUT, Union> {
 
         OutputConverterImpl(Cartrofit.ParameterGroup parameterGroup) {
             super(false, parameterGroup);
@@ -563,7 +568,7 @@ public class ConverterBuilder<INPUT, OUTPUT> {
         }
 
         @Override
-        public Union convert(OUTPUT rawData) {
+        public Union convert(OUT rawData) {
             final int count = parameterGroup.getParameterCount();
             if (count == 0) {
                 return Union.ofNull();
@@ -574,7 +579,7 @@ public class ConverterBuilder<INPUT, OUTPUT> {
         }
     }
 
-    private class InputConverterImpl extends SolutionRecordKeeper<INPUT> implements Converter<Union, INPUT> {
+    private class InputConverterImpl extends SolutionRecordKeeper<IN> implements Converter<Union, IN> {
 
         InputConverterImpl(Cartrofit.ParameterGroup parameterGroup) {
             super(true, parameterGroup);
@@ -598,8 +603,8 @@ public class ConverterBuilder<INPUT, OUTPUT> {
         }
 
         @Override
-        public INPUT convert(Union parameterInput) {
-            INPUT rawInput = inputProvider != null ? inputProvider.get() : null;
+        public IN convert(Union parameterInput) {
+            IN rawInput = inputProvider != null ? inputProvider.get() : null;
             final int count = parameterGroup.getParameterCount();
             if (count == 0) {
                 return rawInput;
@@ -608,7 +613,7 @@ public class ConverterBuilder<INPUT, OUTPUT> {
         }
     }
 
-    private class ReturnConverterImpl implements Converter<OUTPUT, Object>, ParaVal<Object> {
+    private class ReturnConverterImpl implements Converter<OUT, Object>, ParaVal<Object> {
 
         AbsParameterSolution targetSolution;
         Cartrofit.Parameter returnAsParameter;
@@ -620,9 +625,9 @@ public class ConverterBuilder<INPUT, OUTPUT> {
         }
 
         @Override
-        public Object convert(OUTPUT value) {
-            Accumulator<Object, OUTPUT> accumulator
-                    = (Accumulator<Object, OUTPUT>) targetSolution.backward;
+        public Object convert(OUT value) {
+            Accumulator<Object, OUT> accumulator
+                    = (Accumulator<Object, OUT>) targetSolution.backward;
             synchronized (this) {
                 accumulator.advance(value, this);
                 Object result = tmpResult;

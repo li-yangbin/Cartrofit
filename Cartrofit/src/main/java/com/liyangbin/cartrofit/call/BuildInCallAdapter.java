@@ -49,8 +49,8 @@ public class BuildInCallAdapter extends CallAdapter {
                 .provide((category, combine, key) -> {
                     CombineCall combineCall = new CombineCall();
                     for (int element : combine.elements()) {
-                        combineCall.addChildCall(inflateByIdIfThrow(key, element,
-                                category & (CATEGORY_TRACK | CATEGORY_GET)));
+                        combineCall.addChildCall(getOrCreateCallById(key, element,
+                                category & (CATEGORY_TRACK | CATEGORY_GET), false));
                     }
                     return combineCall;
                 });
@@ -88,7 +88,7 @@ public class BuildInCallAdapter extends CallAdapter {
                     final RegisterCall registerCall = new RegisterCall();
                     inflateCallback(callbackParameter.getType(), CATEGORY_TRACK,
                             call -> {
-                        Call returnCall = reInflate(key, CATEGORY_SET);
+                        Call returnCall = createChildCall(key, CATEGORY_SET);
                         Call parameterCall = createInjectCommand(key);
                         registerCall.addChildCall(call, returnCall, parameterCall);
                     });
@@ -108,16 +108,13 @@ public class BuildInCallAdapter extends CallAdapter {
                 })
                 .provide((category, unregister, key) -> {
                     UnregisterCall unregisterCall = new UnregisterCall();
-                    unregisterCall.setRegisterCall((RegisterCall) inflateByIdIfThrow(key,
-                            unregister.value(), CATEGORY_TRACK));
+                    unregisterCall.setRegisterCall((RegisterCall) getOrCreateCallById(key,
+                            unregister.value(), CATEGORY_TRACK, false));
                     return unregisterCall;
                 });
 
         builder.create(Delegate.class)
-                .provide((category, delegate, key) -> {
-                    Call delegateTarget = inflateById(key, delegate.value(), category);
-                    return delegateTarget != null ? new DelegateCall(delegateTarget) : null;
-                });
+                .provide((category, delegate, key) -> getOrCreateCallById(key, delegate.value(), category, true));
     }
 
     public Call wrapNormalTrack2RegisterIfNeeded(Call call) {

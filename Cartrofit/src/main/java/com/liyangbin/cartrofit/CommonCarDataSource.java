@@ -10,8 +10,9 @@ import android.car.hardware.hvac.CarHvacManager;
 import android.car.hardware.property.CarPropertyManager;
 import android.util.SparseArray;
 
+import com.liyangbin.cartrofit.flow.Flow;
+
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;

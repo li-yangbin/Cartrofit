@@ -1,6 +1,7 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.WrappedData;
+import com.liyangbin.cartrofit.flow.Flow;
 
 import java.util.function.Consumer;
 import java.util.function.Function;

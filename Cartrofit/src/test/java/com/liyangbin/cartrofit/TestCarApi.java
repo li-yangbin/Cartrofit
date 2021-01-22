@@ -15,6 +15,7 @@ import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Set;
 import com.liyangbin.cartrofit.annotation.Track;
 import com.liyangbin.cartrofit.annotation.Unregister;
+import com.liyangbin.cartrofit.flow.Flow;
 
 import io.reactivex.Observable;
 import io.reactivex.Single;

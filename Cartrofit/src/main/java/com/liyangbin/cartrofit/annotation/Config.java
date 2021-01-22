@@ -8,7 +8,5 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 @Target(METHOD)
 @Retention(RUNTIME)
-public @interface Restore {
-    int value();
-    int restoreTimeout() default 1500;
+public @interface Config {
 }

@@ -1,5 +1,7 @@
 package com.liyangbin.cartrofit;
 
+import com.liyangbin.cartrofit.flow.Flow;
+
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -89,7 +91,7 @@ class FlowObservable<T> extends Observable<T> implements Consumer<T>, Disposable
         if (!disposed.get()) {
             try {
                 this.observer = observer;
-                flow.addObserver(this);
+                flow.subscribe(this);
             } catch (Exception exception) {
                 observer.onError(exception);
             }
@@ -114,7 +116,7 @@ class FlowObservable<T> extends Observable<T> implements Consumer<T>, Disposable
     @Override
     public void dispose() {
         if (!disposed.getAndSet(true)) {
-            flow.removeObserver(this);
+            flow.stopSubscribe();
             flow = null;
         }
     }

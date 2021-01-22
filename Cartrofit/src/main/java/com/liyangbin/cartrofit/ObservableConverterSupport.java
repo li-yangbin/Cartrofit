@@ -11,6 +11,7 @@ import androidx.databinding.ObservableLong;
 import androidx.databinding.PropertyChangeRegistry;
 
 import com.liyangbin.cartrofit.annotation.WrappedData;
+import com.liyangbin.cartrofit.flow.Flow;
 
 import java.lang.reflect.Field;
 import java.util.function.Consumer;
@@ -45,8 +46,11 @@ class ObservableConverter {
 class ObservableConverterField implements FlowConverter<ObservableField<?>> {
 
     @Override
-    public ObservableField<?> convert(Flow<?> value) {
-        return new FlowObservableField<>(value);
+    public ObservableField<?> convert(Flow<?> flow) {
+        if (!flow.isHot()) {
+            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableField");
+        }
+        return new FlowObservableField<>(flow);
     }
 
     private static class FlowObservableField<T> extends ObservableField<T> implements Consumer<T> {
@@ -67,7 +71,7 @@ class ObservableConverterField implements FlowConverter<ObservableField<?>> {
             super.addOnPropertyChangedCallback(callback);
             if (!hasCallback) {
                 hasCallback = true;
-                flow.addObserver(this);
+                flow.subscribe(this);
             }
         }
 
@@ -76,7 +80,7 @@ class ObservableConverterField implements FlowConverter<ObservableField<?>> {
             super.removeOnPropertyChangedCallback(callback);
             if (hasCallback && ObservableConverter.isCallbackEmpty(this)) {
                 hasCallback = false;
-                this.flow.removeObserver(this);
+                this.flow.stopSubscribe();
             }
         }
     }
@@ -86,8 +90,11 @@ class ObservableConverterField implements FlowConverter<ObservableField<?>> {
 class ObservableConverterInt implements FlowConverter<ObservableInt> {
 
     @Override
-    public ObservableInt convert(Flow<?> value) {
-        return new FlowObservableInt<>(value);
+    public ObservableInt convert(Flow<?> flow) {
+        if (!flow.isHot()) {
+            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableInt");
+        }
+        return new FlowObservableInt<>(flow);
     }
 
     private static class FlowObservableInt<T> extends ObservableInt implements Consumer<T> {
@@ -103,7 +110,7 @@ class ObservableConverterInt implements FlowConverter<ObservableInt> {
             super.addOnPropertyChangedCallback(callback);
             if (!hasCallback) {
                 hasCallback = true;
-                this.flow.addObserver(this);
+                this.flow.subscribe(this);
             }
         }
 
@@ -112,7 +119,7 @@ class ObservableConverterInt implements FlowConverter<ObservableInt> {
             super.removeOnPropertyChangedCallback(callback);
             if (hasCallback && ObservableConverter.isCallbackEmpty(this)) {
                 hasCallback = false;
-                this.flow.removeObserver(this);
+                this.flow.stopSubscribe();
             }
         }
 
@@ -127,8 +134,11 @@ class ObservableConverterInt implements FlowConverter<ObservableInt> {
 class ObservableConverterByte implements FlowConverter<ObservableByte> {
 
     @Override
-    public ObservableByte convert(Flow<?> value) {
-        return new FlowObservableByte<>(value);
+    public ObservableByte convert(Flow<?> flow) {
+        if (!flow.isHot()) {
+            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableByte");
+        }
+        return new FlowObservableByte<>(flow);
     }
 
     private static class FlowObservableByte<T> extends ObservableByte implements Consumer<T> {
@@ -144,7 +154,7 @@ class ObservableConverterByte implements FlowConverter<ObservableByte> {
             super.addOnPropertyChangedCallback(callback);
             if (!hasCallback) {
                 hasCallback = true;
-                this.flow.addObserver(this);
+                this.flow.subscribe(this);
             }
         }
 
@@ -153,7 +163,7 @@ class ObservableConverterByte implements FlowConverter<ObservableByte> {
             super.removeOnPropertyChangedCallback(callback);
             if (hasCallback && ObservableConverter.isCallbackEmpty(this)) {
                 hasCallback = false;
-                this.flow.removeObserver(this);
+                this.flow.stopSubscribe();
             }
         }
 
@@ -168,8 +178,11 @@ class ObservableConverterByte implements FlowConverter<ObservableByte> {
 class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
 
     @Override
-    public ObservableBoolean convert(Flow<?> value) {
-        return new FlowObservableBoolean<>(value);
+    public ObservableBoolean convert(Flow<?> flow) {
+        if (!flow.isHot()) {
+            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableBoolean");
+        }
+        return new FlowObservableBoolean<>(flow);
     }
 
     private static class FlowObservableBoolean<T> extends ObservableBoolean implements Consumer<T> {
@@ -185,7 +198,7 @@ class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
             super.addOnPropertyChangedCallback(callback);
             if (!hasCallback) {
                 hasCallback = true;
-                this.flow.addObserver(this);
+                this.flow.subscribe(this);
             }
         }
 
@@ -194,7 +207,7 @@ class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
             super.removeOnPropertyChangedCallback(callback);
             if (hasCallback && ObservableConverter.isCallbackEmpty(this)) {
                 hasCallback = false;
-                this.flow.removeObserver(this);
+                this.flow.stopSubscribe();
             }
         }
 
@@ -209,8 +222,11 @@ class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
 class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
 
     @Override
-    public ObservableFloat convert(Flow<?> value) {
-        return new FlowObservableFloat<>(value);
+    public ObservableFloat convert(Flow<?> flow) {
+        if (!flow.isHot()) {
+            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableFloat");
+        }
+        return new FlowObservableFloat<>(flow);
     }
 
     private static class FlowObservableFloat<T> extends ObservableFloat implements Consumer<T> {
@@ -226,7 +242,7 @@ class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
             super.addOnPropertyChangedCallback(callback);
             if (!hasCallback) {
                 hasCallback = true;
-                this.flow.addObserver(this);
+                this.flow.subscribe(this);
             }
         }
 
@@ -235,7 +251,7 @@ class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
             super.removeOnPropertyChangedCallback(callback);
             if (hasCallback && ObservableConverter.isCallbackEmpty(this)) {
                 hasCallback = false;
-                this.flow.removeObserver(this);
+                this.flow.stopSubscribe();
             }
         }
 
@@ -250,8 +266,11 @@ class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
 class ObservableConverterLong implements FlowConverter<ObservableLong> {
 
     @Override
-    public ObservableLong convert(Flow<?> value) {
-        return new FlowObservableLong<>(value);
+    public ObservableLong convert(Flow<?> flow) {
+        if (!flow.isHot()) {
+            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableLong");
+        }
+        return new FlowObservableLong<>(flow);
     }
 
     private static class FlowObservableLong<T> extends ObservableLong implements Consumer<T> {
@@ -267,7 +286,7 @@ class ObservableConverterLong implements FlowConverter<ObservableLong> {
             super.addOnPropertyChangedCallback(callback);
             if (!hasCallback) {
                 hasCallback = true;
-                this.flow.addObserver(this);
+                this.flow.subscribe(this);
             }
         }
 
@@ -276,7 +295,7 @@ class ObservableConverterLong implements FlowConverter<ObservableLong> {
             super.removeOnPropertyChangedCallback(callback);
             if (hasCallback && ObservableConverter.isCallbackEmpty(this)) {
                 hasCallback = false;
-                this.flow.removeObserver(this);
+                this.flow.stopSubscribe();
             }
         }
 

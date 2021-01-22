@@ -4,7 +4,7 @@ import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CallGroup;
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
-import com.liyangbin.cartrofit.Flow;
+import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.ParameterContext;
 import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.Timeout;

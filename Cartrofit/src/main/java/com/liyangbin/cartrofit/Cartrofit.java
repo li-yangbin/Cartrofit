@@ -6,12 +6,11 @@ import androidx.annotation.RequiresApi;
 
 import com.liyangbin.cartrofit.annotation.Bind;
 import com.liyangbin.cartrofit.annotation.GenerateId;
-import com.liyangbin.cartrofit.annotation.Restore;
 import com.liyangbin.cartrofit.annotation.Scope;
-import com.liyangbin.cartrofit.annotation.Sticky;
 import com.liyangbin.cartrofit.annotation.Token;
 import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.call.BuildInCallAdapter;
+import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.funtion.Union;
 
 import java.lang.annotation.Annotation;
@@ -213,19 +212,20 @@ public final class Cartrofit {
                     }
                 }
 
-                boolean hasSet = call.hasCategory(CallAdapter.CATEGORY_SET);
-                boolean hasTrack = call.hasCategory(CallAdapter.CATEGORY_TRACK);
-                if (hasSet ^ hasTrack) {
-                    Restore restore = key.getAnnotation(Restore.class);
-                    if (restore != null) {
-                        call.setRestoreTarget(getOrCreateCall(key.record, key,
-                                hasSet ? CallAdapter.CATEGORY_TRACK : CallAdapter.CATEGORY_SET));
-                    }
-                }
+                // TODO: restore
+//                boolean hasSet = call.hasCategory(CallAdapter.CATEGORY_SET);
+//                boolean hasTrack = call.hasCategory(CallAdapter.CATEGORY_TRACK);
+//                if (hasSet ^ hasTrack) {
+//                    Restore restore = key.getAnnotation(Restore.class);
+//                    if (restore != null) {
+//                        call.setRestoreTarget(getOrCreateCall(key.record, key,
+//                                hasSet ? CallAdapter.CATEGORY_TRACK : CallAdapter.CATEGORY_SET));
+//                    }
+//                }
 
-                if (hasTrack && key.isAnnotationPresent(Sticky.class)) {
-                    call.enableStickyTrack();
-                }
+//                if (hasTrack && key.isAnnotationPresent(Sticky.class)) {
+//                    call.enableStickyTrack();
+//                }
 
                 Call wrappedCall = ((BuildInCallAdapter) mBuildInCallAdapter).wrapNormalTrack2RegisterIfNeeded(call);
                 if (wrappedCall != null) {
@@ -317,7 +317,7 @@ public final class Cartrofit {
         }
     }
 
-    FlowConverter<?> findFlowConverter(Class<?> target) {
+    public static FlowConverter<?> findFlowConverter(Class<?> target) {
         return FLOW_CONVERTER_MAP.get(target);
     }
 
@@ -511,28 +511,40 @@ public final class Cartrofit {
         return call;
     }
 
-    Call getOrCreateCallById(ApiRecord<?> record, int id, int flag, boolean throwIfNotFound) {
+    Call getOrCreateCallById(Key key, ApiRecord<?> record, int id, int flag, boolean fromDelegate) {
         Method method = record.selfDependency.get(id);
         if (method == null) {
             Class<?> apiClass = ID_ROUTER.findApiClassById(id);
             if (apiClass == record.clazz || apiClass == null) {
                 throw new CartrofitGrammarException("Can not find target Id:" + id + " from:" + record.clazz);
             }
-            return getOrCreateCallById(getApi(apiClass, true), id, flag, throwIfNotFound);
+            return getOrCreateCallById(key, getApi(apiClass, true), id, flag, fromDelegate);
         }
-        Call call = getOrCreateCall(record, new Key(record, method, false), flag);
-        if (throwIfNotFound && call == null) {
+        Key targetKey = new Key(record, method, false);
+        Call call;
+        if (fromDelegate) {
+            key.setDelegateKey(targetKey);
+            call = getOrCreateCall(record, key, flag, false);
+        } else {
+            call = getOrCreateCall(record, targetKey, flag, true);
+        }
+        if (call == null) {
             throw new CartrofitGrammarException("Can not resolve target Id:" + id
                     + " in specific type from:" + this);
         }
         return call;
     }
 
-    Call getOrCreateCall(ApiRecord<?> record, Key key, int flag) {
-        Call call = mCallCache.get(key);
-        if (call == null) {
-            call = record.createAdapterCall(key, flag);
-            mCallCache.put(key, call);
+    Call getOrCreateCall(ApiRecord<?> record, Key key, int category, boolean fromCache) {
+        Call call;
+        if (fromCache) {
+            call = mCallCache.get(key);
+            if (call == null) {
+                call = record.createAdapterCall(key, category);
+                mCallCache.put(key, call);
+            }
+        } else {
+            call = record.createAdapterCall(key, category);
         }
         return call;
     }
@@ -568,11 +580,13 @@ public final class Cartrofit {
         ApiRecord<?> record;
         private int mId = -1;
 
+        private Annotation[] annotations;
         private int parameterCount = -1;
         private int parameterGroupCount = -1;
         private Parameter returnParameter;
         private Parameter[] parameters;
         private ParameterGroup[] parameterGroups;
+        private Key delegateKey;
 
         Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
             this.record = record;
@@ -586,6 +600,10 @@ public final class Cartrofit {
             this.method = null;
             this.field = field;
             this.isCallbackEntry = false;
+        }
+
+        void setDelegateKey(Key delegateKey) {
+            this.delegateKey = delegateKey;
         }
 
         private static <A extends Annotation> A find(Annotation[] annotations, Class<A> expectClass) {
@@ -666,8 +684,6 @@ public final class Cartrofit {
             final Class<?> type;
             final Type genericType;
 
-            Annotation[] annotations = method.getDeclaredAnnotations();
-
             ReturnAsParameter(Class<?> type, Type genericType) {
                 this.type = type;
                 this.genericType = genericType;
@@ -675,22 +691,22 @@ public final class Cartrofit {
 
             @Override
             public boolean isAnnotationPresent(Class<? extends Annotation> clazz) {
-                return find(annotations, clazz) != null;
+                return Key.this.isAnnotationPresent(clazz);
             }
 
             @Override
             public <A extends Annotation> A getAnnotation(Class<A> clazz) {
-                return find(annotations, clazz);
+                return Key.this.getAnnotation(clazz);
             }
 
             @Override
             public Annotation[] getAnnotations() {
-                return annotations;
+                return Key.this.getAnnotations();
             }
 
             @Override
             public boolean hasNoAnnotation() {
-                return annotations == null || annotations.length == 0;
+                return false;
             }
 
             @Override
@@ -979,14 +995,29 @@ public final class Cartrofit {
             }
         }
 
+        public Annotation[] getAnnotations() {
+            if (annotations == null) {
+                Annotation[] fromDelegate = delegateKey != null ? delegateKey.getAnnotations() : null;
+                Annotation[] fromSelf = method != null ? method.getDeclaredAnnotations() : field.getDeclaredAnnotations();
+                if (fromDelegate == null || fromDelegate.length == 0) {
+                    annotations = fromSelf;
+                } else if (fromSelf != null) {
+                    // TODO: remove duplicate annotation type
+                    Annotation[] annotations = new Annotation[fromDelegate.length + fromSelf.length];
+                    System.arraycopy(fromSelf, 0, annotations, 0, fromSelf.length);
+                    System.arraycopy(fromDelegate, 0, annotations, fromSelf.length, fromDelegate.length);
+                    this.annotations = annotations;
+                }
+            }
+            return annotations;
+        }
+
         public <T extends Annotation> T getAnnotation(Class<T> annotationClass) {
-            return method != null ? method.getDeclaredAnnotation(annotationClass)
-                    : field.getDeclaredAnnotation(annotationClass);
+            return find(getAnnotations(), annotationClass);
         }
 
         public <T extends Annotation> boolean isAnnotationPresent(Class<T> annotationClass) {
-            return method != null ? method.isAnnotationPresent(annotationClass)
-                    : field.isAnnotationPresent(annotationClass);
+            return find(getAnnotations(), annotationClass) != null;
         }
 
         public Class<?> getReturnType() {

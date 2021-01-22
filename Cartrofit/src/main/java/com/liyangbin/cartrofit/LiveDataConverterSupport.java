@@ -3,6 +3,8 @@ package com.liyangbin.cartrofit;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
+import com.liyangbin.cartrofit.flow.Flow;
+
 import java.util.function.Consumer;
 
 class LiveDataConverter {
@@ -19,15 +21,21 @@ class LiveDataConverter {
 
 class LiveDataConverterDefault implements FlowConverter<LiveData<?>> {
     @Override
-    public LiveData<?> convert(Flow<?> value) {
-        return new FlowLiveData<>(value);
+    public LiveData<?> convert(Flow<?> flow) {
+        if (!flow.isHot()) {
+            throw new IllegalStateException("Can not convert cold flow:" + flow + " to LiveData");
+        }
+        return new FlowLiveData<>(flow);
     }
 }
 
 class LiveDataConverterMutable implements FlowConverter<MutableLiveData<?>> {
     @Override
-    public MutableLiveData<?> convert(Flow<?> value) {
-        return new FlowLiveData<>(value);
+    public MutableLiveData<?> convert(Flow<?> flow) {
+        if (!flow.isHot()) {
+            throw new IllegalStateException("Can not convert cold flow:" + flow + " to LiveData");
+        }
+        return new FlowLiveData<>(flow);
     }
 }
 
@@ -41,13 +49,13 @@ class FlowLiveData<T> extends MutableLiveData<T> implements Consumer<T> {
     @Override
     protected void onActive() {
         super.onActive();
-        flow.addObserver(this);
+        flow.subscribe(this);
     }
 
     @Override
     protected void onInactive() {
         super.onInactive();
-        flow.removeObserver(this);
+        flow.stopSubscribe();
     }
 
     @Override

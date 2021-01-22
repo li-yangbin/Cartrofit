@@ -1,6 +1,7 @@
 package com.liyangbin.cartrofit;
 
 import android.car.hardware.CarPropertyValue;
+import android.car.hardware.property.CarPropertyEvent;
 
 import androidx.annotation.Nullable;
 
@@ -63,6 +64,7 @@ public class TestCarManager extends CarManager2 {
 //                        } else {
                             System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + obj + "============================");
 //                        }
+                        CarPropertyEvent
                         notifyChange(new CarPropertyValue<>(key, 0, obj));
                     }
                     token = !token;

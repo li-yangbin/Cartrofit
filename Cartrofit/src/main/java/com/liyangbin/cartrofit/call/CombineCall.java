@@ -3,7 +3,7 @@ package com.liyangbin.cartrofit.call;
 import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CallAdapter;
 import com.liyangbin.cartrofit.CallGroup;
-import com.liyangbin.cartrofit.Flow;
+import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.funtion.Union;
 
 import java.util.ArrayList;

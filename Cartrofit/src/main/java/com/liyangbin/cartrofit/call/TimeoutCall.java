@@ -1,7 +1,7 @@
 package com.liyangbin.cartrofit.call;
 
 import com.liyangbin.cartrofit.Call;
-import com.liyangbin.cartrofit.Flow;
+import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.funtion.Union;
 
 import java.util.HashMap;

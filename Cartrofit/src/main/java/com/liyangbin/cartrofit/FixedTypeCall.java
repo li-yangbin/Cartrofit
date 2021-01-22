@@ -1,5 +1,6 @@
 package com.liyangbin.cartrofit;
 
+import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.funtion.Converter;
 import com.liyangbin.cartrofit.funtion.Union;
 
@@ -16,7 +17,7 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
         CallAdapter adapter = getAdapter();
         inputConverter = adapter.findInputConverter(this);
         if (hasCategory(CallAdapter.CATEGORY_TRACK)) {
-            if (key.isCallbackEntry) {
+            if (getKey().isCallbackEntry) {
                 outputConverter = adapter.findCallbackOutputConverter(this);
             } else {
                 flowConverter = adapter.findFlowConverter(this);
@@ -32,18 +33,14 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
         INPUT input = inputConverter.convert(parameter);
         if (hasCategory(CallAdapter.CATEGORY_TRACK)) {
             Flow<OUTPUT> result = doTrackInvoke(input);
-            if (isStickyTrackEnable()) {
-                result = result.sticky();
-            }
-            result = result.untilReceive(onReceiveCall);
-            if (key.isCallbackEntry) {
+//            if (isStickyTrackEnable()) {
+//                result = result.sticky();
+//            }
+            if (getKey().isCallbackEntry) {
                 return result.map(outputConverter);
             } else {
-                if (returnConverter != null) {
-                    return flowConverter != null ? flowConverter.convert(result.map(returnConverter)) : null;
-                } else {
-                    return flowConverter != null ? flowConverter.convert(result) : null;
-                }
+                Flow<?> userFlow = returnConverter != null ? result.map(returnConverter) : result;
+                return flowConverter != null ? flowConverter.convert(userFlow) : userFlow;
             }
         } else {
             OUTPUT output = doTypedInvoke(input);

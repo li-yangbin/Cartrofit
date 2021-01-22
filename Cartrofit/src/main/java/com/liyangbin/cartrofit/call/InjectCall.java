@@ -6,17 +6,14 @@ import com.liyangbin.cartrofit.CallGroup;
 import com.liyangbin.cartrofit.InjectReceiver;
 import com.liyangbin.cartrofit.funtion.Union;
 
-public class InjectCall extends CallGroup<Call> implements CallAdapter.FieldAccessible {
+import java.lang.reflect.Field;
+
+public class InjectCall extends CallGroup<Call> {
 
     Class<?> targetClass;
 
     InjectCall(Class<?> targetClass) {
         this.targetClass = targetClass;
-    }
-
-    @Override
-    public CallAdapter.FieldAccessible asFieldAccessible() {
-        return key.field != null ? this : null;
     }
 
     @Override
@@ -51,16 +48,16 @@ public class InjectCall extends CallGroup<Call> implements CallAdapter.FieldAcce
                 if (childCall instanceof InjectCall) {
                     childInvoke(childCall, parameter);
                 } else {
-                    CallAdapter.FieldAccessible childKeyAccess = childCall.asFieldAccessible();
-                    if (childKeyAccess != null) {
+                    Field field = childCall.getKey().field;
+                    if (field != null) {
                         boolean isGetCommand = childCall.hasCategory(CallAdapter.CATEGORY_GET
                                 | CallAdapter.CATEGORY_TRACK);
                         boolean isSetCommand = !isGetCommand
                                 && childCall.hasCategory(CallAdapter.CATEGORY_SET);
                         if (doGet && isGetCommand) {
-                            childKeyAccess.set(target, childInvoke(childCall, parameter));
+                            field.set(target, childInvoke(childCall, parameter));
                         } else if (doSet && isSetCommand) {
-                            Object setValue = childKeyAccess.get(target);
+                            Object setValue = field.get(target);
                             childInvokeWithExtra(childCall, parameter, setValue);
                         }
                     }
@@ -76,25 +73,4 @@ public class InjectCall extends CallGroup<Call> implements CallAdapter.FieldAcce
         }
         return null;
     }
-
-    @Override
-    public void set(Object target, Object value) throws IllegalAccessException {
-        throw new RuntimeException("impossible situation");
-    }
-
-    @Override
-    public Object get(Object target) throws IllegalAccessException {
-        throw new RuntimeException("impossible situation");
-    }
-
-//    @Override
-//    public CommandType getType() {
-//        return CommandType.INJECT;
-//    }
-//
-//    @Override
-//    String toCommandString() {
-//        String stable = injectClass.getSimpleName();
-//        return stable + " " + super.toCommandString();
-//    }
 }

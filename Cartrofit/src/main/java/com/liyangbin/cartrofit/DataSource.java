@@ -2,6 +2,8 @@ package com.liyangbin.cartrofit;
 
 import android.car.hardware.CarPropertyValue;
 
+import com.liyangbin.cartrofit.flow.Flow;
+
 public interface DataSource {
     Object get(int key, int area, CarType type);
 

@@ -4,11 +4,10 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
 import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.ElementType.PARAMETER;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
-@Target(METHOD)
+@Target({METHOD, PARAMETER})
 @Retention(RUNTIME)
-public @interface Restore {
-    int value();
-    int restoreTimeout() default 1500;
+public @interface Availability {
 }
