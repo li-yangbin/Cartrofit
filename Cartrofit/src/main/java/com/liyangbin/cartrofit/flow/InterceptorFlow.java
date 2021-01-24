@@ -2,6 +2,7 @@ package com.liyangbin.cartrofit.flow;
 
 import java.util.function.Consumer;
 
+// TODO: delete
 public class InterceptorFlow<T> extends Flow<T> {
 
     private final Flow<T> upStream;
@@ -17,7 +18,7 @@ public class InterceptorFlow<T> extends Flow<T> {
     }
 
     @Override
-    protected void onSubscribeStarted(Consumer<T> consumer) {
+    protected void onSubscribeStarted(FlowConsumer<T> consumer) {
         upStream.subscribe(new InterceptConsumer(consumer));
     }
 
@@ -31,7 +32,7 @@ public class InterceptorFlow<T> extends Flow<T> {
         return upStream.isHot();
     }
 
-    private class InterceptConsumer implements Consumer<T> {
+    private class InterceptConsumer implements FlowConsumer<T> {
         Consumer<T> downStream;
         Consumer<T> nextAction = new Consumer<T>() {
             @Override
@@ -40,13 +41,18 @@ public class InterceptorFlow<T> extends Flow<T> {
             }
         };
 
-        InterceptConsumer(Consumer<T> downStream) {
+        InterceptConsumer(FlowConsumer<T> downStream) {
             this.downStream = downStream;
         }
 
         @Override
         public void accept(T t) {
             interceptor.onIntercept(nextAction, t);
+        }
+
+        @Override
+        public void onComplete() {
+
         }
     }
 }

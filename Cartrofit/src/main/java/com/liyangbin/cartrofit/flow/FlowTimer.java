@@ -9,11 +9,11 @@ class FlowTimer {
     FlowTimer() {
     }
 
-    public static void schedule(TimerTask task, long delay) {
+    static void schedule(TimerTask task, long delay) {
         TIMER.schedule(task, delay);
     }
 
-    public static void scheduleAtFixedRate(TimerTask task, long delay, long period) {
+    static void scheduleAtFixedRate(TimerTask task, long delay, long period) {
         TIMER.scheduleAtFixedRate(task, delay, period);
     }
 }

@@ -1,12 +1,13 @@
 package com.liyangbin.cartrofit.flow;
 
-import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 
 public class TakeFlow<T> extends Flow<T> {
     private final Flow<T> upStream;
     private final Predicate<T> takeCheck;
     private final int keepCountChecked;
+    private InnerConsumer innerConsumer;
 
     public TakeFlow(Flow<T> upStream, Predicate<T> takeCheck, int keepCountChecked) {
         this.upStream = upStream;
@@ -15,12 +16,14 @@ public class TakeFlow<T> extends Flow<T> {
     }
 
     @Override
-    protected void onSubscribeStarted(Consumer<T> consumer) {
-        upStream.subscribe(new InnerConsumer(consumer));
+    protected void onSubscribeStarted(FlowConsumer<T> consumer) {
+        upStream.subscribe(innerConsumer = new InnerConsumer(consumer));
     }
 
     @Override
     protected void onSubscribeStopped() {
+        innerConsumer.expire();
+        innerConsumer = null;
         upStream.stopSubscribe();
     }
 
@@ -29,25 +32,29 @@ public class TakeFlow<T> extends Flow<T> {
         return upStream.isHot();
     }
 
-    private class InnerConsumer implements Consumer<T> {
-        Consumer<T> downStream;
+    private class InnerConsumer implements FlowConsumer<T> {
+        FlowConsumer<T> downStream;
         int index;
+        AtomicBoolean expiredRef = new AtomicBoolean();
 
-        InnerConsumer(Consumer<T> downStream) {
+        InnerConsumer(FlowConsumer<T> downStream) {
             this.downStream = downStream;
         }
 
         @Override
         public void accept(T t) {
+            if (expiredRef.get()) {
+                return;
+            }
             if (takeCheck == null || takeCheck.test(t)) {
-                boolean doUnSubscribe = false;
+                boolean doComplete = false;
                 boolean doAccept = true;
 
                 if (keepCountChecked > 0) {
                     synchronized (this) {
                         index++;
                         if (index == keepCountChecked) {
-                            doUnSubscribe = true;
+                            doComplete = true;
                         } else if (index > keepCountChecked) {
                             doAccept = false;
                         }
@@ -58,10 +65,23 @@ public class TakeFlow<T> extends Flow<T> {
                     downStream.accept(t);
                 }
 
-                if (doUnSubscribe) {
-                    stopSubscribe();
+                if (doComplete) {
+                    upStream.stopSubscribe();
+                    downStream.onComplete();
                 }
             }
+        }
+
+        void expire() {
+            expiredRef.set(true);
+        }
+
+        @Override
+        public void onComplete() {
+            if (expiredRef.getAndSet(true)) {
+                return;
+            }
+            downStream.onComplete();
         }
     }
 }

@@ -1,7 +1,6 @@
 package com.liyangbin.cartrofit.flow;
 
 import java.util.function.BiPredicate;
-import java.util.function.Consumer;
 
 public class DistinctFlow<T> extends Flow<T> {
 
@@ -14,7 +13,7 @@ public class DistinctFlow<T> extends Flow<T> {
     }
 
     @Override
-    protected void onSubscribeStarted(Consumer<T> consumer) {
+    protected void onSubscribeStarted(FlowConsumer<T> consumer) {
         upStream.subscribe(new InnerConsumer(consumer));
     }
 
@@ -28,12 +27,12 @@ public class DistinctFlow<T> extends Flow<T> {
         return upStream.isHot();
     }
 
-    private class InnerConsumer implements Consumer<T> {
+    private class InnerConsumer implements FlowConsumer<T> {
 
-        Consumer<T> downStream;
+        FlowConsumer<T> downStream;
         T lastValue;
 
-        InnerConsumer(Consumer<T> downStream) {
+        InnerConsumer(FlowConsumer<T> downStream) {
             this.downStream = downStream;
         }
 
@@ -43,6 +42,11 @@ public class DistinctFlow<T> extends Flow<T> {
                 lastValue = t;
                 downStream.accept(t);
             }
+        }
+
+        @Override
+        public void onComplete() {
+            downStream.onComplete();
         }
     }
 }

@@ -7,7 +7,6 @@ import com.liyangbin.cartrofit.funtion.Converter;
 
 import java.util.Objects;
 import java.util.function.BiPredicate;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -22,10 +21,11 @@ public abstract class Flow<T> {
 
     public void subscribeWithoutResultConcern() {
         subscribe(t -> {
+            // ignore
         });
     }
 
-    public final void subscribe(Consumer<T> consumer) {
+    public final void subscribe(FlowConsumer<T> consumer) {
         synchronized (this) {
             if (subscribeOnce && !isHot()) {
                 throw new RuntimeException("Cold flow can only be subscribed once");
@@ -39,12 +39,12 @@ public abstract class Flow<T> {
         onSubscribeStarted(consumer);
     }
 
-    protected abstract void onSubscribeStarted(Consumer<T> consumer);
+    protected abstract void onSubscribeStarted(FlowConsumer<T> consumer);
 
     public final void stopSubscribe() {
         synchronized (this) {
             if (!subscribed) {
-                throw new RuntimeException("Not subscribed yet");
+                return;
             }
             subscribed = false;
         }
@@ -63,19 +63,19 @@ public abstract class Flow<T> {
 
     public interface Injector<T> {
         void send(T data);
-        void stopInject();
+        void done();
     }
 
     private static class SimpleFlow<T> extends Flow<T> implements Injector<T> {
         private final FlowSource<T> source;
-        private Consumer<T> consumer;
+        private FlowConsumer<T> consumer;
 
         SimpleFlow(FlowSource<T> source) {
             this.source = source;
         }
 
         @Override
-        protected void onSubscribeStarted(Consumer<T> consumer) {
+        protected void onSubscribeStarted(FlowConsumer<T> consumer) {
             source.startWithInjector(this);
             this.consumer = consumer;
         }
@@ -96,8 +96,8 @@ public abstract class Flow<T> {
         }
 
         @Override
-        public void stopInject() {
-            stopSubscribe();
+        public void done() {
+            consumer.onComplete();
         }
     }
 

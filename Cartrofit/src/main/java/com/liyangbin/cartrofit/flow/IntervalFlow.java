@@ -17,7 +17,7 @@ public class IntervalFlow extends Flow<Integer> {
     }
 
     @Override
-    protected void onSubscribeStarted(Consumer<Integer> consumer) {
+    protected void onSubscribeStarted(FlowConsumer<Integer> consumer) {
         task = new ScheduleTask(consumer);
         if (interval == 0) {
             FlowTimer.schedule(task, startDelay);
@@ -42,11 +42,11 @@ public class IntervalFlow extends Flow<Integer> {
     }
 
     private static class ScheduleTask extends TimerTask {
-        Consumer<Integer> consumer;
+        FlowConsumer<Integer> consumer;
         AtomicInteger indexRef = new AtomicInteger();
         AtomicBoolean expiredRef = new AtomicBoolean();
 
-        ScheduleTask(Consumer<Integer> consumer) {
+        ScheduleTask(FlowConsumer<Integer> consumer) {
             this.consumer = consumer;
         }
 

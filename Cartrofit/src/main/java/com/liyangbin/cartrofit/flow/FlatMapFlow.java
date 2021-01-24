@@ -2,7 +2,6 @@ package com.liyangbin.cartrofit.flow;
 
 import java.util.ArrayList;
 import java.util.Objects;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class FlatMapFlow<T, U> extends Flow<T> {
@@ -16,13 +15,13 @@ public class FlatMapFlow<T, U> extends Flow<T> {
     }
 
     @Override
-    protected void onSubscribeStarted(Consumer<T> consumer) {
+    protected void onSubscribeStarted(FlowConsumer<T> consumer) {
         upStream.subscribe(upStreamConsumer = new InnerConsumer(consumer));
     }
 
     @Override
     protected void onSubscribeStopped() {
-        upStreamConsumer.stopSubscribe();
+        upStreamConsumer.expire();
         upStreamConsumer = null;
         upStream.stopSubscribe();
     }
@@ -32,12 +31,13 @@ public class FlatMapFlow<T, U> extends Flow<T> {
         return upStream.isHot();
     }
 
-    private class InnerConsumer implements Consumer<U> {
-        Consumer<T> downStream;
+    private class InnerConsumer implements FlowConsumer<U> {
+        FlowConsumer<T> downStream;
         ArrayList<Flow<T>> mappedFlowList = new ArrayList<>();
         boolean expired;
+        boolean upStreamCompleted;
 
-        InnerConsumer(Consumer<T> downStream) {
+        InnerConsumer(FlowConsumer<T> downStream) {
             this.downStream = downStream;
         }
 
@@ -51,10 +51,10 @@ public class FlatMapFlow<T, U> extends Flow<T> {
                 flow = Objects.requireNonNull(flatMapper.apply(t));
                 mappedFlowList.add(flow);
             }
-            flow.subscribe(new FlatConsumer());
+            flow.subscribe(new FlatConsumer(flow));
         }
 
-        void stopSubscribe() {
+        void expire() {
             ArrayList<Flow<T>> mappedFlowListCopy;
             synchronized (this) {
                 if (mappedFlowList.size() > 0) {
@@ -72,11 +72,51 @@ public class FlatMapFlow<T, U> extends Flow<T> {
             }
         }
 
-        private class FlatConsumer implements Consumer<T> {
+        @Override
+        public void onComplete() {
+            boolean doCallDownStreamComplete = false;
+            synchronized (this) {
+                if (!expired && !upStreamCompleted) {
+                    upStreamCompleted = true;
+                    doCallDownStreamComplete = mappedFlowList.isEmpty();
+                }
+            }
+            if (doCallDownStreamComplete) {
+                downStream.onComplete();
+            }
+        }
+
+        private class FlatConsumer implements FlowConsumer<T> {
+
+            Flow<T> targetFlow;
+
+            FlatConsumer(Flow<T> targetFlow) {
+                this.targetFlow = targetFlow;
+            }
 
             @Override
             public void accept(T t) {
+                synchronized (this) {
+                    if (expired) {
+                        return;
+                    }
+                }
                 downStream.accept(t);
+            }
+
+            @Override
+            public void onComplete() {
+                boolean doCallDownStreamComplete = false;
+                synchronized (InnerConsumer.this) {
+                    if (!expired && mappedFlowList.remove(targetFlow)
+                            && upStreamCompleted
+                            && mappedFlowList.isEmpty()) {
+                        doCallDownStreamComplete = true;
+                    }
+                }
+                if (doCallDownStreamComplete) {
+                    downStream.onComplete();
+                }
             }
         }
     }

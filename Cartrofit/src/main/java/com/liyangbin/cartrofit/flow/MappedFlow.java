@@ -15,7 +15,7 @@ public class MappedFlow<T, R> extends Flow<R> {
     }
 
     @Override
-    protected void onSubscribeStarted(Consumer<R> consumer) {
+    protected void onSubscribeStarted(FlowConsumer<R> consumer) {
         upStream.subscribe(new MappedConsumer(consumer));
     }
 
@@ -29,16 +29,21 @@ public class MappedFlow<T, R> extends Flow<R> {
         return upStream.isHot();
     }
 
-    private class MappedConsumer implements Consumer<T> {
-        Consumer<R> downStream;
+    private class MappedConsumer implements FlowConsumer<T> {
+        FlowConsumer<R> downStream;
 
-        MappedConsumer(Consumer<R> downStream) {
+        MappedConsumer(FlowConsumer<R> downStream) {
             this.downStream = downStream;
         }
 
         @Override
         public void accept(T t) {
             downStream.accept(converter.convert(t));
+        }
+
+        @Override
+        public void onComplete() {
+            downStream.onComplete();
         }
     }
 }

@@ -1,7 +1,6 @@
 package com.liyangbin.cartrofit.flow;
 
 import java.util.TimerTask;
-import java.util.function.Consumer;
 
 public class TimeoutFlow<T> extends Flow<T> {
     private final Flow<T> upStream;
@@ -19,7 +18,7 @@ public class TimeoutFlow<T> extends Flow<T> {
     }
 
     @Override
-    protected void onSubscribeStarted(Consumer<T> consumer) {
+    protected void onSubscribeStarted(FlowConsumer<T> consumer) {
         timeoutConsumer = new TimeoutConsumer(consumer);
         FlowTimer.schedule(timeoutConsumer, timeoutMillis);
         upStream.subscribe(timeoutConsumer);
@@ -27,7 +26,7 @@ public class TimeoutFlow<T> extends Flow<T> {
 
     @Override
     protected void onSubscribeStopped() {
-        timeoutConsumer.safeCancel();
+        timeoutConsumer.expire();
         timeoutConsumer = null;
         upStream.stopSubscribe();
     }
@@ -37,11 +36,11 @@ public class TimeoutFlow<T> extends Flow<T> {
         return upStream.isHot();
     }
 
-    private class TimeoutConsumer extends TimerTask implements Consumer<T> {
-        Consumer<T> downStream;
+    private class TimeoutConsumer extends TimerTask implements FlowConsumer<T> {
+        FlowConsumer<T> downStream;
         boolean expired = true;
 
-        TimeoutConsumer(Consumer<T> downStream) {
+        TimeoutConsumer(FlowConsumer<T> downStream) {
             this.downStream = downStream;
         }
 
@@ -55,18 +54,36 @@ public class TimeoutFlow<T> extends Flow<T> {
             downStream.accept(t);
         }
 
-        synchronized void safeCancel() {
+        synchronized void expire() {
             expired = true;
             cancel();
         }
 
         @Override
         public void run() {
-            stopSubscribe();
+            synchronized (this) {
+                if (expired) {
+                    return;
+                }
+                expired = true;
+            }
+            upStream.stopSubscribe();
             if (timeoutAction != null) {
                 timeoutAction.run();
                 timeoutAction = null;
             }
+        }
+
+        @Override
+        public void onComplete() {
+            synchronized (this) {
+                if (expired) {
+                    return;
+                }
+                expired = true;
+            }
+            cancel();
+            downStream.onComplete();
         }
     }
 }
