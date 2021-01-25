@@ -6,6 +6,7 @@ import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.funtion.Converter;
 
 import java.util.Objects;
+import java.util.concurrent.Executor;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -16,6 +17,7 @@ import io.reactivex.Observable;
 public abstract class Flow<T> {
 
     private FlowPublisher<T> flowPublisher;
+    private FlowConsumer<T> flowConsumer;
     private boolean subscribeOnce;
     private boolean subscribed;
 
@@ -23,6 +25,50 @@ public abstract class Flow<T> {
         subscribe(t -> {
             // ignore
         });
+    }
+
+    synchronized boolean isSubscribeStopped() {
+        return subscribeOnce && !subscribed;
+    }
+
+    static abstract class WrappedFlow<T> extends Flow<T> {
+        Flow<T> upStream;
+
+        WrappedFlow(Flow<T> upStream) {
+            this.upStream = upStream;
+        }
+
+        @Override
+        public boolean isHot() {
+            return upStream.isHot();
+        }
+
+        @Override
+        protected void onSubscribeStopped() {
+            upStream.stopSubscribe();
+        }
+    }
+
+    static abstract class WrappedFusedConsumer<T, R> implements FlowConsumer<T> {
+        boolean done;
+        FlowConsumer<R> downStream;
+
+        WrappedFusedConsumer(FlowConsumer<R> downStream) {
+            this.downStream = downStream;
+        }
+
+        @Override
+        public void onCancel() {
+            done = true;
+        }
+
+        @Override
+        public void onComplete() {
+            if (!done) {
+                done = true;
+                downStream.onComplete();
+            }
+        }
     }
 
     public final void subscribe(FlowConsumer<T> consumer) {
@@ -36,7 +82,7 @@ public abstract class Flow<T> {
             subscribeOnce = true;
             subscribed = true;
         }
-        onSubscribeStarted(consumer);
+        onSubscribeStarted(flowConsumer = consumer);
     }
 
     protected abstract void onSubscribeStarted(FlowConsumer<T> consumer);
@@ -49,6 +95,8 @@ public abstract class Flow<T> {
             subscribed = false;
         }
         onSubscribeStopped();
+        flowConsumer.onCancel();
+        flowConsumer = null;
     }
 
     public abstract boolean isHot();
@@ -88,6 +136,7 @@ public abstract class Flow<T> {
         @Override
         protected void onSubscribeStopped() {
             source.finishWithInjector(this);
+            consumer.onCancel();
         }
 
         @Override
@@ -157,15 +206,22 @@ public abstract class Flow<T> {
         return new TakeFlow<>(this, check, count);
     }
 
-    // TODO: return Flow
+    public final Flow<T> subscribeOn(Executor handler) {
+        return new SubscribeOnFlow<>(this, handler);
+    }
+
+    public final Flow<T> consumeOn(Executor handler) {
+        return new ConsumeOnFlow<>(this, handler);
+    }
+
     public final FlowPublisher<T> publish() {
         if (flowPublisher == null) {
             synchronized (this) {
                 if (flowPublisher == null) {
                     if (subscribed || (subscribeOnce && !isHot())) {
-                        throw new RuntimeException("Can not transform into publisher");
+                        throw new RuntimeException("Do transform into publisher before subscribe");
                     }
-                    flowPublisher = new FlowPublisher<>(this);
+                    flowPublisher = new FlowPublisher<>(this, true);
                 }
             }
         }

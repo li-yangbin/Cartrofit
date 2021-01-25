@@ -4,8 +4,7 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.liyangbin.cartrofit.flow.Flow;
-
-import java.util.function.Consumer;
+import com.liyangbin.cartrofit.flow.FlowConsumer;
 
 class LiveDataConverter {
     static void addSupport() {
@@ -39,7 +38,7 @@ class LiveDataConverterMutable implements FlowConverter<MutableLiveData<?>> {
     }
 }
 
-class FlowLiveData<T> extends MutableLiveData<T> implements Consumer<T> {
+class FlowLiveData<T> extends MutableLiveData<T> implements FlowConsumer<T> {
     Flow<T> flow;
 
     FlowLiveData(Flow<T> flow) {
@@ -60,6 +59,6 @@ class FlowLiveData<T> extends MutableLiveData<T> implements Consumer<T> {
 
     @Override
     public void accept(T t) {
-        postValue(t);
+        setValue(t);
     }
 }

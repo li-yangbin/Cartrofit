@@ -249,13 +249,14 @@ public final class Cartrofit {
             }
         }
 
-        ArrayList<Key> getChildKey() {
+        ArrayList<Key> getChildKey(Cartrofit.Key parentKey) {
             ArrayList<Key> result = new ArrayList<>();
             if (clazz.isInterface()) {
                 Method[] methods = clazz.getDeclaredMethods();
                 for (Method method : methods) {
                     Key childKey = new Key(this, method, true);
                     if (!childKey.isInvalid()) {
+                        childKey.setDelegateKey(parentKey);
                         result.add(childKey);
                     }
                 }
@@ -264,6 +265,7 @@ public final class Cartrofit {
                 for (Field field : fields) {
                     Key childKey = new Key(this, field);
                     if (!childKey.isInvalid()) {
+                        childKey.setDelegateKey(parentKey);
                         result.add(childKey);
                     }
                 }

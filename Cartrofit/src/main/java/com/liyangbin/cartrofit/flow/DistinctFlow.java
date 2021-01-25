@@ -1,14 +1,14 @@
 package com.liyangbin.cartrofit.flow;
 
+
 import java.util.function.BiPredicate;
 
-public class DistinctFlow<T> extends Flow<T> {
+public class DistinctFlow<T> extends Flow.WrappedFlow<T> {
 
-    private final Flow<T> upStream;
     private final BiPredicate<T, T> distinctCheck;
 
     public DistinctFlow(Flow<T> upStream, BiPredicate<T, T> distinctCheck) {
-        this.upStream = upStream;
+        super(upStream);
         this.distinctCheck = distinctCheck;
     }
 
@@ -17,36 +17,20 @@ public class DistinctFlow<T> extends Flow<T> {
         upStream.subscribe(new InnerConsumer(consumer));
     }
 
-    @Override
-    protected void onSubscribeStopped() {
-        upStream.stopSubscribe();
-    }
+    private class InnerConsumer extends WrappedFusedConsumer<T, T> {
 
-    @Override
-    public boolean isHot() {
-        return upStream.isHot();
-    }
-
-    private class InnerConsumer implements FlowConsumer<T> {
-
-        FlowConsumer<T> downStream;
         T lastValue;
 
         InnerConsumer(FlowConsumer<T> downStream) {
-            this.downStream = downStream;
+            super(downStream);
         }
 
         @Override
         public void accept(T t) {
-            if (distinctCheck.test(lastValue, t)) {
+            if (!done && distinctCheck.test(lastValue, t)) {
                 lastValue = t;
                 downStream.accept(t);
             }
-        }
-
-        @Override
-        public void onComplete() {
-            downStream.onComplete();
         }
     }
 }

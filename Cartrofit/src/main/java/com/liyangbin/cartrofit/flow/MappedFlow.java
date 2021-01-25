@@ -2,8 +2,6 @@ package com.liyangbin.cartrofit.flow;
 
 import com.liyangbin.cartrofit.funtion.Converter;
 
-import java.util.function.Consumer;
-
 public class MappedFlow<T, R> extends Flow<R> {
 
     private final Flow<T> upStream;
@@ -29,21 +27,16 @@ public class MappedFlow<T, R> extends Flow<R> {
         return upStream.isHot();
     }
 
-    private class MappedConsumer implements FlowConsumer<T> {
-        FlowConsumer<R> downStream;
+    private class MappedConsumer extends WrappedFusedConsumer<T, R> {
 
         MappedConsumer(FlowConsumer<R> downStream) {
-            this.downStream = downStream;
+            super(downStream);
         }
 
         @Override
         public void accept(T t) {
+            if (done) return;
             downStream.accept(converter.convert(t));
-        }
-
-        @Override
-        public void onComplete() {
-            downStream.onComplete();
         }
     }
 }

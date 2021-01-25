@@ -1,51 +1,68 @@
 package com.liyangbin.cartrofit.flow;
 
 import androidx.lifecycle.LiveData;
-import androidx.lifecycle.MutableLiveData;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public class FlowPublisher<T> {
 
     private final Flow<T> upStream;
     private volatile T data;
     private boolean hasData;
-    private boolean active;
     private boolean startWhenConnected;
+    private boolean dispatchStickyDataEnable;
+    private Supplier<T> initialStickyDataProvider;
     private final ArrayList<SharedFlow> downStreamList = new ArrayList<>();
     private final HashMap<Consumer<T>, Flow<T>> listenerMap = new HashMap<>();
 
-    public FlowPublisher(Flow<T> upStream) {
+    public FlowPublisher(Flow<T> upStream, boolean startWhenConnected) {
         this.upStream = upStream;
+        this.startWhenConnected = startWhenConnected;
+    }
+
+    public void enableStickyDispatch(Supplier<T> initialDataProvider) {
+        dispatchStickyDataEnable = true;
+        this.initialStickyDataProvider = initialDataProvider;
     }
 
     public void start() {
         upStream.subscribe(new PublishConsumer());
-        active = true;
-    }
-
-    public void startWhenConnected() {
-        startWhenConnected = true;
+        startWhenConnected = false;
     }
 
     public void stop() {
         upStream.stopSubscribe();
-        active = false;
     }
 
-    public void addSubscriber(Consumer<T> consumer) {
-        if (listenerMap.containsKey(consumer)) {
-            return;
+    public void addSubscriber(FlowConsumer<T> consumer) {
+        Flow<T> sharedFlow;
+        synchronized (this) {
+            if (listenerMap.containsKey(consumer)) {
+                return;
+            }
+            sharedFlow = share();
+            listenerMap.put(consumer, sharedFlow);
         }
-        Flow<T> sharedFlow = share();
-        listenerMap.put(consumer, sharedFlow);
         sharedFlow.subscribe(consumer);
+        if (dispatchStickyDataEnable) {
+            synchronized (this) {
+                if (!hasData) {
+                    data = initialStickyDataProvider.get();
+                    hasData = true;
+                }
+            }
+            consumer.accept(data);
+        }
     }
 
-    public void removeSubscriber(Consumer<T> consumer) {
-        Flow<T> sharedFlow = listenerMap.remove(consumer);
+    public void removeSubscriber(FlowConsumer<T> consumer) {
+        Flow<T> sharedFlow;
+        synchronized (this) {
+            sharedFlow = listenerMap.remove(consumer);
+        }
         if (sharedFlow != null) {
             sharedFlow.stopSubscribe();
         }
@@ -54,12 +71,8 @@ public class FlowPublisher<T> {
     void onClientSubscribed(SharedFlow flow) {
         boolean doSubscribe = false;
         synchronized (this) {
-            boolean oldActive = active;
             downStreamList.add(flow);
-            if (!active && downStreamList.size() == 1) {
-                active = true;
-            }
-            if (startWhenConnected && !oldActive && active) {
+            if (startWhenConnected && downStreamList.size() == 1) {
                 doSubscribe = true;
             }
         }
@@ -69,26 +82,19 @@ public class FlowPublisher<T> {
     }
 
     synchronized void onClientSubscribeStopped(SharedFlow flow) {
-        downStreamList.remove(flow);
-        // TODO: unSubscribe upstream in certain condition
+        boolean doStopSubscribe = false;
+        synchronized (this) {
+            if (downStreamList.remove(flow) && downStreamList.size() == 0 && startWhenConnected) {
+                doStopSubscribe = true;
+            }
+        }
+        if (doStopSubscribe) {
+            upStream.stopSubscribe();
+        }
     }
 
     public Flow<T> share() {
         return new SharedFlow();
-    }
-
-    public void cleanup() {
-        listenerMap.clear();
-        final boolean oldActive;
-        synchronized (this) {
-            oldActive = active;
-            if (active) {
-                active = false;
-            }
-        }
-        if (oldActive) {
-            upStream.stopSubscribe();
-        }
     }
 
     public final LiveData<T> toLiveData() {
@@ -96,6 +102,12 @@ public class FlowPublisher<T> {
     }
 
     public T getData() {
+        synchronized (this) {
+            if (!hasData) {
+                data = initialStickyDataProvider.get();
+                hasData = true;
+            }
+        }
         return data;
     }
 
@@ -105,10 +117,11 @@ public class FlowPublisher<T> {
 
     @SuppressWarnings("unchecked")
     public void injectData(T t) {
-        data = t;
-        hasData = true;
         ArrayList<SharedFlow> copy = null;
         synchronized (FlowPublisher.this) {
+            data = t;
+            hasData = true;
+
             if (downStreamList.size() > 0) {
                 copy = (ArrayList<SharedFlow>) downStreamList.clone();
             }
@@ -120,20 +133,50 @@ public class FlowPublisher<T> {
         }
     }
 
-    private class PublishConsumer implements Consumer<T> {
+    private class PublishConsumer implements FlowConsumer<T> {
 
         @Override
         public void accept(T t) {
             FlowPublisher.this.injectData(t);
         }
+
+        @Override
+        public void onComplete() {
+            ArrayList<SharedFlow> copy = null;
+            synchronized (FlowPublisher.this) {
+                if (downStreamList.size() > 0) {
+                    copy = (ArrayList<SharedFlow>) downStreamList.clone();
+                }
+            }
+            if (copy != null) {
+                for (int i = 0; i < copy.size(); i++) {
+                    copy.get(i).consumer.onComplete();
+                }
+            }
+        }
+
+        @Override
+        public void onCancel() {
+            ArrayList<SharedFlow> copy = null;
+            synchronized (FlowPublisher.this) {
+                if (downStreamList.size() > 0) {
+                    copy = (ArrayList<SharedFlow>) downStreamList.clone();
+                }
+            }
+            if (copy != null) {
+                for (int i = 0; i < copy.size(); i++) {
+                    copy.get(i).consumer.onCancel();
+                }
+            }
+        }
     }
 
     private class SharedFlow extends Flow<T> {
 
-        Consumer<T> consumer;
+        FlowConsumer<T> consumer;
 
         @Override
-        protected void onSubscribeStarted(Consumer<T> consumer) {
+        protected void onSubscribeStarted(FlowConsumer<T> consumer) {
             this.consumer = consumer;
             onClientSubscribed(this);
         }
@@ -146,13 +189,6 @@ public class FlowPublisher<T> {
         @Override
         public boolean isHot() {
             return true;
-        }
-
-        @Override
-        public LiveData<T> toLiveData() {
-            MutableLiveData<T> liveData = (MutableLiveData<T>) super.toLiveData();
-            liveData.setValue(data);
-            return liveData;
         }
     }
 }

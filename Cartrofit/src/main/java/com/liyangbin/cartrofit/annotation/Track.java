@@ -18,4 +18,6 @@ public @interface Track {
     int area() default Scope.DEFAULT_AREA_ID;
 
     CarType type() default CarType.VALUE;
+
+    boolean sticky() default false;
 }

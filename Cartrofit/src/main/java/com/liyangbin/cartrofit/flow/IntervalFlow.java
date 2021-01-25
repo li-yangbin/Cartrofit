@@ -3,7 +3,6 @@ package com.liyangbin.cartrofit.flow;
 import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 
 public class IntervalFlow extends Flow<Integer> {
 

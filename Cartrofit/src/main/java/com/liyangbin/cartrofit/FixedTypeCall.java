@@ -1,8 +1,11 @@
 package com.liyangbin.cartrofit;
 
+import com.liyangbin.cartrofit.annotation.ScheduleOn;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.funtion.Converter;
 import com.liyangbin.cartrofit.funtion.Union;
+
+import java.util.concurrent.Executor;
 
 public class FixedTypeCall<INPUT, OUTPUT> extends Call {
 
@@ -10,6 +13,8 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
     private Converter<OUTPUT, Union> outputConverter;
     private Converter<OUTPUT, ?> returnConverter;
     private FlowConverter<?> flowConverter;
+    private Executor flowSubscribeExecutor;
+    private Executor flowConsumeExecutor;
 
     @Override
     public void onInit() {
@@ -23,6 +28,12 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
                 flowConverter = adapter.findFlowConverter(this);
                 returnConverter = adapter.findReturnOutputConverter(this);
             }
+
+            ScheduleOn scheduleOn = getKey().getAnnotation(ScheduleOn.class);
+            if (scheduleOn != null) {
+                flowSubscribeExecutor = getAdapter().getSubscribeExecutor(scheduleOn.subscribe());
+                flowConsumeExecutor = getAdapter().getConsumeExecutor(scheduleOn.consume());
+            }
         } else {
             returnConverter = adapter.findReturnOutputConverter(this);
         }
@@ -33,9 +44,12 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
         INPUT input = inputConverter.convert(parameter);
         if (hasCategory(CallAdapter.CATEGORY_TRACK)) {
             Flow<OUTPUT> result = doTrackInvoke(input);
-//            if (isStickyTrackEnable()) {
-//                result = result.sticky();
-//            }
+            if (flowSubscribeExecutor != null) {
+                result = result.subscribeOn(flowSubscribeExecutor);
+            }
+            if (flowConsumeExecutor != null) {
+                result = result.consumeOn(flowConsumeExecutor);
+            }
             if (getKey().isCallbackEntry) {
                 return result.map(outputConverter);
             } else {

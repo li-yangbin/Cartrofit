@@ -12,9 +12,9 @@ import androidx.databinding.PropertyChangeRegistry;
 
 import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.flow.Flow;
+import com.liyangbin.cartrofit.flow.FlowConsumer;
 
 import java.lang.reflect.Field;
-import java.util.function.Consumer;
 
 class ObservableConverter {
     static void addSupport() {
@@ -53,7 +53,7 @@ class ObservableConverterField implements FlowConverter<ObservableField<?>> {
         return new FlowObservableField<>(flow);
     }
 
-    private static class FlowObservableField<T> extends ObservableField<T> implements Consumer<T> {
+    private static class FlowObservableField<T> extends ObservableField<T> implements FlowConsumer<T> {
         Flow<T> flow;
         boolean hasCallback;
 
@@ -97,7 +97,7 @@ class ObservableConverterInt implements FlowConverter<ObservableInt> {
         return new FlowObservableInt<>(flow);
     }
 
-    private static class FlowObservableInt<T> extends ObservableInt implements Consumer<T> {
+    private static class FlowObservableInt<T> extends ObservableInt implements FlowConsumer<T> {
         Flow<T> flow;
         boolean hasCallback;
 
@@ -141,7 +141,7 @@ class ObservableConverterByte implements FlowConverter<ObservableByte> {
         return new FlowObservableByte<>(flow);
     }
 
-    private static class FlowObservableByte<T> extends ObservableByte implements Consumer<T> {
+    private static class FlowObservableByte<T> extends ObservableByte implements FlowConsumer<T> {
         Flow<T> flow;
         boolean hasCallback;
 
@@ -185,7 +185,7 @@ class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
         return new FlowObservableBoolean<>(flow);
     }
 
-    private static class FlowObservableBoolean<T> extends ObservableBoolean implements Consumer<T> {
+    private static class FlowObservableBoolean<T> extends ObservableBoolean implements FlowConsumer<T> {
         Flow<T> flow;
         boolean hasCallback;
 
@@ -229,7 +229,7 @@ class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
         return new FlowObservableFloat<>(flow);
     }
 
-    private static class FlowObservableFloat<T> extends ObservableFloat implements Consumer<T> {
+    private static class FlowObservableFloat<T> extends ObservableFloat implements FlowConsumer<T> {
         Flow<T> flow;
         boolean hasCallback;
 
@@ -273,7 +273,7 @@ class ObservableConverterLong implements FlowConverter<ObservableLong> {
         return new FlowObservableLong<>(flow);
     }
 
-    private static class FlowObservableLong<T> extends ObservableLong implements Consumer<T> {
+    private static class FlowObservableLong<T> extends ObservableLong implements FlowConsumer<T> {
         Flow<T> flow;
         boolean hasCallback;
 

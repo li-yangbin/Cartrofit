@@ -1,13 +1,11 @@
 package com.liyangbin.cartrofit.flow;
 
 import java.util.Objects;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class SwitchMapFlow<T, U> extends Flow<T> {
     private final Flow<U> upStream;
     private final Function<U, Flow<T>> flatMapper;
-    private InnerConsumer upStreamConsumer;
 
     public SwitchMapFlow(Flow<U> upStream, Function<U, Flow<T>> flatMapper) {
         this.upStream = upStream;
@@ -15,14 +13,12 @@ public class SwitchMapFlow<T, U> extends Flow<T> {
     }
 
     @Override
-    protected void onSubscribeStarted(Consumer<T> consumer) {
-        upStream.subscribe(upStreamConsumer = new InnerConsumer(consumer));
+    protected void onSubscribeStarted(FlowConsumer<T> consumer) {
+        upStream.subscribe(new InnerConsumer(consumer));
     }
 
     @Override
     protected void onSubscribeStopped() {
-        upStreamConsumer.stopSubscribe();
-        upStreamConsumer = null;
         upStream.stopSubscribe();
     }
 
@@ -31,12 +27,13 @@ public class SwitchMapFlow<T, U> extends Flow<T> {
         return upStream.isHot();
     }
 
-    private class InnerConsumer implements Consumer<U> {
-        Consumer<T> downStream;
+    private class InnerConsumer implements FlowConsumer<U> {
         Flow<T> lastMappedFlow;
+        FlowConsumer<T> downStream;
+        boolean upStreamCompleted;
         boolean expired;
 
-        InnerConsumer(Consumer<T> downStream) {
+        InnerConsumer(FlowConsumer<T> downStream) {
             this.downStream = downStream;
         }
 
@@ -45,7 +42,7 @@ public class SwitchMapFlow<T, U> extends Flow<T> {
             Flow<T> lastFlow;
             Flow<T> newestMappedFlow = Objects.requireNonNull(flatMapper.apply(t));
             synchronized (this) {
-                if (expired) {
+                if (expired || upStreamCompleted) {
                     return;
                 }
                 lastFlow = lastMappedFlow;
@@ -57,7 +54,8 @@ public class SwitchMapFlow<T, U> extends Flow<T> {
             newestMappedFlow.subscribe(new FlatConsumer());
         }
 
-        void stopSubscribe() {
+        @Override
+        public void onCancel() {
             Flow<T> lastFlow;
             synchronized (this) {
                 lastFlow = lastMappedFlow;
@@ -69,11 +67,58 @@ public class SwitchMapFlow<T, U> extends Flow<T> {
             }
         }
 
-        private class FlatConsumer implements Consumer<T> {
+        @Override
+        public void onComplete() {
+            boolean doCallDownStreamComplete;
+            synchronized (this) {
+                upStreamCompleted = true;
+                doCallDownStreamComplete = evaluateDownStreamCompleteLocked();
+            }
+            if (doCallDownStreamComplete) {
+                downStream.onComplete();
+            }
+        }
+
+        boolean evaluateDownStreamCompleteLocked() {
+            if (!expired && upStreamCompleted) {
+                return lastMappedFlow == null
+                        || lastMappedFlow.isSubscribeStopped();
+            }
+            return false;
+        }
+
+        private class FlatConsumer implements FlowConsumer<T> {
 
             @Override
             public void accept(T t) {
+                if (expired) {
+                    return;
+                }
                 downStream.accept(t);
+            }
+
+            @Override
+            public void onCancel() {
+                boolean doCallDownStreamComplete;
+                synchronized (InnerConsumer.this) {
+                    lastMappedFlow = null;
+                    doCallDownStreamComplete = evaluateDownStreamCompleteLocked();
+                }
+                if (doCallDownStreamComplete) {
+                    downStream.onComplete();
+                }
+            }
+
+            @Override
+            public void onComplete() {
+                boolean doCallDownStreamComplete;
+                synchronized (InnerConsumer.this) {
+                    lastMappedFlow = null;
+                    doCallDownStreamComplete = evaluateDownStreamCompleteLocked();
+                }
+                if (doCallDownStreamComplete) {
+                    downStream.onComplete();
+                }
             }
         }
     }

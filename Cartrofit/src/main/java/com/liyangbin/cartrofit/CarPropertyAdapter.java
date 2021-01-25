@@ -243,10 +243,12 @@ public abstract class CarPropertyAdapter extends CallAdapter {
 
         int propertyId;
         int areaId;
+        boolean isSticky;
         FlowPublisher<CarPropertyValue<?>> carValuePublisher;
 
         PropertyTrack(Scope scope, Track track) {
             this.propertyId = track.id();
+            this.isSticky = track.sticky();
             this.areaId = resolveArea(track.area(), scope.area());
         }
 
@@ -255,6 +257,9 @@ public abstract class CarPropertyAdapter extends CallAdapter {
             super.onInit();
 
             carValuePublisher = CarPropertyAdapter.this.track(propertyId, areaId).publish();
+            if (isSticky) {
+                carValuePublisher.enableStickyDispatch(this::onLoadDefaultData);
+            }
             carValuePublisher.start();
 
             Restore restore = getKey().getAnnotation(Restore.class);
@@ -267,18 +272,16 @@ public abstract class CarPropertyAdapter extends CallAdapter {
                         // TODO: test
                         return carValuePublisher.share()
                             .take(carValue -> Objects.equals(obj, carValue.getValue()), 1)
-                            .timeout(restore.value(), () -> injectRestoreData(latestEvent));
+                            .timeout(restore.value(), () -> {
+                                carValuePublisher.injectData(latestEvent != null ? latestEvent : onLoadDefaultData());
+                            });
                     }).subscribeWithoutResultConcern();
             }
         }
 
-        private void injectRestoreData(CarPropertyValue<?> latestEvent) {
-            if (latestEvent != null) {
-                carValuePublisher.injectData(latestEvent);
-            } else {
-                Object historyValue = CarPropertyAdapter.this.get(propertyId, areaId, CarType.VALUE);
-                carValuePublisher.injectData(new CarPropertyValue<>(propertyId, areaId, historyValue));
-            }
+        protected CarPropertyValue<?> onLoadDefaultData() {
+            return new CarPropertyValue<>(propertyId,
+                    areaId, CarPropertyAdapter.this.get(propertyId, areaId, CarType.VALUE));
         }
 
         @Override

@@ -1,9 +1,9 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.flow.Flow;
+import com.liyangbin.cartrofit.flow.FlowConsumer;
 
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 
 import io.reactivex.BackpressureStrategy;
 import io.reactivex.Completable;
@@ -69,7 +69,7 @@ class RxJavaConverterCompletable implements FlowConverter<Completable> {
     }
 }
 
-class FlowObservable<T> extends Observable<T> implements Consumer<T>, Disposable {
+class FlowObservable<T> extends Observable<T> implements FlowConsumer<T>, Disposable {
 
     Flow<T> flow;
     AtomicBoolean disposed = new AtomicBoolean();
@@ -110,6 +110,13 @@ class FlowObservable<T> extends Observable<T> implements Consumer<T>, Disposable
                 observer.onComplete();
                 dispose();
             }
+        }
+    }
+
+    @Override
+    public void onComplete() {
+        if (!disposed.get()) {
+            observer.onComplete();
         }
     }
 

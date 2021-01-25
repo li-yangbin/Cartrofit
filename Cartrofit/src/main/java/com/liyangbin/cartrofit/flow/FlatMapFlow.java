@@ -7,7 +7,6 @@ import java.util.function.Function;
 public class FlatMapFlow<T, U> extends Flow<T> {
     private final Flow<U> upStream;
     private final Function<U, Flow<T>> flatMapper;
-    private InnerConsumer upStreamConsumer;
 
     public FlatMapFlow(Flow<U> upStream, Function<U, Flow<T>> flatMapper) {
         this.upStream = upStream;
@@ -16,13 +15,11 @@ public class FlatMapFlow<T, U> extends Flow<T> {
 
     @Override
     protected void onSubscribeStarted(FlowConsumer<T> consumer) {
-        upStream.subscribe(upStreamConsumer = new InnerConsumer(consumer));
+        upStream.subscribe(new InnerConsumer(consumer));
     }
 
     @Override
     protected void onSubscribeStopped() {
-        upStreamConsumer.expire();
-        upStreamConsumer = null;
         upStream.stopSubscribe();
     }
 
@@ -45,7 +42,7 @@ public class FlatMapFlow<T, U> extends Flow<T> {
         public void accept(U t) {
             Flow<T> flow;
             synchronized (this) {
-                if (expired) {
+                if (expired || upStreamCompleted) {
                     return;
                 }
                 flow = Objects.requireNonNull(flatMapper.apply(t));
@@ -54,7 +51,8 @@ public class FlatMapFlow<T, U> extends Flow<T> {
             flow.subscribe(new FlatConsumer(flow));
         }
 
-        void expire() {
+        @Override
+        public void onCancel() {
             ArrayList<Flow<T>> mappedFlowListCopy;
             synchronized (this) {
                 if (mappedFlowList.size() > 0) {
@@ -76,14 +74,26 @@ public class FlatMapFlow<T, U> extends Flow<T> {
         public void onComplete() {
             boolean doCallDownStreamComplete = false;
             synchronized (this) {
-                if (!expired && !upStreamCompleted) {
+                if (!upStreamCompleted) {
                     upStreamCompleted = true;
-                    doCallDownStreamComplete = mappedFlowList.isEmpty();
+                    doCallDownStreamComplete = evaluateDownStreamCompleteLocked();
                 }
             }
             if (doCallDownStreamComplete) {
                 downStream.onComplete();
             }
+        }
+
+        boolean evaluateDownStreamCompleteLocked() {
+            if (!expired && upStreamCompleted) {
+                for (int i = 0; i < mappedFlowList.size(); i++) {
+                    if (!mappedFlowList.get(i).isSubscribeStopped()) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            return false;
         }
 
         private class FlatConsumer implements FlowConsumer<T> {
@@ -105,13 +115,24 @@ public class FlatMapFlow<T, U> extends Flow<T> {
             }
 
             @Override
+            public void onCancel() {
+                boolean doCallDownStreamComplete = false;
+                synchronized (InnerConsumer.this) {
+                    if (!expired && mappedFlowList.remove(targetFlow)) {
+                        doCallDownStreamComplete = evaluateDownStreamCompleteLocked();
+                    }
+                }
+                if (doCallDownStreamComplete) {
+                    downStream.onComplete();
+                }
+            }
+
+            @Override
             public void onComplete() {
                 boolean doCallDownStreamComplete = false;
                 synchronized (InnerConsumer.this) {
-                    if (!expired && mappedFlowList.remove(targetFlow)
-                            && upStreamCompleted
-                            && mappedFlowList.isEmpty()) {
-                        doCallDownStreamComplete = true;
+                    if (!expired && mappedFlowList.remove(targetFlow)) {
+                        doCallDownStreamComplete = evaluateDownStreamCompleteLocked();
                     }
                 }
                 if (doCallDownStreamComplete) {

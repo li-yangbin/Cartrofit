@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.Executor;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
@@ -50,12 +51,12 @@ public abstract class CallAdapter {
     }
 
     public final Call getOrCreateCallById(Cartrofit.Key key, int id, int category, boolean fromDelegate) {
-        return mCartrofit.getOrCreateCallById(key, key.record, id, category, true);
+        return mCartrofit.getOrCreateCallById(key, key.record, id, category, fromDelegate);
     }
 
-    public final <T> void inflateCallback(Class<?> callbackClass,
+    public final <T> void inflateCallback(Cartrofit.Key key, Class<?> callbackClass,
                                           int category, Consumer<Call> resultReceiver) {
-        ArrayList<Cartrofit.Key> childKeys = getChildKey(callbackClass);
+        ArrayList<Cartrofit.Key> childKeys = getChildKey(key, callbackClass);
         for (int i = 0; i < childKeys.size(); i++) {
             Cartrofit.Key childKey = childKeys.get(i);
             Call call = mCartrofit.getOrCreateCall(childKey.record, childKey, category, false);
@@ -105,8 +106,8 @@ public abstract class CallAdapter {
         }
     }
 
-    public ArrayList<Cartrofit.Key> getChildKey(Class<?> callbackClass) {
-        return mCartrofit.getApi(callbackClass).getChildKey();
+    public ArrayList<Cartrofit.Key> getChildKey(Cartrofit.Key parent, Class<?> callbackClass) {
+        return mCartrofit.getApi(callbackClass).getChildKey(parent);
     }
 
     public final class CallSolution<A extends Annotation> {
@@ -274,6 +275,14 @@ public abstract class CallAdapter {
                 grammarRule.add(this);
             }
         }
+    }
+
+    public Executor getSubscribeExecutor(String tag) {
+        return null;
+    }
+
+    public Executor getConsumeExecutor(String tag) {
+        return null;
     }
 
     void init(Cartrofit cartrofit) {

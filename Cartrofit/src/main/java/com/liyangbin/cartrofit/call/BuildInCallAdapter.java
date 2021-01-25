@@ -55,9 +55,6 @@ public class BuildInCallAdapter extends CallAdapter {
                     return combineCall;
                 });
 
-        builder.create(Timeout.class)
-                .provide((category, timeout, key) -> new TimeoutCall(timeout.value()));
-
         builder.create(Register.class)
                 .checkParameter((register, key) -> {
                     if (key.getParameterCount() == 0) {
@@ -86,10 +83,10 @@ public class BuildInCallAdapter extends CallAdapter {
                         callbackParameter = key.getParameterAt(0);
                     }
                     final RegisterCall registerCall = new RegisterCall();
-                    inflateCallback(callbackParameter.getType(), CATEGORY_TRACK,
+                    inflateCallback(key, callbackParameter.getType(), CATEGORY_TRACK,
                             call -> {
                         Call returnCall = createChildCall(key, CATEGORY_SET);
-                        Call parameterCall = createInjectCommand(key);
+                        Call parameterCall = null/* TODO: createInjectCommand(key)*/;
                         registerCall.addChildCall(call, returnCall, parameterCall);
                     });
                     if (registerCall.getChildCount() == 0) {
@@ -126,12 +123,12 @@ public class BuildInCallAdapter extends CallAdapter {
             return null;
         }
 
-        ArrayList<Cartrofit.Key> childrenKey = getChildKey(callbackParameter.getType());
+        ArrayList<Cartrofit.Key> childrenKey = getChildKey(call.getKey(), callbackParameter.getType());
         Cartrofit.Key trackKey = null;
         Cartrofit.Key timeoutKey = null;
         for (int i = 0; i < childrenKey.size(); i++) {
             Cartrofit.Key entryKey = childrenKey.get(i);
-            if (entryKey.isAnnotationPresent(Unregister.class)) {
+            if (entryKey.isAnnotationPresent(Callback.class)) {
                 trackKey = entryKey;
             } else if (entryKey.isAnnotationPresent(Timeout.class)) {
                 timeoutKey = entryKey;
@@ -157,7 +154,7 @@ public class BuildInCallAdapter extends CallAdapter {
 
                 if (inDeclared || outDeclared) {
                     Class<?> targetClass = parameter.getType();
-                    InjectCall injectCall = createInjectCallByClass(targetClass);
+                    InjectCall injectCall = createInjectCallByClass(key, targetClass);
 
                     if (injectGroupCall == null) {
                         injectGroupCall = new InjectGroupCall(parameterCount);
@@ -172,19 +169,19 @@ public class BuildInCallAdapter extends CallAdapter {
             }
             return injectGroupCall;
         } else if (key.field != null) {
-            return createInjectCallByClass(key.field.getType());
+            return createInjectCallByClass(key, key.field.getType());
         } else {
             throw new RuntimeException("impossible condition key:" + key);
         }
     }
 
-    private InjectCall createInjectCallByClass(Class<?> clazz) {
+    private InjectCall createInjectCallByClass(Cartrofit.Key parentKey, Class<?> clazz) {
         if (clazz.isPrimitive() || clazz.isArray() || clazz == String.class) {
             throw new CartrofitGrammarException("Can not use Inject operator on class type:" + clazz);
         }
         InjectCall injectCall = new InjectCall(clazz);
         // TODO: category wrong
-        inflateCallback(clazz, CATEGORY_SET | CATEGORY_GET | CATEGORY_TRACK,
+        inflateCallback(parentKey, clazz, CATEGORY_SET | CATEGORY_GET | CATEGORY_TRACK,
                 injectCall::addChildCall);
         if (injectCall.getChildCount() == 0) {
             throw new CartrofitGrammarException("Failed to parse Inject call from type:"
