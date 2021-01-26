@@ -19,9 +19,40 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
-class CommonCarDataSource implements DataSource, CarPropertyManager.CarPropertyEventListener {
+public class DefaultDataSource {
 
-    private Object mTargetManager;
+    static void register() {
+        CarPropertyContext.addCarPropertyHandler(Car.HVAC_SERVICE, HvacContext::new);
+        CarPropertyContext.addCarPropertyHandler(Car.VENDOR_EXTENSION_SERVICE, VendorExtensionContext::new);
+        CarPropertyContext.addCarPropertyHandler(Car.PROJECTION_SERVICE, PropertyContext::new);
+        CarPropertyContext.addCarPropertyHandler(Car.CABIN_SERVICE, CabinContext::new);
+    }
+
+    private static class HvacContext extends Context {
+        HvacContext() {
+            super(CarPropertyContext.getInstance());
+        }
+    }
+
+    private static class VendorExtensionContext extends Context {
+        VendorExtensionContext() {
+            super(CarPropertyContext.getInstance());
+        }
+    }
+
+    private static class PropertyContext extends Context {
+        PropertyContext() {
+            super(CarPropertyContext.getInstance());
+        }
+    }
+
+    private static class CabinContext extends Context {
+        CabinContext() {
+            super(CarPropertyContext.getInstance());
+        }
+    }
+
+    /*private Object mTargetManager;
     private CarPropertyManager mPropertyManager;
     private final SparseArray<CarPropertyConfig> mConfigMap = new SparseArray<>();
     private final Set<Integer> mRegistered = new HashSet<>();
@@ -143,20 +174,26 @@ class CommonCarDataSource implements DataSource, CarPropertyManager.CarPropertyE
     public void onErrorEvent(int code1, int code2) {
     }
 
-    private static class DummyFlow implements Flow<CarPropertyValue<?>> {
+    private static final Flow<CarPropertyValue<?>> sDummyFlow
+            = Flow.fromSource(new Flow.FlowSource<CarPropertyValue<?>>() {
         @Override
-        public void addObserver(Consumer<CarPropertyValue<?>> consumer) {
+        public void startWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
         }
 
         @Override
-        public void removeObserver(Consumer<CarPropertyValue<?>> consumer) {
+        public void finishWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
         }
-    }
+
+        @Override
+        public boolean isHot() {
+            return true;
+        }
+    });
 
     @Override
     public Flow<CarPropertyValue<?>> track(int key, int area) {
         if (mConfigMap.indexOfKey(key) <= -1) {
-            return new DummyFlow();
+            return sDummyFlow;
         }
         if (mRegistered.add(key)) {
             if (ConnectHelper.isConnected()) {
@@ -173,6 +210,11 @@ class CommonCarDataSource implements DataSource, CarPropertyManager.CarPropertyE
             mPublishedFlowList.put(key, pool);
         }
         return pool.obtainChildArea(area);
+    }
+
+    @Override
+    public Object onExtractScope(Class<?> scopeClass) {
+        return null;
     }
 
     private class AreaPool {
@@ -244,5 +286,5 @@ class CommonCarDataSource implements DataSource, CarPropertyManager.CarPropertyE
     public Class<?> extractValueType(int key) {
         CarPropertyConfig config = mConfigMap.get(key);
         return config != null ? config.getPropertyType() : null;
-    }
+    }*/
 }

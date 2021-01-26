@@ -2,8 +2,7 @@ package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowConsumer;
-
-import java.util.concurrent.atomic.AtomicBoolean;
+import com.liyangbin.cartrofit.funtion.FlowConverter;
 
 import io.reactivex.BackpressureStrategy;
 import io.reactivex.Completable;
@@ -18,7 +17,7 @@ class RxJavaConverter {
     static void addSupport() {
         try {
             Class.forName("io.reactivex.Observable");
-            Cartrofit.addGlobalConverter(new RxJavaConverterDefault(),
+            Context.addGlobalConverter(new RxJavaConverterDefault(),
                     new RxJavaConverterFlowable(),
                     new RxJavaConverterSingle(),
                     new RxJavaConverterMaybe(),
@@ -72,7 +71,7 @@ class RxJavaConverterCompletable implements FlowConverter<Completable> {
 class FlowObservable<T> extends Observable<T> implements FlowConsumer<T>, Disposable {
 
     Flow<T> flow;
-    AtomicBoolean disposed = new AtomicBoolean();
+    boolean disposed;
     boolean singleShot;
     private Observer<? super T> observer;
 
@@ -88,7 +87,7 @@ class FlowObservable<T> extends Observable<T> implements FlowConsumer<T>, Dispos
     @Override
     protected void subscribeActual(Observer<? super T> observer) {
         observer.onSubscribe(this);
-        if (!disposed.get()) {
+        if (!disposed) {
             try {
                 this.observer = observer;
                 flow.subscribe(this);
@@ -100,7 +99,7 @@ class FlowObservable<T> extends Observable<T> implements FlowConsumer<T>, Dispos
 
     @Override
     public void accept(T t) {
-        if (!disposed.get()) {
+        if (!disposed) {
             try {
                 observer.onNext(t);
             } catch (Exception exception) {
@@ -115,14 +114,15 @@ class FlowObservable<T> extends Observable<T> implements FlowConsumer<T>, Dispos
 
     @Override
     public void onComplete() {
-        if (!disposed.get()) {
+        if (!disposed) {
             observer.onComplete();
         }
     }
 
     @Override
     public void dispose() {
-        if (!disposed.getAndSet(true)) {
+        if (!disposed) {
+            disposed = true;
             flow.stopSubscribe();
             flow = null;
         }
@@ -130,6 +130,6 @@ class FlowObservable<T> extends Observable<T> implements FlowConsumer<T>, Dispos
 
     @Override
     public boolean isDisposed() {
-        return disposed.get();
+        return disposed;
     }
 }

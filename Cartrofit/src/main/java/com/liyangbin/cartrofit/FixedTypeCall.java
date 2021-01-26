@@ -3,6 +3,7 @@ package com.liyangbin.cartrofit;
 import com.liyangbin.cartrofit.annotation.ScheduleOn;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.funtion.Converter;
+import com.liyangbin.cartrofit.funtion.FlowConverter;
 import com.liyangbin.cartrofit.funtion.Union;
 
 import java.util.concurrent.Executor;
@@ -19,30 +20,30 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
     @Override
     public void onInit() {
         super.onInit();
-        CallAdapter adapter = getAdapter();
-        inputConverter = adapter.findInputConverter(this);
-        if (hasCategory(CallAdapter.CATEGORY_TRACK)) {
+        Context context = getContext();
+        inputConverter = context.findInputConverter(this);
+        if (hasCategory(Context.CATEGORY_TRACK)) {
             if (getKey().isCallbackEntry) {
-                outputConverter = adapter.findCallbackOutputConverter(this);
+                outputConverter = context.findCallbackOutputConverter(this);
             } else {
-                flowConverter = adapter.findFlowConverter(this);
-                returnConverter = adapter.findReturnOutputConverter(this);
+                flowConverter = context.findFlowConverter(this);
+                returnConverter = context.findReturnOutputConverter(this);
             }
 
             ScheduleOn scheduleOn = getKey().getAnnotation(ScheduleOn.class);
             if (scheduleOn != null) {
-                flowSubscribeExecutor = getAdapter().getSubscribeExecutor(scheduleOn.subscribe());
-                flowConsumeExecutor = getAdapter().getConsumeExecutor(scheduleOn.consume());
+                flowSubscribeExecutor = getContext().getSubscribeExecutor(scheduleOn.subscribe());
+                flowConsumeExecutor = getContext().getConsumeExecutor(scheduleOn.consume());
             }
         } else {
-            returnConverter = adapter.findReturnOutputConverter(this);
+            returnConverter = context.findReturnOutputConverter(this);
         }
     }
 
     @Override
     public Object mapInvoke(Union parameter) {
         INPUT input = inputConverter.convert(parameter);
-        if (hasCategory(CallAdapter.CATEGORY_TRACK)) {
+        if (hasCategory(Context.CATEGORY_TRACK)) {
             Flow<OUTPUT> result = doTrackInvoke(input);
             if (flowSubscribeExecutor != null) {
                 result = result.subscribeOn(flowSubscribeExecutor);

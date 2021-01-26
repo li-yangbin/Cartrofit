@@ -1,9 +1,11 @@
+/*
 package com.liyangbin.cartrofit.call;
 
 import com.liyangbin.cartrofit.Call;
-import com.liyangbin.cartrofit.CallAdapter;
+import com.liyangbin.cartrofit.Context;
 import com.liyangbin.cartrofit.CallGroup;
 import com.liyangbin.cartrofit.flow.Flow;
+import com.liyangbin.cartrofit.flow.FlowConsumer;
 import com.liyangbin.cartrofit.funtion.Union;
 
 import java.util.ArrayList;
@@ -25,12 +27,12 @@ public class CombineCall extends CallGroup<Call> {
         boolean resultDetected = false;
         for (int i = 0; i < getChildCount(); i++) {
             Call call = getChildAt(i);
-            boolean hasResult = call.hasCategory(CallAdapter.CATEGORY_GET | CallAdapter.CATEGORY_TRACK);
+            boolean hasResult = call.hasCategory(Context.CATEGORY_GET | Context.CATEGORY_TRACK);
             if (!resultDetected && hasResult) {
                 startConcernResultIndex = i;
                 resultDetected = true;
             } else if (resultDetected && !hasResult) {
-                throw new RuntimeException("SET child CALL must be declared in front of all " + key);
+                throw new RuntimeException("SET child CALL must be declared in front of all " + getKey());
             }
         }
     }
@@ -39,16 +41,6 @@ public class CombineCall extends CallGroup<Call> {
     protected Call asCall(Call call) {
         return call;
     }
-
-//    @Override
-//    public CombineCall copyByHost(Call host) {
-//        CombineCall copy = (CombineCall) super.copyByHost(host);
-//        copy.childrenCallList = new ArrayList<>();
-//        for (int i = 0; i < getChildCount(); i++) {
-//            copy.childrenCallList.add(getChildAt(i).copyByHost(host));
-//        }
-//        return copy;
-//    }
 
     @Override
     public Object mapInvoke(Union parameter) {
@@ -82,7 +74,7 @@ public class CombineCall extends CallGroup<Call> {
         }
     }
 
-    private class CombineFlow implements Flow.StickyFlow<Union> {
+    private class CombineFlow implements FlowConsumer<Union> {
         CombineData trackingData;
         Flow<Object>[] flowArray;
         int trackElementCount;
@@ -103,37 +95,17 @@ public class CombineCall extends CallGroup<Call> {
 
             for (int i = startConcernResultIndex; i < getChildCount(); i++) {
                 Call call = getChildAt(i);
-                if (call.hasCategory(CallAdapter.CATEGORY_TRACK)) {
-                    flowArray[i] = (Flow<Object>) childInvoke(call, parameter);
+                if (call.hasCategory(Context.CATEGORY_TRACK)) {
+                    flowArray[i] = childInvoke(call, parameter);
                     flowObservers[i] = new InternalObserver(i);
                     trackIndexArray[trackElementCount++] = i;
-                } else if (call.hasCategory(CallAdapter.CATEGORY_GET)) {
+                } else if (call.hasCategory(Context.CATEGORY_GET)) {
                     trackingData.trackingObj[i] = childInvoke(call, parameter);
                     getIndexArray[getElementCount++] = i;
                 } else {
                     throw new RuntimeException("impossible situation");
                 }
             }
-//            trackIndexArray = new int[trackCount];
-//            getIndexArray = new int[getCount];
-//            final int size = elementsArray.length;
-//            trackingData = new CombineData();
-//            trackingData.trackingObj = new Object[size];
-//            flowArray = new StickyFlow<?>[size];
-//            flowObservers = new InternalObserver[size];
-//            for (int i = 0; i < size; i++) {
-//                Object obj = elementsArray[i];
-//                if (obj instanceof Flow) {
-//                    if (obj instanceof StickyFlow) {
-//                        flowArray[i] = (StickyFlow<?>) obj;
-//                        flowObservers[i] = new InternalObserver(i);
-//                        continue;
-//                    }
-//                    throw new IllegalStateException("impossible obj:" + obj);
-//                } else {
-//                    trackingData.trackingObj[i] = obj;
-//                }
-//            }
         }
 
         Object castAsUnionIfNeeded() {
@@ -203,3 +175,4 @@ public class CombineCall extends CallGroup<Call> {
         }
     }
 }
+*/

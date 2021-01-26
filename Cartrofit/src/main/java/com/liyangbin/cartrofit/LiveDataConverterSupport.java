@@ -5,12 +5,13 @@ import androidx.lifecycle.MutableLiveData;
 
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowConsumer;
+import com.liyangbin.cartrofit.funtion.FlowConverter;
 
 class LiveDataConverter {
     static void addSupport() {
         try {
             Class.forName("androidx.lifecycle.LiveData");
-            Cartrofit.addGlobalConverter(new LiveDataConverterDefault(),
+            Context.addGlobalConverter(new LiveDataConverterDefault(),
                     new LiveDataConverterMutable());
         } catch (ClassNotFoundException ignore) {
             // Add LiveData to gradle file to meet LiveData support

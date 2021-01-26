@@ -1,12 +1,7 @@
-package com.liyangbin.cartrofit.call;
+package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.Call;
-import com.liyangbin.cartrofit.CallAdapter;
-import com.liyangbin.cartrofit.Cartrofit;
-import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.annotation.Bind;
 import com.liyangbin.cartrofit.annotation.Callback;
-import com.liyangbin.cartrofit.annotation.Combine;
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Inject;
@@ -14,16 +9,27 @@ import com.liyangbin.cartrofit.annotation.Out;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Timeout;
 import com.liyangbin.cartrofit.annotation.Unregister;
+import com.liyangbin.cartrofit.call.InjectCall;
+import com.liyangbin.cartrofit.call.InjectGroupCall;
+import com.liyangbin.cartrofit.call.RegisterCall;
+import com.liyangbin.cartrofit.call.UnregisterCall;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 
-public class BuildInCallAdapter extends CallAdapter {
+public final class RootContext extends Context {
 
     private static final Object STABLE_SCOPE = new Object();
+    private static final RootContext INSTANCE = new RootContext();
+
+    private RootContext() {
+    }
+
+    public static RootContext getInstance() {
+        return INSTANCE;
+    }
 
     @Override
-    public Object extractScope(Class<?> scopeClass) {
+    public Object onExtractScope(Class<?> scopeClass) {
         return STABLE_SCOPE;
     }
 
@@ -33,7 +39,7 @@ public class BuildInCallAdapter extends CallAdapter {
                 .checkParameterIncluded(In.class, Out.class)
                 .provide((category, inject, key) -> createInjectCommand(key));
 
-        builder.create(Combine.class)
+        /*builder.create(Combine.class)
                 .checkParameter((combine, key) -> {
                     if (combine.elements().length <= 1) {
                         throw new CartrofitGrammarException("Must declare more than one element on Combine:"
@@ -50,10 +56,10 @@ public class BuildInCallAdapter extends CallAdapter {
                     CombineCall combineCall = new CombineCall();
                     for (int element : combine.elements()) {
                         combineCall.addChildCall(getOrCreateCallById(key, element,
-                                category & (CATEGORY_TRACK | CATEGORY_GET), false));
+                                category & (CATEGORY_TRACK | CATEGORY_GET)));
                     }
                     return combineCall;
-                });
+                });*/
 
         builder.create(Register.class)
                 .checkParameter((register, key) -> {
@@ -65,7 +71,7 @@ public class BuildInCallAdapter extends CallAdapter {
                             throw new CartrofitGrammarException("Declare a Callback parameter as an interface " + key);
                         }
                     } else {
-                        Cartrofit.Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
+                        Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
                         if (callbackParameter == null) {
                             throw new CartrofitGrammarException("Declare a Callback parameter as an interface " + key);
                         }
@@ -78,14 +84,14 @@ public class BuildInCallAdapter extends CallAdapter {
                     }
                 })
                 .provide((category, register, key) -> {
-                    Cartrofit.Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
+                    Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
                     if (callbackParameter == null) {
                         callbackParameter = key.getParameterAt(0);
                     }
                     final RegisterCall registerCall = new RegisterCall();
                     inflateCallback(key, callbackParameter.getType(), CATEGORY_TRACK,
                             call -> {
-                        Call returnCall = createChildCall(key, CATEGORY_SET);
+                        Call returnCall = null/*createChildCall(key, CATEGORY_SET)TODO: delete?*/;
                         Call parameterCall = null/* TODO: createInjectCommand(key)*/;
                         registerCall.addChildCall(call, returnCall, parameterCall);
                     });
@@ -103,31 +109,28 @@ public class BuildInCallAdapter extends CallAdapter {
                         throw new CartrofitGrammarException("Declare a Callback parameter as an interface " + key);
                     }
                 })
-                .provide((category, unregister, key) -> {
-                    UnregisterCall unregisterCall = new UnregisterCall();
-                    unregisterCall.setRegisterCall((RegisterCall) getOrCreateCallById(key,
-                            unregister.value(), CATEGORY_TRACK, false));
-                    return unregisterCall;
-                });
+                .provide((category, unregister, key) ->
+                        new UnregisterCall((RegisterCall) getOrCreateCallById(key,
+                        unregister.value(), CATEGORY_TRACK)));
 
         builder.create(Delegate.class)
-                .provide((category, delegate, key) -> getOrCreateCallById(key, delegate.value(), category, true));
+                .provide((category, delegate, key) -> createDelegateCallById(key, delegate.value(), category));
     }
 
     public Call wrapNormalTrack2RegisterIfNeeded(Call call) {
         if (call instanceof RegisterCall || !call.hasCategory(CATEGORY_TRACK)) {
             return null;
         }
-        Cartrofit.Parameter callbackParameter = call.getKey().findParameterByAnnotation(Callback.class);
+        Parameter callbackParameter = call.getKey().findParameterByAnnotation(Callback.class);
         if (callbackParameter == null) {
             return null;
         }
 
-        ArrayList<Cartrofit.Key> childrenKey = getChildKey(call.getKey(), callbackParameter.getType());
-        Cartrofit.Key trackKey = null;
-        Cartrofit.Key timeoutKey = null;
+        ArrayList<Key> childrenKey = getChildKey(call.getKey(), callbackParameter.getType());
+        Key trackKey = null;
+        Key timeoutKey = null;
         for (int i = 0; i < childrenKey.size(); i++) {
-            Cartrofit.Key entryKey = childrenKey.get(i);
+            Key entryKey = childrenKey.get(i);
             if (entryKey.isAnnotationPresent(Callback.class)) {
                 trackKey = entryKey;
             } else if (entryKey.isAnnotationPresent(Timeout.class)) {
@@ -143,12 +146,12 @@ public class BuildInCallAdapter extends CallAdapter {
         return new RegisterCall(call, trackKey, timeoutKey);
     }
 
-    private Call createInjectCommand(Cartrofit.Key key) {
+    private Call createInjectCommand(Key key) {
         if (key.method != null) {
             InjectGroupCall injectGroupCall = null;
             final int parameterCount = key.getParameterCount();
             for (int i = 0; i < parameterCount; i++) {
-                Cartrofit.Parameter parameter = key.getParameterAt(i);
+                Parameter parameter = key.getParameterAt(i);
                 boolean inDeclared = !key.isCallbackEntry && parameter.isAnnotationPresent(In.class);
                 boolean outDeclared = parameter.isAnnotationPresent(Out.class);
 
@@ -175,7 +178,7 @@ public class BuildInCallAdapter extends CallAdapter {
         }
     }
 
-    private InjectCall createInjectCallByClass(Cartrofit.Key parentKey, Class<?> clazz) {
+    private InjectCall createInjectCallByClass(Key parentKey, Class<?> clazz) {
         if (clazz.isPrimitive() || clazz.isArray() || clazz == String.class) {
             throw new CartrofitGrammarException("Can not use Inject operator on class type:" + clazz);
         }

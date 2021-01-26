@@ -7,12 +7,12 @@ public class ParameterContext {
 //    private static final String DEFAULT_TOKEN = "_default_token_";
 
 //    private final HashMap<String, ParameterMap> parameterIndexMap = new HashMap<>();
-    private Cartrofit.Key key;
+    private Key key;
 
-    public ParameterContext(/*CallGroup<?> group, */Cartrofit.Key key) {
+    public ParameterContext(/*CallGroup<?> group, */Key key) {
         this.key = key;
 //        for (int i = 0; i < key.getParameterCount(); i++) {
-//            Cartrofit.Parameter parameter = key.getParameterAt(i);
+//            Parameter parameter = key.getParameterAt(i);
 //            Bind bind = parameter.getAnnotation(Bind.class);
 //            if (bind != null /*|| !parameter.isAnnotationPresent(Callback.class)*/) {
 //                String[] tokenArray = bind.token()/*bind != null ? bind.token() : DEFAULT_TOKEN*/;
@@ -28,12 +28,12 @@ public class ParameterContext {
 //        }
     }
 
-    public Cartrofit.ParameterGroup extractParameterFromCall(Call call) {
+    public ParameterGroup extractParameterFromCall(Call call) {
         if (this.key == call.getKey()) {
             return key;
         }
         for (int i = 0; i < key.getParameterGroupCount(); i++) {
-            Cartrofit.ParameterGroup subGroup = key.getParameterGroupAt(i);
+            ParameterGroup subGroup = key.getParameterGroupAt(i);
             if (call.hasToken(subGroup.token())) {
                 return subGroup;
             }
@@ -59,7 +59,7 @@ public class ParameterContext {
 
     public Union getParameter(Call target, Union all) {
         for (int i = 0; i < key.getParameterGroupCount(); i++) {
-            Cartrofit.ParameterGroup group = key.getParameterGroupAt(i);
+            ParameterGroup group = key.getParameterGroupAt(i);
             if (target.hasToken(group.token())) {
                 Union result = Union.ofNull();
                 for (int j = 0; j < group.getParameterCount(); j++) {

@@ -20,13 +20,13 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
     private final ArrayList<AbsParameterSolution> forwardSolutions = new ArrayList<>();
     private final ArrayList<AbsParameterSolution> backwardSolutions = new ArrayList<>();
     private final Class<?> callType;
-    private final CallAdapter.CallSolution<A> caller;
+    private final Context.CallSolution<A> caller;
     private final AbsParameterSolution plainOutSolution = takeAny().output((old, para) -> {
         para.set(old);
         return old;
     }).noAnnotate();
 
-    ConverterBuilder(Class<? extends FixedTypeCall<IN, OUT>> callType, CallAdapter.CallSolution<A> caller) {
+    ConverterBuilder(Class<? extends FixedTypeCall<IN, OUT>> callType, Context.CallSolution<A> caller) {
         this.callType = callType;
         this.caller = caller;
     }
@@ -61,7 +61,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
         }
     }
 
-    private <T> void findSolutionDependency(boolean input, Cartrofit.ParameterGroup group, SolutionRecordKeeper<T> resultReceiver) {
+    private <T> void findSolutionDependency(boolean input, ParameterGroup group, SolutionRecordKeeper<T> resultReceiver) {
         final int paraCount = group.getParameterCount();
         if (paraCount == 0) {
             return;
@@ -126,20 +126,20 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
         }
     }
 
-    Converter<Union, IN> checkIn(Cartrofit.ParameterGroup group) {
+    Converter<Union, IN> checkIn(ParameterGroup group) {
         InputConverterImpl inputConverter = new InputConverterImpl(group);
         findSolutionDependency(true, group, inputConverter);
         return inputConverter;
     }
 
-    Converter<OUT, Union> checkOutCallback(Cartrofit.ParameterGroup group) {
+    Converter<OUT, Union> checkOutCallback(ParameterGroup group) {
         OutputConverterImpl outputConverter = new OutputConverterImpl(group);
         findSolutionDependency(false, group, outputConverter);
         return outputConverter;
     }
 
-    Converter<OUT, Object> checkOutReturn(Cartrofit.Key key) {
-        Cartrofit.Parameter returnParameter = key.getReturnAsParameter();
+    Converter<OUT, Object> checkOutReturn(Key key) {
+        Parameter returnParameter = key.getReturnAsParameter();
         if (returnParameter == null) {
             return null;
         }
@@ -165,7 +165,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
         return new ParameterSolution1<>(Object.class);
     }
 
-    private CallAdapter.CallSolution<A> commitParameter() {
+    private Context.CallSolution<A> commitParameter() {
         if (forwardSolutions.size() > 0) {
             caller.commitInputConverter(callType, this);
         }
@@ -243,7 +243,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
     }
 
     interface ParaVal<V> {
-        Cartrofit.Parameter getParameter();
+        Parameter getParameter();
         V get();
         void set(V value);
     }
@@ -253,7 +253,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
         Class<?> fixedType;
 
         Class<? extends Annotation> fixedAnnotationType;
-        Predicate<Cartrofit.Parameter> extraCheck;
+        Predicate<Parameter> extraCheck;
 
         boolean markedAsTogetherHead;
         boolean indeterminateMode;
@@ -280,7 +280,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
             return backward != null || outputTogether != null;
         }
 
-        boolean isInterestedToStart(Cartrofit.Parameter parameter) {
+        boolean isInterestedToStart(Parameter parameter) {
             if (fixedType.isAssignableFrom(parameter.getType())) {
                 if (forward != null || backward != null || markedAsTogetherHead) {
                     return ((annotateNothing && fixedAnnotationType == null)
@@ -291,7 +291,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
             return false;
         }
 
-        boolean isInterestedWithoutAnnotation(Cartrofit.Parameter parameter) {
+        boolean isInterestedWithoutAnnotation(Parameter parameter) {
             return fixedType == parameter.getType() && parameter.hasNoAnnotation();
         }
 
@@ -303,7 +303,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
             return parent != null ? parent.build() : ConverterBuilder.this;
         }
 
-        public final CallAdapter.CallSolution<A> buildAndCommitParameter() {
+        public final Context.CallSolution<A> buildAndCommitParameter() {
             return build().commitParameter();
         }
     }
@@ -473,11 +473,11 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
     }
 
     private abstract class SolutionRecordKeeper<SERIALIZATION> {
-        Cartrofit.ParameterGroup parameterGroup;
+        ParameterGroup parameterGroup;
         ArrayList<SolutionRecord> solutionRecords = new ArrayList<>();
         boolean input;
 
-        SolutionRecordKeeper(boolean input, Cartrofit.ParameterGroup parameterGroup) {
+        SolutionRecordKeeper(boolean input, ParameterGroup parameterGroup) {
             this.input = input;
             this.parameterGroup = parameterGroup;
         }
@@ -528,7 +528,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
             }
 
             @Override
-            public Cartrofit.Parameter getParameter() {
+            public Parameter getParameter() {
                 return parameterGroup.getParameterAt(index);
             }
 
@@ -546,7 +546,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
 
     private class OutputConverterImpl extends SolutionRecordKeeper<OUT> implements Converter<OUT, Union> {
 
-        OutputConverterImpl(Cartrofit.ParameterGroup parameterGroup) {
+        OutputConverterImpl(ParameterGroup parameterGroup) {
             super(false, parameterGroup);
         }
 
@@ -573,7 +573,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
             if (count == 0) {
                 return Union.ofNull();
             }
-            Union parameterHost = Union.of(new Object[count]);
+            Union parameterHost = Union.ofArray(new Object[count]);
             assemble(rawData, parameterHost);
             return parameterHost;
         }
@@ -581,7 +581,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
 
     private class InputConverterImpl extends SolutionRecordKeeper<IN> implements Converter<Union, IN> {
 
-        InputConverterImpl(Cartrofit.ParameterGroup parameterGroup) {
+        InputConverterImpl(ParameterGroup parameterGroup) {
             super(true, parameterGroup);
         }
 
@@ -616,10 +616,10 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
     private class ReturnConverterImpl implements Converter<OUT, Object>, ParaVal<Object> {
 
         AbsParameterSolution targetSolution;
-        Cartrofit.Parameter returnAsParameter;
+        Parameter returnAsParameter;
         Object tmpResult;
 
-        ReturnConverterImpl(AbsParameterSolution targetSolution, Cartrofit.Parameter returnAsParameter) {
+        ReturnConverterImpl(AbsParameterSolution targetSolution, Parameter returnAsParameter) {
             this.targetSolution = targetSolution;
             this.returnAsParameter = returnAsParameter;
         }
@@ -637,7 +637,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
         }
 
         @Override
-        public Cartrofit.Parameter getParameter() {
+        public Parameter getParameter() {
             return returnAsParameter;
         }
 

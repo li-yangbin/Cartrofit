@@ -1,12 +1,10 @@
 package com.liyangbin.cartrofit;
 
 import android.car.hardware.CarPropertyValue;
-import android.car.hardware.property.CarPropertyEvent;
 
 import androidx.annotation.Nullable;
 
 import com.liyangbin.cartrofit.annotation.Scope;
-import com.liyangbin.cartrofit.funtion.Converter2;
 
 import java.util.HashMap;
 import java.util.Random;

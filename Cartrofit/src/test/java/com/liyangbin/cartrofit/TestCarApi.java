@@ -3,7 +3,6 @@ package com.liyangbin.cartrofit;
 import androidx.databinding.ObservableBoolean;
 
 import com.liyangbin.cartrofit.annotation.CarValue;
-import com.liyangbin.cartrofit.annotation.Combine;
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.Get;
@@ -21,11 +20,8 @@ import io.reactivex.Observable;
 import io.reactivex.Single;
 
 import static com.liyangbin.cartrofit.TestCarApiId.register2Callback;
-import static com.liyangbin.cartrofit.TestCarApiId.trackBooleanReactive;
-import static com.liyangbin.cartrofit.TestCarApiId.trackIntAndBoolean;
 import static com.liyangbin.cartrofit.TestCarApiId.trackIntReactive;
 import static com.liyangbin.cartrofit.TestCarApiId.trackStringAndCombine;
-import static com.liyangbin.cartrofit.TestCarApiId.trackStringSignal;
 
 @GenerateId
 @Scope("test")
@@ -88,10 +84,8 @@ public interface TestCarApi {
     @Track(id = 0)
     Observable<Boolean> trackBooleanReactive();
 
-    @Combine(elements = {trackStringSignal, trackBooleanReactive})
     Observable<String> trackIntAndBoolean();
 
-    @Combine(elements = {trackStringSignal, trackIntAndBoolean})
     Observable<String> trackStringAndCombine();
 
     @Track(id = 0)

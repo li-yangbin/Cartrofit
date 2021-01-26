@@ -1,11 +1,11 @@
 package com.liyangbin.cartrofit;
 
+import android.car.hardware.CarPropertyConfig;
 import android.car.hardware.CarPropertyValue;
 import android.car.hardware.property.CarPropertyEvent;
 
 import com.liyangbin.cartrofit.annotation.Availability;
 import com.liyangbin.cartrofit.annotation.CarValue;
-import com.liyangbin.cartrofit.annotation.Config;
 import com.liyangbin.cartrofit.annotation.Get;
 import com.liyangbin.cartrofit.annotation.Restore;
 import com.liyangbin.cartrofit.annotation.Scope;
@@ -15,25 +15,66 @@ import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowPublisher;
 import com.liyangbin.cartrofit.funtion.Union;
 
-import java.lang.annotation.Annotation;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Objects;
+import java.util.function.Supplier;
 
-public abstract class CarPropertyAdapter extends CallAdapter {
+public class CarPropertyContext extends Context {
 
-    private final String key;
+    private static final HashMap<String, Singleton<Context>> sCarContextMap = new HashMap<>();
+    private static final CarPropertyContext INSTANCE = new CarPropertyContext();
 
-    public CarPropertyAdapter(String key) {
-        this.key = key;
+    static {
+        DefaultDataSource.register();
+    }
+
+    public static <T> T fromScope(Class<T> api) {
+        Scope scope = api.getDeclaredAnnotation(Scope.class);
+        if (scope != null) {
+            Singleton<Context> contextProvider = sCarContextMap.get(scope.value());
+            if (contextProvider != null) {
+                return contextProvider.get().from(api);
+            }
+        }
+        throw new CartrofitGrammarException("Invalid scope for:" + api);
+    }
+
+    public static void addCarPropertyHandler(String scopeName, Supplier<Context> initProvider) {
+        sCarContextMap.put(scopeName, new Singleton<>(initProvider));
+    }
+
+    private static class Singleton<T> {
+        private final Supplier<T> initProvider;
+        private T instance;
+
+        T get() {
+            if (instance == null) {
+                synchronized (Singleton.class) {
+                    if (instance == null) {
+                        instance = initProvider.get();
+                    }
+                }
+            }
+            return instance;
+        }
+
+        Singleton(Supplier<T> initProvider) {
+            this.initProvider = initProvider;
+        }
+    }
+
+    private CarPropertyContext() {
+        super(RootContext.getInstance());
+    }
+
+    public static CarPropertyContext getInstance() {
+        return INSTANCE;
     }
 
     @Override
-    public Scope extractScope(Class<?> apiClass) {
-        Scope scope = findScopeByClass(Scope.class, apiClass);
-        if (scope != null && scope.value().equals(key)) {
-            return scope;
-        }
-        return null;
+    public Object onExtractScope(Class<?> scopeClass) {
+        return scopeClass.getDeclaredAnnotation(Scope.class);
     }
 
     @Override
@@ -68,16 +109,18 @@ public abstract class CarPropertyAdapter extends CallAdapter {
                     para.set(old.getStatus());
                     return old;
                 }).buildAndCommitParameter()
-                .provide((category, track, key) -> new PropertyTrack(key.getScopeObj(), track));
+                .provide((category, track, key) -> {
+                    PropertyTrack trackCall = new PropertyTrack(key.getScopeObj(), track);
+                    Restore restore = key.getAnnotation(Restore.class);
+                    if (restore != null && restore.restoreTimeout() > 0) {
+                        int setMethodId = restore.value();
+                        PropertySet propertySet = (PropertySet) getOrCreateCallById(key,
+                                setMethodId, Context.CATEGORY_SET);
+                        trackCall.setRestore(propertySet, restore.restoreTimeout());
+                    }
+                    return trackCall;
+                });
     }
-
-    public abstract Object get(int propertyId, int area, CarType type);
-
-    public abstract void set(int propertyId, int area, Object value);
-
-    public abstract Flow<CarPropertyValue<?>> track(int propertyId, int area);
-
-    public abstract Class<?> extractValueType(int propertyId);
 
     private static class BuildInValue {
         int intValue;
@@ -166,9 +209,24 @@ public abstract class CarPropertyAdapter extends CallAdapter {
         return handleArea == Scope.DEFAULT_AREA_ID ? scopeArea : handleArea;
     }
 
-    public class PropertyGet extends Call {
+    public static abstract class PropertyAccessCall<IN, OUT> extends FixedTypeCall<IN, OUT> {
+        CarPropertyAccess<Object> carPropertyAccess;
+        CarPropertyConfigAccess carPropertyConfigAccess;
+
+        CarPropertyConfig<?> propertyConfig;
         int propertyId;
         int areaId;
+
+        @Override
+        public void onInit() {
+            super.onInit();
+            carPropertyConfigAccess = getContext().getContextElement(CarPropertyConfigAccess.class);
+            propertyConfig = carPropertyConfigAccess.getConfig(propertyId, areaId);
+            carPropertyAccess = getContext().getContextElement(propertyConfig.getPropertyType());
+        }
+    }
+
+    public static class PropertyGet extends PropertyAccessCall<Void, Void> {
         CarType getType = CarType.VALUE;
 
         PropertyGet(Scope scope, Get get) {
@@ -179,37 +237,44 @@ public abstract class CarPropertyAdapter extends CallAdapter {
         @Override
         public void onInit() {
             super.onInit();
-            Annotation[] annotations = getKey().getAnnotations();
-            for (Annotation annotation : annotations) {
-                if (annotation instanceof Availability) {
-                    getType = CarType.AVAILABILITY;
-                    break;
-                } else if (annotation instanceof Config) {
-                    getType = CarType.CONFIG;
-                    break;
-                }
+            Class<?> returnType = getKey().getReturnType();
+            if (returnType.equals(CarPropertyConfig.class)) {
+                getType = CarType.CONFIG;
+            } else if (Context.classEquals(returnType, boolean.class)
+                    && getKey().isAnnotationPresent(Availability.class)) {
+                getType = CarType.AVAILABILITY;
             }
         }
 
         @Override
         public Object mapInvoke(Union parameter) {
-            return CarPropertyAdapter.this.get(propertyId, areaId, getType);
+            if (getType == CarType.CONFIG) {
+                return propertyConfig;
+            } else if (getType == CarType.AVAILABILITY) {
+                return carPropertyAccess.isPropertyAvailable(propertyId, areaId);
+            } else {
+                return carPropertyAccess.get(propertyId, areaId);
+            }
         }
     }
 
-    public class PropertySet extends Call implements Flow.FlowSource<Object> {
-
-        int propertyId;
-        int areaId;
+    public static class PropertySet extends PropertyAccessCall<Void, Void> implements Flow.FlowSource<Object> {
         Object buildInSetValue;
+        BuildInValue buildInValueUnresolved;
         ArrayList<Flow.Injector<Object>> onInvokeListener = new ArrayList<>();
 
         PropertySet(Scope scope, Set set) {
             this.propertyId = set.id();
             this.areaId = resolveArea(set.area(), scope.area());
-            BuildInValue buildInValue = BuildInValue.build(set.value());
-            if (buildInValue != null) {
-                buildInSetValue = buildInValue.extractValue(extractValueType(propertyId));
+            buildInValueUnresolved = BuildInValue.build(set.value());
+        }
+
+        @Override
+        public void onInit() {
+            super.onInit();
+            if (buildInValueUnresolved != null) {
+                buildInSetValue = buildInValueUnresolved.extractValue(propertyConfig.getPropertyType());
+                buildInValueUnresolved = null;
             }
         }
 
@@ -219,7 +284,7 @@ public abstract class CarPropertyAdapter extends CallAdapter {
             for (int i = 0; i < onInvokeListener.size(); i++) {
                 onInvokeListener.get(i).send(toBeSet);
             }
-            CarPropertyAdapter.this.set(propertyId, areaId, toBeSet);
+            carPropertyAccess.set(propertyId, areaId, toBeSet);
             return null;
         }
 
@@ -239,12 +304,12 @@ public abstract class CarPropertyAdapter extends CallAdapter {
         }
     }
 
-    private class PropertyTrack extends FixedTypeCall<Void, CarPropertyValue<?>> {
+    public static class PropertyTrack extends PropertyAccessCall<Void, CarPropertyValue<Object>> {
 
-        int propertyId;
-        int areaId;
         boolean isSticky;
-        FlowPublisher<CarPropertyValue<?>> carValuePublisher;
+        PropertySet propertySet;
+        int restoreMillis;
+        FlowPublisher<CarPropertyValue<Object>> carValuePublisher;
 
         PropertyTrack(Scope scope, Track track) {
             this.propertyId = track.id();
@@ -252,40 +317,41 @@ public abstract class CarPropertyAdapter extends CallAdapter {
             this.areaId = resolveArea(track.area(), scope.area());
         }
 
+        void setRestore(PropertySet propertySet, int restoreMillis) {
+            this.propertySet = propertySet;
+            this.restoreMillis = restoreMillis;
+        }
+
         @Override
         public void onInit() {
             super.onInit();
-
-            carValuePublisher = CarPropertyAdapter.this.track(propertyId, areaId).publish();
+            carValuePublisher = carPropertyAccess.track(propertyId, areaId).publish();
             if (isSticky) {
                 carValuePublisher.enableStickyDispatch(this::onLoadDefaultData);
             }
             carValuePublisher.start();
 
-            Restore restore = getKey().getAnnotation(Restore.class);
-            if (restore != null && restore.restoreTimeout() > 0) {
-                int setMethodId = restore.value();
-                Call call = getOrCreateCallById(getKey(), setMethodId, CallAdapter.CATEGORY_SET, false);
-                Flow.fromSource((PropertySet) call)
+            if (propertySet != null) {
+                Flow.fromSource(propertySet)
                     .switchMap(obj -> {
-                        CarPropertyValue<?> latestEvent = carValuePublisher.getData();
+                        CarPropertyValue<Object> latestEvent = carValuePublisher.getData();
                         // TODO: test
                         return carValuePublisher.share()
                             .take(carValue -> Objects.equals(obj, carValue.getValue()), 1)
-                            .timeout(restore.value(), () -> {
+                            .timeout(restoreMillis, () -> {
                                 carValuePublisher.injectData(latestEvent != null ? latestEvent : onLoadDefaultData());
                             });
                     }).subscribeWithoutResultConcern();
             }
         }
 
-        protected CarPropertyValue<?> onLoadDefaultData() {
+        protected CarPropertyValue<Object> onLoadDefaultData() {
             return new CarPropertyValue<>(propertyId,
-                    areaId, CarPropertyAdapter.this.get(propertyId, areaId, CarType.VALUE));
+                    areaId, carPropertyAccess.get(propertyId, areaId));
         }
 
         @Override
-        protected Flow<CarPropertyValue<?>> doTrackInvoke(Void none) {
+        protected Flow<CarPropertyValue<Object>> doTrackInvoke(Void none) {
             return carValuePublisher.share();
         }
     }

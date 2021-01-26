@@ -2,8 +2,9 @@ package com.liyangbin.cartrofit.call;
 
 import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CallGroup;
-import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
+import com.liyangbin.cartrofit.Key;
+import com.liyangbin.cartrofit.Parameter;
 import com.liyangbin.cartrofit.ParameterContext;
 import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.Timeout;
@@ -23,15 +24,15 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
     private int callbackParaIndex;
 
     private boolean convenientTrackMode;
-    private Cartrofit.Key convenientTrackKey;
-    private Cartrofit.Key convenientTimeoutKey;
+    private Key convenientTrackKey;
+    private Key convenientTimeoutKey;
     private Call trackCall;
     private int timeOutMillis;
 
-    RegisterCall() {
+    public RegisterCall() {
     }
 
-    RegisterCall(Call trackCall, Cartrofit.Key trackKey, Cartrofit.Key timeoutKey) {
+    public RegisterCall(Call trackCall, Key trackKey, Key timeoutKey) {
         convenientTrackMode = true;
         this.trackCall = trackCall;
         this.convenientTrackKey = trackKey;
@@ -41,20 +42,15 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
         }
         addChildCall(new Entry(trackCall));
 
-        Cartrofit.Parameter parameter = getKey().findParameterByAnnotation(Callback.class);
+        Parameter parameter = getKey().findParameterByAnnotation(Callback.class);
         if (parameter != null) {
             callbackParaIndex = parameter.getDeclaredIndex();
         }
     }
 
-    void addChildCall(Call entryCall, Call returnCall,
+    public void addChildCall(Call entryCall, Call returnCall,
                       Call parameterOutCall) {
         addChildCall(new Entry(entryCall, returnCall, (InjectGroupCall) parameterOutCall));
-    }
-
-    @Override
-    public Call copyByHost(Call host) {
-        return convenientTrackMode ? trackCall.copyByHost(host) : super.copyByHost(host);
     }
 
     static class Entry {
@@ -86,7 +82,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
     private class ConvenientTrackContext extends ParameterContext {
 
-        ConvenientTrackContext(Cartrofit.Key key) {
+        ConvenientTrackContext(Key key) {
             super(key);
         }
 
@@ -104,14 +100,14 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
     @Override
     public void onInit() {
         super.onInit();
-        Cartrofit.Parameter parameter = getKey().findParameterByAnnotation(Callback.class);
+        Parameter parameter = getKey().findParameterByAnnotation(Callback.class);
         if (parameter != null) {
             callbackParaIndex = parameter.getDeclaredIndex();
         }
     }
 
     @Override
-    public Cartrofit.Key getKey() {
+    public Key getKey() {
         return convenientTrackMode ? trackCall.getKey() : super.getKey();
     }
 

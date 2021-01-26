@@ -13,6 +13,7 @@ import androidx.databinding.PropertyChangeRegistry;
 import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowConsumer;
+import com.liyangbin.cartrofit.funtion.FlowConverter;
 
 import java.lang.reflect.Field;
 
@@ -20,7 +21,7 @@ class ObservableConverter {
     static void addSupport() {
         try {
             Class.forName("androidx.databinding.ObservableField");
-            Cartrofit.addGlobalConverter(new ObservableConverterField(),
+            Context.addGlobalConverter(new ObservableConverterField(),
                     new ObservableConverterInt(),
                     new ObservableConverterByte(),
                     new ObservableConverterBoolean(),

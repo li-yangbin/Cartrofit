@@ -1,7 +1,7 @@
 package com.liyangbin.cartrofit.call;
 
 import com.liyangbin.cartrofit.Call;
-import com.liyangbin.cartrofit.CallAdapter;
+import com.liyangbin.cartrofit.Context;
 import com.liyangbin.cartrofit.CallGroup;
 import com.liyangbin.cartrofit.InjectReceiver;
 import com.liyangbin.cartrofit.funtion.Union;
@@ -12,7 +12,7 @@ public class InjectCall extends CallGroup<Call> {
 
     Class<?> targetClass;
 
-    InjectCall(Class<?> targetClass) {
+    public InjectCall(Class<?> targetClass) {
         this.targetClass = targetClass;
     }
 
@@ -50,15 +50,15 @@ public class InjectCall extends CallGroup<Call> {
                 } else {
                     Field field = childCall.getKey().field;
                     if (field != null) {
-                        boolean isGetCommand = childCall.hasCategory(CallAdapter.CATEGORY_GET
-                                | CallAdapter.CATEGORY_TRACK);
+                        boolean isGetCommand = childCall.hasCategory(Context.CATEGORY_GET
+                                | Context.CATEGORY_TRACK);
                         boolean isSetCommand = !isGetCommand
-                                && childCall.hasCategory(CallAdapter.CATEGORY_SET);
+                                && childCall.hasCategory(Context.CATEGORY_SET);
                         if (doGet && isGetCommand) {
                             field.set(target, childInvoke(childCall, parameter));
                         } else if (doSet && isSetCommand) {
                             Object setValue = field.get(target);
-                            childInvokeWithExtra(childCall, parameter, setValue);
+                            childInvokeWitInjectTarget(childCall, parameter, setValue);
                         }
                     }
                 }

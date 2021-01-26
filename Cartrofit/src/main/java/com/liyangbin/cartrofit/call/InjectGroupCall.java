@@ -2,7 +2,7 @@ package com.liyangbin.cartrofit.call;
 
 import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CallGroup;
-import com.liyangbin.cartrofit.Cartrofit;
+import com.liyangbin.cartrofit.Parameter;
 import com.liyangbin.cartrofit.ParameterContext;
 import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Out;
@@ -18,11 +18,11 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
     private boolean getSuppressed;
     private boolean setSuppressed;
 
-    InjectGroupCall(int parameterCount) {
+    public InjectGroupCall(int parameterCount) {
         parameterInject = new Entry[parameterCount];
     }
 
-    void addChildInjectCall(int parameterIndex, InjectCall call, boolean doSet, boolean doGet) {
+    public void addChildInjectCall(int parameterIndex, InjectCall call, boolean doSet, boolean doGet) {
         if (doGet || doSet) {
             addChildCall(new Entry(parameterIndex, call, doGet, doSet));
         }
@@ -74,10 +74,10 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
         HashMap<InjectCall, Object> contextTarget = new HashMap<>();
 
         InjectContext() {
-            super(key);
+            super(getKey());
             int size = 0;
-            for (int i = 0; i < key.getParameterCount(); i++) {
-                Cartrofit.Parameter parameter = key.getParameterAt(i);
+            for (int i = 0; i < getKey().getParameterCount(); i++) {
+                Parameter parameter = getKey().getParameterAt(i);
                 if (parameter.isAnnotationPresent(In.class)
                         || parameter.isAnnotationPresent(Out.class)) {
                     injectTargetIndex |= (1 << i);
@@ -148,7 +148,7 @@ public class InjectGroupCall extends CallGroup<InjectGroupCall.Entry> {
 
             Object containerObject = getTarget((InjectCall) child.getParent());
             if (containerObject != null) {
-                obj = child.asFieldAccessible().get(containerObject);
+                obj = child.getKey().field.get(containerObject);
                 contextTarget.put(child, obj);
                 return obj;
             }

@@ -5,7 +5,7 @@ import com.liyangbin.cartrofit.funtion.Union;
 import java.util.ArrayList;
 
 public abstract class CallGroup<T> extends Call {
-    private ArrayList<T> childrenCallList = new ArrayList<>();
+    private final ArrayList<T> childrenCallList = new ArrayList<>();
 
     @Override
     void dispatchInit(ParameterContext context) {
@@ -66,8 +66,8 @@ public abstract class CallGroup<T> extends Call {
         return (RESULT) child.invoke(getParameterContext().getParameter(child, parameter));
     }
 
-    protected <RESULT> RESULT childInvokeWithExtra(Call child, Union parameter, Object extra) {
+    protected <RESULT> RESULT childInvokeWitInjectTarget(Call child, Union parameter, Object target) {
         // TODO: injectable parameter will always be the last one?
-        return (RESULT) child.invoke(getParameterContext().getParameter(child, parameter).merge(extra));
+        return (RESULT) child.invoke(getParameterContext().getParameter(child, parameter).merge(target));
     }
 }

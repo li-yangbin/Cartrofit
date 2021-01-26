@@ -5,7 +5,7 @@ import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.funtion.Union;
 
 public class UnregisterCall extends Call {
-    private RegisterCall trackCall;
+    private final RegisterCall trackCall;
 
     @Override
     public void onInit() {
@@ -20,7 +20,7 @@ public class UnregisterCall extends Call {
         throw new CartrofitGrammarException("invalid unTrack:" + this);
     }
 
-    void setRegisterCall(RegisterCall trackCall) {
+    public UnregisterCall(RegisterCall trackCall) {
         this.trackCall = trackCall;
     }
 

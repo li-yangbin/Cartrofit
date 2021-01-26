@@ -2,7 +2,7 @@ package com.liyangbin.cartrofit.flow;
 
 import androidx.lifecycle.LiveData;
 
-import com.liyangbin.cartrofit.Cartrofit;
+import com.liyangbin.cartrofit.Context;
 import com.liyangbin.cartrofit.funtion.Converter;
 
 import java.util.Objects;
@@ -106,7 +106,24 @@ public abstract class Flow<T> {
     public interface FlowSource<T> {
         void startWithInjector(Injector<T> injector);
         void finishWithInjector(Injector<T> injector);
-        boolean isHot();
+
+        default boolean isHot() {
+            return true;
+        }
+    }
+
+    public interface ColdFlowSource<T> extends FlowSource<T> {
+        @Override
+        default void finishWithInjector(Injector<T> injector) {
+            onStop();
+        }
+
+        void onStop();
+
+        @Override
+        default boolean isHot() {
+            return false;
+        }
     }
 
     public interface Injector<T> {
@@ -150,6 +167,27 @@ public abstract class Flow<T> {
         }
     }
 
+    @SafeVarargs
+    public static <T> Flow<T> just(T... vt) {
+        return new SimpleFlow<>(new ColdFlowSource<T>() {
+            boolean expired;
+            @Override
+            public void startWithInjector(Injector<T> injector) {
+                for (int i = 0; i < vt.length && !expired; i++) {
+                    injector.send(vt[i]);
+                }
+                if (!expired) {
+                    injector.done();
+                }
+            }
+
+            @Override
+            public void onStop() {
+                expired = true;
+            }
+        });
+    }
+
     public static <T> Flow<T> fromSource(FlowSource<T> source) {
         return new SimpleFlow<>(source);
     }
@@ -164,10 +202,6 @@ public abstract class Flow<T> {
 
     public static Flow<Integer> interval(int startDelay, int interval) {
         return new IntervalFlow(startDelay, interval);
-    }
-
-    public final Flow<T> intercept(InterceptorFlow.Interceptor<T> interceptor) {
-        return new InterceptorFlow<>(this, interceptor);
     }
 
     public final Flow<T> distinct(BiPredicate<T, T> check) {
@@ -231,16 +265,16 @@ public abstract class Flow<T> {
 
     @SuppressWarnings("unchecked")
     public LiveData<T> toLiveData() {
-        return (LiveData<T>) Cartrofit.findFlowConverter(LiveData.class).convert(this);
+        return (LiveData<T>) Context.findFlowConverter(LiveData.class).convert(this);
     }
 
     @SuppressWarnings("unchecked")
     public Observable<T> toRXObservable() {
-        return (Observable<T>) Cartrofit.findFlowConverter(Observable.class).convert(this);
+        return (Observable<T>) Context.findFlowConverter(Observable.class).convert(this);
     }
 
     @SuppressWarnings("unchecked")
     public Flowable<T> toRXFlowable() {
-        return (Flowable<T>) Cartrofit.findFlowConverter(Flowable.class).convert(this);
+        return (Flowable<T>) Context.findFlowConverter(Flowable.class).convert(this);
     }
 }

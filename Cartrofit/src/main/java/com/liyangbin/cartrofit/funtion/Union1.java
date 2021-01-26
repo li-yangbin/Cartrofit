@@ -1,7 +1,7 @@
 package com.liyangbin.cartrofit.funtion;
 
 public class Union1<T> extends Union {
-    static final Union1<Void> NULL_UNION = new Union1<Void>(null) {
+    static final Union1<Void> NULL_UNION = new Union1<Void>(null, false) {
         @Override
         public Object get(int index) {
             throw new RuntimeException("impossible call");
@@ -27,20 +27,30 @@ public class Union1<T> extends Union {
     static int sSize;
 
     public T value1;
+    boolean arrayMode;
 
     Union1<?> next;
 
-    Union1(T t) {
+    Union1(T t, boolean arrayMode) {
         value1 = t;
+        this.arrayMode = arrayMode;
     }
 
     @Override
     public int getCount() {
-        return 1;
+        return arrayMode ? ((Object[])value1).length : 1;
     }
 
     @Override
     Union mergeObj(Object obj) {
+        if (arrayMode) {
+            Object[] src = (Object[]) value1;
+            Object[] dst = new Object[src.length + 1];
+            System.arraycopy(src, 0, dst, 0, src.length);
+            dst[src.length] = obj;
+            value1 = (T) dst;
+            return this;
+        }
         return new Union2<>(value1, obj);
     }
 
@@ -49,12 +59,14 @@ public class Union1<T> extends Union {
         if (index != 0) {
             throw new IndexOutOfBoundsException("size:" + getCount() + " index:" + index);
         }
-        return value1;
+        return arrayMode ? ((Object[])value1)[index] : value1;
     }
 
     @Override
     public void set(int index, Object value) {
-        if (index == 0) {
+        if (arrayMode) {
+            ((Object[])value1)[index] = value;
+        } else if (index == 0) {
             value1 = (T) value;
         }
     }
@@ -62,6 +74,7 @@ public class Union1<T> extends Union {
     @Override
     public void recycle() {
         value1 = null;
+        arrayMode = false;
 
         synchronized (Union.class) {
             if (sSize < LIMIT) {

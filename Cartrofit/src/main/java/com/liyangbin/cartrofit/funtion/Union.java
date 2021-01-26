@@ -1,9 +1,5 @@
 package com.liyangbin.cartrofit.funtion;
 
-import com.liyangbin.cartrofit.CartrofitGrammarException;
-
-import java.util.Arrays;
-
 @SuppressWarnings("unchecked")
 public abstract class Union {
 
@@ -54,7 +50,7 @@ public abstract class Union {
         } else {
             synchronized (Union.class) {
                 if (Union1.sPool == null) {
-                    return new Union1<>(obj);
+                    return new Union1<>(obj, false);
                 }
                 Union1<Object> out = (Union1<Object>) Union1.sPool;
                 out.value1 = obj;
@@ -64,26 +60,6 @@ public abstract class Union {
                 Union1.sSize--;
                 return out;
             }
-        }
-    }
-
-    public static Union of(Object[] array) {
-        if (array == null || array.length == 0) {
-            return Union1.NULL_UNION;
-        }
-        switch (array.length) {
-            case 1:
-                return of(array[0]);
-            case 2:
-                return of(array[0], array[1]);
-            case 3:
-                return of(array[0], array[1], array[2]);
-            case 4:
-                return of(array[0], array[1], array[2], array[3]);
-            case 5:
-                return of(array[0], array[1], array[2], array[3], array[4]);
-            default:
-                throw new CartrofitGrammarException("Invalid input array:" + Arrays.toString(array));
         }
     }
 
@@ -153,6 +129,25 @@ public abstract class Union {
             Union5.sPool5 = (Union5<?, ?, ?, ?, ?>) out.next;
             out.next = null;
             Union5.sSize5--;
+            return out;
+        }
+    }
+
+    public static Union ofArray(Object[] obj) {
+        if (obj == null || obj.length == 0) {
+            return Union1.NULL_UNION;
+        }
+        synchronized (Union.class) {
+            if (Union1.sPool == null) {
+                return new Union1<>(obj, true);
+            }
+            Union1<Object> out = (Union1<Object>) Union1.sPool;
+            out.value1 = obj;
+            out.arrayMode = true;
+
+            Union1.sPool = out.next;
+            out.next = null;
+            Union1.sSize--;
             return out;
         }
     }

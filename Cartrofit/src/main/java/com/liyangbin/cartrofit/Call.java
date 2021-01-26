@@ -9,13 +9,13 @@ import java.util.Arrays;
 import java.util.List;
 
 public abstract class Call implements Cloneable {
-    private Cartrofit.Key key;
+    private Key key;
     private int category;
     InterceptorChain interceptorChain;
     private ParameterContext parameterContext;
 
     private CallGroup<?> parentCall;
-    private CallAdapter callAdapter;
+    private Context context;
     private List<String> tokenList;
 
     void dispatchInit(ParameterContext parameterContext) {
@@ -41,17 +41,17 @@ public abstract class Call implements Cloneable {
         return new ParameterContext(getKey());
     }
 
-    void setKey(Cartrofit.Key key, CallAdapter adapter) {
+    void setKey(Key key, Context context) {
         this.key = key;
-        this.callAdapter = adapter;
+        this.context = context;
     }
 
-    public Cartrofit.Key getKey() {
+    public Key getKey() {
         return key;
     }
 
-    public CallAdapter getAdapter() {
-        return callAdapter;
+    public Context getContext() {
+        return context;
     }
 
     void setTokenList(Token token) {
@@ -100,16 +100,6 @@ public abstract class Call implements Cloneable {
 
     protected Interceptor.InvokeSession onCreateInvokeSession() {
         return new Interceptor.InvokeSession(this);
-    }
-
-    public Call copyByHost(Call host) {
-        try {
-            Call call = (Call) clone();
-            host.disableInOutConvert();
-            return call;
-        } catch (CloneNotSupportedException error) {
-            throw new RuntimeException(error);
-        }
     }
 
     private void disableInOutConvert() {
