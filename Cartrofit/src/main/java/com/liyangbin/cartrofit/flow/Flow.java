@@ -1,7 +1,5 @@
 package com.liyangbin.cartrofit.flow;
 
-import androidx.lifecycle.LiveData;
-
 import com.liyangbin.cartrofit.Context;
 import com.liyangbin.cartrofit.funtion.Converter;
 
@@ -11,6 +9,7 @@ import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
+import androidx.lifecycle.LiveData;
 import io.reactivex.Flowable;
 import io.reactivex.Observable;
 
@@ -21,7 +20,7 @@ public abstract class Flow<T> {
     private boolean subscribeOnce;
     private boolean subscribed;
 
-    public void subscribeWithoutResultConcern() {
+    public void emptySubscribe() {
         subscribe(t -> {
             // ignore
         });
@@ -67,6 +66,14 @@ public abstract class Flow<T> {
             if (!done) {
                 done = true;
                 downStream.onComplete();
+            }
+        }
+
+        @Override
+        public void onError(Throwable throwable) {
+            if (!done) {
+                done = true;
+                downStream.onError(throwable);
             }
         }
     }
@@ -129,11 +136,13 @@ public abstract class Flow<T> {
     public interface Injector<T> {
         void send(T data);
         void done();
+        void error(Throwable error);
     }
 
     private static class SimpleFlow<T> extends Flow<T> implements Injector<T> {
         private final FlowSource<T> source;
         private FlowConsumer<T> consumer;
+        private boolean expired;
 
         SimpleFlow(FlowSource<T> source) {
             this.source = source;
@@ -141,6 +150,7 @@ public abstract class Flow<T> {
 
         @Override
         protected void onSubscribeStarted(FlowConsumer<T> consumer) {
+            expired = false;
             source.startWithInjector(this);
             this.consumer = consumer;
         }
@@ -152,18 +162,34 @@ public abstract class Flow<T> {
 
         @Override
         protected void onSubscribeStopped() {
-            source.finishWithInjector(this);
-            consumer.onCancel();
+            if (!expired) {
+                expired = true;
+                source.finishWithInjector(this);
+                consumer.onCancel();
+            }
         }
 
         @Override
         public void send(T data) {
-            consumer.accept(data);
+            if (!expired) {
+                consumer.accept(data);
+            }
         }
 
         @Override
         public void done() {
-            consumer.onComplete();
+            if (!expired) {
+                expired = true;
+                consumer.onComplete();
+            }
+        }
+
+        @Override
+        public void error(Throwable error) {
+            if (!expired) {
+                expired = true;
+                consumer.onError(error);
+            }
         }
     }
 
@@ -224,7 +250,11 @@ public abstract class Flow<T> {
         return new SwitchMapFlow<>(this, flatMapper);
     }
 
-    public final Flow<T> timeout(int timeoutMillis, Runnable timeoutAction) {
+    public final Flow<T> timeout(int timeoutMillis) {
+        return new TimeoutFlow<>(this, timeoutMillis, null);
+    }
+
+    public final Flow<T> timeout(int timeoutMillis, Predicate<Throwable> timeoutAction) {
         return new TimeoutFlow<>(this, timeoutMillis, timeoutAction);
     }
 

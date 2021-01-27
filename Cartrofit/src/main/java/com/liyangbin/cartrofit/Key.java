@@ -17,7 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public class Key implements ParameterGroup {
+public class Key /*implements ParameterGroup*/ {
     public final Method method;
     public final boolean isCallbackEntry;
 
@@ -32,6 +32,7 @@ public class Key implements ParameterGroup {
     private Parameter returnParameter;
     private Parameter[] parameters;
     private ParameterGroup[] parameterGroups;
+    private ParameterGroup implicitParameterGroup;
     private Key delegateKey;
 
     Key(Context.ApiRecord<?> record, Method method, boolean isCallbackEntry) {
@@ -79,11 +80,6 @@ public class Key implements ParameterGroup {
             }
         }
         return null;
-    }
-
-    @Override
-    public String token() {
-        return "";
     }
 
     public Parameter getReturnAsParameter() {
@@ -191,11 +187,6 @@ public class Key implements ParameterGroup {
         }
 
         @Override
-        public ParameterGroup getParameterGroup() {
-            return this;
-        }
-
-        @Override
         public String getName() {
             return "";
         }
@@ -209,7 +200,6 @@ public class Key implements ParameterGroup {
         }
     }
 
-    @Override
     public int getParameterCount() {
         if (parameterCount != -1) {
             return parameterCount;
@@ -217,34 +207,28 @@ public class Key implements ParameterGroup {
         if (method == null) {
             return 0;
         }
-        return parameterCount = getParameterCount(method);
-    }
-
-    @Override
-    public Parameter getParameterAt(int index) {
-        if (method == null) {
-            return null;
-        }
+        parameterCount = getParameterCount(method);
         if (parameters == null) {
-            final int count = getParameterCount(method);
-            parameters = new Parameter[count];
+            parameters = new Parameter[parameterCount];
             Class<?>[] parameterClass = method.getParameterTypes();
             Type[] parameterType = method.getGenericParameterTypes();
             Annotation[][] annotationMatrix = method.getParameterAnnotations();
-            for (int i = 0; i < count; i++) {
+            for (int i = 0; i < parameterCount; i++) {
                 parameters[i] = new ParameterImpl(method, parameterClass,
                         parameterType, annotationMatrix, i);
             }
         }
-        if (index < 0 || index >= parameters.length) {
+        return parameterCount;
+    }
+
+    public Parameter getParameterAt(int index) {
+        if (method == null) {
+            return null;
+        }
+        if (index < 0 || index >= getParameterCount()) {
             return null;
         }
         return parameters[index];
-    }
-
-    @Override
-    public Key getDeclaredKey() {
-        return this;
     }
 
     public int getParameterGroupCount() {
@@ -255,6 +239,7 @@ public class Key implements ParameterGroup {
             return 0;
         }
         HashMap<String, ArrayList<Parameter>> groupMap = null;
+        int freeFormParameterBits = 0;
         for (int i = 0; i < getParameterCount(); i++) {
             Parameter parameter = getParameterAt(i);
             Bind bind = parameter.getAnnotation(Bind.class);
@@ -270,6 +255,8 @@ public class Key implements ParameterGroup {
                     }
                     list.add(parameter);
                 }
+            } else {
+                freeFormParameterBits |= 1 << i;
             }
         }
         parameterGroupCount = groupMap != null ? groupMap.size() : 0;
@@ -288,6 +275,20 @@ public class Key implements ParameterGroup {
             return null;
         }
         return parameterGroups[index];
+    }
+
+    public ParameterGroup getImplicitParameterGroup() {
+        if (implicitParameterGroup != null) {
+            return implicitParameterGroup;
+        }
+        ArrayList<Parameter> parameterArrayList = new ArrayList<>();
+        for (int i = 0; i < getParameterCount(); i++) {
+            Parameter parameter = getParameterAt(i);
+            if (!parameter.isAnnotationPresent(Bind.class)) {
+                parameterArrayList.add(parameter);
+            }
+        }
+        return implicitParameterGroup = new ParameterGroupImpl("implicit", parameterArrayList);
     }
 
     private class ParameterImpl implements Parameter {
@@ -345,11 +346,6 @@ public class Key implements ParameterGroup {
 
         @Override
         public Key getDeclaredKey() {
-            return Key.this;
-        }
-
-        @Override
-        public ParameterGroup getParameterGroup() {
             return Key.this;
         }
 

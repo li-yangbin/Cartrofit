@@ -30,7 +30,7 @@ public class ParameterContext {
 
     public ParameterGroup extractParameterFromCall(Call call) {
         if (this.key == call.getKey()) {
-            return key;
+            return key.getImplicitParameterGroup();
         }
         for (int i = 0; i < key.getParameterGroupCount(); i++) {
             ParameterGroup subGroup = key.getParameterGroupAt(i);
@@ -38,7 +38,7 @@ public class ParameterContext {
                 return subGroup;
             }
         }
-        return null;
+        return key.getImplicitParameterGroup();
     }
 
 //    public void prepareForParameterDeliverable(List<Call> callList) {

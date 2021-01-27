@@ -110,6 +110,16 @@ public class SwitchMapFlow<T, U> extends Flow<T> {
             }
 
             @Override
+            public void onError(Throwable throwable) {
+                synchronized (InnerConsumer.this) {
+                    lastMappedFlow = null;
+                    expired = true;
+                }
+                upStream.stopSubscribe();
+                downStream.onError(throwable);
+            }
+
+            @Override
             public void onComplete() {
                 boolean doCallDownStreamComplete;
                 synchronized (InnerConsumer.this) {

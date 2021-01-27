@@ -2,24 +2,12 @@ package com.liyangbin.cartrofit;
 
 import android.car.Car;
 import android.car.CarNotConnectedException;
-import android.car.hardware.CarPropertyConfig;
-import android.car.hardware.CarPropertyValue;
 import android.car.hardware.CarVendorExtensionManager;
 import android.car.hardware.cabin.CarCabinManager;
 import android.car.hardware.hvac.CarHvacManager;
 import android.car.hardware.property.CarPropertyManager;
-import android.util.SparseArray;
 
-import com.liyangbin.cartrofit.flow.Flow;
-
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.function.Consumer;
-
-public class DefaultDataSource {
+class DefaultDataSource {
 
     static void register() {
         CarPropertyContext.addCarPropertyHandler(Car.HVAC_SERVICE, HvacContext::new);
@@ -28,27 +16,44 @@ public class DefaultDataSource {
         CarPropertyContext.addCarPropertyHandler(Car.CABIN_SERVICE, CabinContext::new);
     }
 
+    @SuppressWarnings("unchecked")
+    private static <T> T extract(Car car, String serviceName) {
+        try {
+            return (T) car.getCarManager(serviceName);
+        } catch (CarNotConnectedException connectIssue) {
+            throw new RuntimeException(connectIssue);
+        }
+    }
+
     private static class HvacContext extends Context {
-        HvacContext() {
+        CarHvacManager carHvacManager;
+        HvacContext(Car car) {
             super(CarPropertyContext.getInstance());
+            carHvacManager = extract(car, Car.HVAC_SERVICE);
         }
     }
 
     private static class VendorExtensionContext extends Context {
-        VendorExtensionContext() {
+        CarVendorExtensionManager carVendorExtensionManager;
+        VendorExtensionContext(Car car) {
             super(CarPropertyContext.getInstance());
+            carVendorExtensionManager = extract(car, Car.VENDOR_EXTENSION_SERVICE);
         }
     }
 
     private static class PropertyContext extends Context {
-        PropertyContext() {
+        CarPropertyManager carPropertyManager;
+        PropertyContext(Car car) {
             super(CarPropertyContext.getInstance());
+            carPropertyManager = extract(car, Car.PROPERTY_SERVICE);
         }
     }
 
     private static class CabinContext extends Context {
-        CabinContext() {
+        CarCabinManager carCabinManager;
+        CabinContext(Car car) {
             super(CarPropertyContext.getInstance());
+            carCabinManager = extract(car, Car.CABIN_SERVICE);
         }
     }
 

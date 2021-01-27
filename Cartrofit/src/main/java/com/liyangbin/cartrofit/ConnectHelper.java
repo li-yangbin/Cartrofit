@@ -1,7 +1,6 @@
 package com.liyangbin.cartrofit;
 
 import android.car.Car;
-import android.car.CarNotConnectedException;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.ServiceConnection;
@@ -10,39 +9,21 @@ import android.os.IBinder;
 import java.util.ArrayList;
 import java.util.function.Consumer;
 
-public final class ConnectHelper<T> {
+class ConnectHelper<T> {
     private static boolean sConnected;
     private static boolean sConnecting;
     private static Car sCar;
 
-    private static final ArrayList<Runnable> sConnectAction = new ArrayList<>();
+    private static final ArrayList<Consumer<Car>> sConnectAction = new ArrayList<>();
 
-    private final Class<T> apiClass;
-
-    private ConnectHelper(Class<T> apiClass) {
-        this.apiClass = apiClass;
+    static void ensureConnect(Context context) {
+        ensureConnect(context);
     }
 
-    public static <T> ConnectHelper<T> from(Class<T> apiClass) {
-        return new ConnectHelper<>(apiClass);
-    }
-
-    public void onConnect(Consumer<T> consumer) {
-        if (isConnected()) {
-            consumer.accept(Cartrofit.from(apiClass));
-        } else {
-            addOnConnectAction(() -> consumer.accept(Cartrofit.from(apiClass)));
-        }
-    }
-
-    public static void ensureConnect(Context context) {
-        ensureConnect(context, null);
-    }
-
-    public static void ensureConnect(Context context, Runnable onConnect) {
+    static void ensureConnect(Context context, Consumer<Car> onConnect) {
         if (onConnect != null) {
             if (sConnected) {
-                onConnect.run();
+                onConnect.accept(sCar);
                 return;
             }
             sConnectAction.add(onConnect);
@@ -55,7 +36,7 @@ public final class ConnectHelper<T> {
                     sConnected = true;
                     sConnecting = false;
                     for (int i = 0; i < sConnectAction.size(); i++) {
-                        sConnectAction.get(i).run();
+                        sConnectAction.get(i).accept(sCar);
                     }
                     sConnectAction.clear();
                 }
@@ -70,9 +51,9 @@ public final class ConnectHelper<T> {
         }
     }
 
-    public static void addOnConnectAction(Runnable onConnected) {
+    public static void addOnConnectAction(Consumer<Car> onConnected) {
         if (sConnected) {
-            onConnected.run();
+            onConnected.accept(sCar);
             return;
         }
         sConnectAction.add(onConnected);
@@ -86,7 +67,11 @@ public final class ConnectHelper<T> {
         return sConnected;
     }
 
-    public static <T> T get(String key) throws CarNotConnectedException {
-        return (T) sCar.getCarManager(key);
+//    public static <T> T get(String key) throws CarNotConnectedException {
+//        return (T) sCar.getCarManager(key);
+//    }
+
+    public static Car get() {
+        return sCar;
     }
 }

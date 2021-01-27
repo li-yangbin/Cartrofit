@@ -12,6 +12,7 @@ public class FlowPublisher<T> {
     private final Flow<T> upStream;
     private volatile T data;
     private boolean hasData;
+    private boolean publishStarted;
     private boolean startWhenConnected;
     private boolean dispatchStickyDataEnable;
     private Supplier<T> initialStickyDataProvider;
@@ -29,12 +30,19 @@ public class FlowPublisher<T> {
     }
 
     public void start() {
-        upStream.subscribe(new PublishConsumer());
-        startWhenConnected = false;
+        if (!publishStarted) {
+            publishStarted = true;
+
+            upStream.subscribe(new PublishConsumer());
+            startWhenConnected = false;
+        }
     }
 
     public void stop() {
-        upStream.stopSubscribe();
+        if (publishStarted) {
+            publishStarted = false;
+            upStream.stopSubscribe();
+        }
     }
 
     public void addSubscriber(FlowConsumer<T> consumer) {
@@ -49,9 +57,12 @@ public class FlowPublisher<T> {
         sharedFlow.subscribe(consumer);
         if (dispatchStickyDataEnable) {
             synchronized (this) {
-                if (!hasData) {
+                if (!hasData && initialStickyDataProvider != null) {
                     data = initialStickyDataProvider.get();
                     hasData = true;
+                }
+                if (!hasData) {
+                    return;
                 }
             }
             consumer.accept(data);
@@ -72,8 +83,9 @@ public class FlowPublisher<T> {
         boolean doSubscribe = false;
         synchronized (this) {
             downStreamList.add(flow);
-            if (startWhenConnected && downStreamList.size() == 1) {
+            if (!publishStarted && startWhenConnected && downStreamList.size() == 1) {
                 doSubscribe = true;
+                publishStarted = true;
             }
         }
         if (doSubscribe) {
@@ -84,8 +96,10 @@ public class FlowPublisher<T> {
     synchronized void onClientSubscribeStopped(SharedFlow flow) {
         boolean doStopSubscribe = false;
         synchronized (this) {
-            if (downStreamList.remove(flow) && downStreamList.size() == 0 && startWhenConnected) {
+            if (downStreamList.remove(flow) && publishStarted
+                    && downStreamList.size() == 0 && startWhenConnected) {
                 doStopSubscribe = true;
+                publishStarted = false;
             }
         }
         if (doStopSubscribe) {
@@ -166,6 +180,21 @@ public class FlowPublisher<T> {
             if (copy != null) {
                 for (int i = 0; i < copy.size(); i++) {
                     copy.get(i).consumer.onCancel();
+                }
+            }
+        }
+
+        @Override
+        public void onError(Throwable throwable) {
+            ArrayList<SharedFlow> copy = null;
+            synchronized (FlowPublisher.this) {
+                if (downStreamList.size() > 0) {
+                    copy = (ArrayList<SharedFlow>) downStreamList.clone();
+                }
+            }
+            if (copy != null) {
+                for (int i = 0; i < copy.size(); i++) {
+                    copy.get(i).consumer.onError(throwable);
                 }
             }
         }

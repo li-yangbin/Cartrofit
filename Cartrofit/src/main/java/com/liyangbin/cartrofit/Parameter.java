@@ -16,7 +16,6 @@ public interface Parameter {
     Type getGenericType();
     int getDeclaredIndex();
     Key getDeclaredKey();
-    ParameterGroup getParameterGroup();
 
     @RequiresApi(Build.VERSION_CODES.O)
     String getName();

@@ -1,19 +1,21 @@
 package com.liyangbin.cartrofit.flow;
 
 import java.util.TimerTask;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Predicate;
 
 public class TimeoutFlow<T> extends Flow<T> {
     private final Flow<T> upStream;
     private final long timeoutMillis;
-    private Runnable timeoutAction;
+    private final Predicate<Throwable> timeoutConsumer;
 
-    public TimeoutFlow(Flow<T> upStream, long timeoutMillis, Runnable timeout) {
+    public TimeoutFlow(Flow<T> upStream, long timeoutMillis, Predicate<Throwable> timeoutConsumer) {
         this.upStream = upStream;
         this.timeoutMillis = timeoutMillis;
+        this.timeoutConsumer = timeoutConsumer;
         if (timeoutMillis <= 1) {
             throw new RuntimeException("invalid argument:" + timeoutMillis);
         }
-        this.timeoutAction = timeout;
     }
 
     @Override
@@ -35,7 +37,7 @@ public class TimeoutFlow<T> extends Flow<T> {
 
     private class TimeoutConsumer extends TimerTask implements FlowConsumer<T> {
         FlowConsumer<T> downStream;
-        boolean expired = true;
+        volatile boolean expired = true;
 
         TimeoutConsumer(FlowConsumer<T> downStream) {
             this.downStream = downStream;
@@ -43,51 +45,53 @@ public class TimeoutFlow<T> extends Flow<T> {
 
         @Override
         public void accept(T t) {
-            synchronized (this) {
-                if (expired) {
-                    return;
-                }
+            if (expired) {
+                return;
             }
             downStream.accept(t);
         }
 
         @Override
         public void run() {
-            synchronized (this) {
-                if (expired) {
-                    return;
-                }
-                expired = true;
+            if (expired) {
+                return;
             }
+            expired = true;
             upStream.stopSubscribe();
-            if (timeoutAction != null) {
-                timeoutAction.run();
-                timeoutAction = null;
+            TimeoutException timeoutException = new TimeoutException();
+            if (timeoutConsumer == null || !timeoutConsumer.test(timeoutException)) {
+                downStream.onError(timeoutException);
             }
         }
 
         @Override
         public void onCancel() {
-            synchronized (this) {
-                if (expired) {
-                    return;
-                }
-                expired = true;
+            if (expired) {
+                return;
             }
+            expired = true;
             cancel();
             downStream.onCancel();
         }
 
         @Override
         public void onComplete() {
-            synchronized (this) {
-                if (expired) {
-                    return;
-                }
-                expired = true;
+            if (expired) {
+                return;
             }
+            expired = true;
             cancel();
             downStream.onComplete();
         }
+
+        @Override
+        public void onError(Throwable throwable) {
+            if (expired) {
+                return;
+            }
+            expired = true;
+            downStream.onError(throwable);
+        }
     }
+
 }
