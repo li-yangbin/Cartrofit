@@ -17,7 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public class Key /*implements ParameterGroup*/ {
+public class Key {
     public final Method method;
     public final boolean isCallbackEntry;
 
@@ -405,43 +405,6 @@ public class Key /*implements ParameterGroup*/ {
             return Modifier.isStatic(method.getModifiers());
         } else {
             return Modifier.isStatic(field.getModifiers());
-        }
-    }
-
-    void checkGrammar(ArrayList<Context.CallSolution<?>> grammarRules) {
-        if (isInvalid()) {
-            throw new CartrofitGrammarException("Invalid key:" + this);
-        }
-        if (grammarRules.size() == 0) {
-            throw new RuntimeException("No annotation requirement??");
-        }
-        boolean qualified = false;
-        int checkIndex = 0;
-        while (checkIndex < grammarRules.size()) {
-            Context.CallSolution<?> solution = grammarRules.get(checkIndex++);
-            Annotation annotation = getAnnotation(solution.getGrammarContext());
-            if (annotation != null) {
-                if (qualified) {
-                    throw new CartrofitGrammarException("More than one annotation presented by:" + this);
-                }
-
-                solution.checkParameterGrammar(annotation, this);
-
-                if (field != null && solution.hasCategory(Context.CATEGORY_SET)
-                        && Modifier.isFinal(field.getModifiers())) {
-                    throw new CartrofitGrammarException("Invalid final key:" + this);
-                }
-
-                if (method != null
-                        && ((!isCallbackEntry && solution.hasCategory(Context.CATEGORY_GET))
-                        || (isCallbackEntry && solution.hasCategory(Context.CATEGORY_SET)))) {
-                    if (method.getReturnType() == void.class) {
-                        throw new CartrofitGrammarException("Invalid return type:" + this);
-                    }
-                }
-
-                qualified = true;
-            }
         }
     }
 

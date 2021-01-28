@@ -37,6 +37,10 @@ public abstract class Call implements Cloneable {
         return parameterContext;
     }
 
+    public ParameterGroup getBindingParameter() {
+        return getParameterContext().extractParameterFromCall(this);
+    }
+
     protected ParameterContext onCreateParameterContext() {
         return new ParameterContext(getKey());
     }

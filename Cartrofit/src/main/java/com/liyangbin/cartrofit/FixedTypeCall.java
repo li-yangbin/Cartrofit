@@ -32,8 +32,8 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
 
             ScheduleOn scheduleOn = getKey().getAnnotation(ScheduleOn.class);
             if (scheduleOn != null) {
-                flowSubscribeExecutor = getContext().getSubscribeExecutor(scheduleOn.subscribe());
-                flowConsumeExecutor = getContext().getConsumeExecutor(scheduleOn.consume());
+                flowSubscribeExecutor = context.getSubscribeExecutor(scheduleOn.subscribe());
+                flowConsumeExecutor = context.getConsumeExecutor(scheduleOn.consume());
             }
         } else {
             returnConverter = context.findReturnOutputConverter(this);

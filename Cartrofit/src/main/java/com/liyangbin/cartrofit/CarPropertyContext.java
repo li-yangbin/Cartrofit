@@ -23,93 +23,34 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-public class CarPropertyContext extends Context {
+import static com.liyangbin.cartrofit.DefaultCarContext.register;
 
-    private static final HashMap<String, Singleton<Context>> sCarContextMap = new HashMap<>();
-    private static CarPropertyContext sInstance;
+public abstract class CarPropertyContext extends Context {
+
+    private static final HashMap<String, Singleton> CAR_CONTEXT_MAP = new HashMap<>();
+    private static final SolutionProvider CAR_PROPERTY_SOLUTION = new SolutionProvider();
 
     static {
-        DefaultDataSource.register();
-    }
+        register();
 
-    public static <T> T fromScope(Class<T> api) {
-        if (!ConnectHelper.isConnected()) {
-            throw new RuntimeException("CarService not connect yet");
-        }
-        Scope scope = api.getDeclaredAnnotation(Scope.class);
-        if (scope != null) {
-            Singleton<Context> contextProvider = sCarContextMap.get(scope.value());
-            if (contextProvider != null) {
-                return contextProvider.get().from(api);
-            }
-        }
-        throw new CartrofitGrammarException("Invalid scope for:" + api);
-    }
+        CAR_PROPERTY_SOLUTION.create(Get.class)
+                .provide((context, category, get, key) -> new PropertyGet(key.getScopeObj(), get));
 
-    @Override
-    public <T> T from(Class<T> api) {
-        throw new UnsupportedOperationException("Call from individual context expected");
-    }
+        CAR_PROPERTY_SOLUTION.create(Set.class)
+                .provide((context, category, set, key) -> new PropertySet(key.getScopeObj(), set));
 
-    public static void addCarPropertyHandler(String scopeName, Function<Car, Context> initProvider) {
-        sCarContextMap.put(scopeName, new Singleton<>(initProvider));
-    }
-
-    private static class Singleton<T> {
-        private final Function<Car, T> initProvider;
-        private T instance;
-
-        T get() {
-            if (instance == null) {
-                synchronized (Singleton.class) {
-                    if (instance == null) {
-                        instance = initProvider.apply(ConnectHelper.get());
+        CAR_PROPERTY_SOLUTION.create(Track.class)
+                .provideAndBuildParameter(PropertyTrack.class, (context, category, track, key) -> {
+                    PropertyTrack trackCall = new PropertyTrack(key.getScopeObj(), track);
+                    Restore restore = key.getAnnotation(Restore.class);
+                    if (restore != null && restore.restoreTimeout() > 0) {
+                        int setMethodId = restore.value();
+                        PropertySet propertySet = (PropertySet) context.getOrCreateCallById(key,
+                                setMethodId, Context.CATEGORY_SET);
+                        trackCall.setRestore(propertySet, restore.restoreTimeout());
                     }
-                }
-            }
-            return instance;
-        }
-
-        Singleton(Function<Car, T> initProvider) {
-            this.initProvider = initProvider;
-        }
-    }
-
-    private CarPropertyContext() {
-        super(RootContext.getInstance());
-    }
-
-    public static CarPropertyContext getInstance() {
-        if (sInstance == null) {
-            sInstance = new CarPropertyContext();
-        }
-        return sInstance;
-    }
-
-    public static void connect(android.content.Context context) {
-        ConnectHelper.ensureConnect(context);
-    }
-
-    public static void connect(android.content.Context context, Consumer<Car> carConsumer) {
-        ConnectHelper.ensureConnect(context, carConsumer);
-    }
-
-    @Override
-    public Object onExtractScope(Class<?> scopeClass) {
-        return findScopeByClass(Scope.class, scopeClass);
-    }
-
-    @Override
-    public void onProvideCallSolution(CallSolutionBuilder builder) {
-        builder.create(Get.class)
-                .provide((category, get, key) -> new PropertyGet(key.getScopeObj(), get));
-
-        builder.create(Set.class)
-                .provide((category, set, key) -> new PropertySet(key.getScopeObj(), set));
-
-        builder.create(Track.class)
-                .buildParameter(PropertyTrack.class)
-                .takeAny()
+                    return trackCall;
+                }).takeAny()
                 .noAnnotate()
                 .output((old, para) -> {
                     if (para.getParameter().getType().equals(CarPropertyEvent.class)) {
@@ -130,18 +71,88 @@ public class CarPropertyContext extends Context {
                 .output((old, para) -> {
                     para.set(old.getStatus());
                     return old;
-                }).buildAndCommitParameter()
-                .provide((category, track, key) -> {
-                    PropertyTrack trackCall = new PropertyTrack(key.getScopeObj(), track);
-                    Restore restore = key.getAnnotation(Restore.class);
-                    if (restore != null && restore.restoreTimeout() > 0) {
-                        int setMethodId = restore.value();
-                        PropertySet propertySet = (PropertySet) getOrCreateCallById(key,
-                                setMethodId, Context.CATEGORY_SET);
-                        trackCall.setRestore(propertySet, restore.restoreTimeout());
+                }).buildAndCommit();
+    }
+
+    public static <T> T fromScope(Class<T> api) {
+        if (!ConnectHelper.isConnected()) {
+            throw new RuntimeException("CarService not connect yet");
+        }
+        Scope scope = api.getDeclaredAnnotation(Scope.class);
+        if (scope != null) {
+            Singleton contextProvider = CAR_CONTEXT_MAP.get(scope.value());
+            if (contextProvider != null) {
+                return contextProvider.get().from(api);
+            }
+        }
+        throw new CartrofitGrammarException("Invalid scope for:" + api);
+    }
+
+    public static void addCarPropertyHandler(String scopeName, Function<Car, CarPropertyContext> initProvider) {
+        CAR_CONTEXT_MAP.put(scopeName, new Singleton(initProvider));
+    }
+
+    private static class Singleton {
+        private final Function<Car, CarPropertyContext> initProvider;
+        private CarPropertyContext instance;
+
+        CarPropertyContext get() {
+            if (instance == null) {
+                synchronized (Singleton.class) {
+                    if (instance == null) {
+                        instance = initProvider.apply(ConnectHelper.get());
                     }
-                    return trackCall;
-                });
+                }
+            }
+            return instance;
+        }
+
+        Singleton(Function<Car, CarPropertyContext> initProvider) {
+            this.initProvider = initProvider;
+        }
+    }
+
+    public static void connect(android.content.Context context) {
+        ConnectHelper.ensureConnect(context);
+    }
+
+    public static void connect(android.content.Context context, Consumer<Car> carConsumer) {
+        ConnectHelper.ensureConnect(context, carConsumer);
+    }
+
+    @Override
+    public Object onExtractScope(Class<?> scopeClass) {
+        return findScopeByClass(Scope.class, scopeClass);
+    }
+
+    @Override
+    public SolutionProvider onProvideCallSolution() {
+        return super.onProvideCallSolution().merge(CAR_PROPERTY_SOLUTION);
+    }
+
+    public abstract CarPropertyAccess getCarPropertyAccess();
+
+    public TypedCarPropertyAccess<?> getTypedCarPropertyAccess(Class<?> type) {
+        if (classEquals(type, int.class)) {
+            return getIntCarPropertyAccess();
+        } else if (classEquals(type, boolean.class)) {
+            return getBooleanCarPropertyAccess();
+        } else if (classEquals(type, float.class)) {
+            return getFloatCarPropertyAccess();
+        }
+        throw new RuntimeException("Sub-class should implement this method");
+    }
+
+    public TypedCarPropertyAccess<Integer> getIntCarPropertyAccess() {
+        throw new RuntimeException("Sub-class should implement this method");
+    }
+
+    public TypedCarPropertyAccess<Boolean> getBooleanCarPropertyAccess() {
+        throw new RuntimeException("Sub-class should implement this method");
+    }
+
+    public TypedCarPropertyAccess<Float> getFloatCarPropertyAccess() {
+        throw new RuntimeException("Sub-class should implement this method");
     }
 
     private static class BuildInValue {
@@ -232,8 +243,8 @@ public class CarPropertyContext extends Context {
     }
 
     public static abstract class PropertyAccessCall<IN, OUT> extends FixedTypeCall<IN, OUT> {
-        CarPropertyAccess<Object> carPropertyAccess;
-        CarPropertyConfigAccess carPropertyConfigAccess;
+        TypedCarPropertyAccess<Object> carPropertyTypeAccess;
+        CarPropertyAccess carPropertyAccess;
 
         CarPropertyConfig<?> propertyConfig;
         int propertyId;
@@ -242,13 +253,19 @@ public class CarPropertyContext extends Context {
         @Override
         public void onInit() {
             super.onInit();
-            carPropertyConfigAccess = getContext().getContextElement(CarPropertyConfigAccess.class);
+            carPropertyAccess = getContext().getCarPropertyAccess();
             try {
-                propertyConfig = carPropertyConfigAccess.getConfig(propertyId, areaId);
+                propertyConfig = carPropertyAccess.getConfig(propertyId, areaId);
             } catch (CarNotConnectedException connectIssue) {
                 throw new RuntimeException(connectIssue);
             }
-            carPropertyAccess = getContext().getContextElement(propertyConfig.getPropertyType());
+            carPropertyTypeAccess = (TypedCarPropertyAccess<Object>) getContext()
+                    .getTypedCarPropertyAccess(propertyConfig.getPropertyType());
+        }
+
+        @Override
+        public CarPropertyContext getContext() {
+            return (CarPropertyContext) super.getContext();
         }
     }
 
@@ -284,7 +301,7 @@ public class CarPropertyContext extends Context {
                 }
             } else {
                 try {
-                    return carPropertyAccess.get(propertyId, areaId);
+                    return carPropertyTypeAccess.get(propertyId, areaId);
                 } catch (CarNotConnectedException connectIssue) {
                     throw new RuntimeException(connectIssue);
                 }
@@ -319,7 +336,7 @@ public class CarPropertyContext extends Context {
                 onInvokeListener.get(i).send(toBeSet);
             }
             try {
-                carPropertyAccess.set(propertyId, areaId, toBeSet);
+                carPropertyTypeAccess.set(propertyId, areaId, toBeSet);
             } catch (CarNotConnectedException connectIssue) {
                 throw new RuntimeException(connectIssue);
             }
@@ -342,12 +359,12 @@ public class CarPropertyContext extends Context {
         }
     }
 
-    public static class PropertyTrack extends PropertyAccessCall<Void, CarPropertyValue<Object>> {
+    public static class PropertyTrack extends PropertyAccessCall<Void, CarPropertyValue<?>> {
 
         boolean isSticky;
         PropertySet propertySet;
         int restoreMillis;
-        FlowPublisher<CarPropertyValue<Object>> carValuePublisher;
+        FlowPublisher<CarPropertyValue<?>> carValuePublisher;
 
         public PropertyTrack(Scope scope, Track track) {
             this.propertyId = track.id();
@@ -376,7 +393,7 @@ public class CarPropertyContext extends Context {
             if (propertySet != null) {
                 Flow.fromSource(propertySet)
                     .switchMap(obj -> {
-                        CarPropertyValue<Object> latestEvent = carValuePublisher.getData();
+                        CarPropertyValue<?> latestEvent = carValuePublisher.getData();
                         // TODO: test
                         return carValuePublisher.share()
                             .take(carValue -> Objects.equals(obj, carValue.getValue()), 1)
@@ -391,14 +408,14 @@ public class CarPropertyContext extends Context {
         public CarPropertyValue<Object> onLoadDefaultData() {
             try {
                 return new CarPropertyValue<>(propertyId,
-                        areaId, carPropertyAccess.get(propertyId, areaId));
+                        areaId, carPropertyTypeAccess.get(propertyId, areaId));
             } catch (CarNotConnectedException connectIssue) {
                 throw new RuntimeException(connectIssue);
             }
         }
 
         @Override
-        protected Flow<CarPropertyValue<Object>> doTrackInvoke(Void none) {
+        protected Flow<CarPropertyValue<?>> doTrackInvoke(Void none) {
             return carValuePublisher.share();
         }
     }

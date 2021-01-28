@@ -14,19 +14,19 @@ import java.util.Arrays;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-public class ConverterBuilder<IN, OUT, A extends Annotation> {
+public class ConvertSolution<IN, OUT, A extends Annotation> {
 
     private Supplier<IN> inputProvider;
     private final ArrayList<AbsParameterSolution> forwardSolutions = new ArrayList<>();
     private final ArrayList<AbsParameterSolution> backwardSolutions = new ArrayList<>();
     private final Class<?> callType;
-    private final Context.CallSolution<A> caller;
+    private final SolutionProvider caller;
     private final AbsParameterSolution plainOutSolution = takeAny().output((old, para) -> {
         para.set(old);
         return old;
     }).noAnnotate();
 
-    ConverterBuilder(Class<? extends FixedTypeCall<IN, OUT>> callType, Context.CallSolution<A> caller) {
+    ConvertSolution(Class<? extends FixedTypeCall<IN, OUT>> callType, SolutionProvider caller) {
         this.callType = callType;
         this.caller = caller;
     }
@@ -152,9 +152,26 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
         return null;
     }
 
-    public ConverterBuilder<IN, OUT, A> provideBasic(Supplier<IN> provider) {
+    void checkInputParameterGrammarIfNeeded(Key checkTarget, ParameterGroup group) {
+        if (!checkTarget.isCallbackEntry) {
+            for (int i = 0; i < forwardSolutions.size(); i++) {
+                AbsParameterSolution solution = forwardSolutions.get(i);
+                if (solution.necessaryCheck && (solution.inputTogether != null || solution.inputBridge != null)) {
+                    for (int j = 0; j < group.getParameterCount(); j++) {
+                        if (solution.isInterestedToStart(group.getParameterAt(j))) {
+                            return;
+                        }
+                    }
+                    throw new CartrofitGrammarException("Grammar check failed:" + solution
+                            + " can not be resolved from:" + checkTarget);
+                }
+            }
+        }
+    }
+
+    public ConvertSolution<IN, OUT, A> provideBasic(Supplier<IN> provider) {
         this.inputProvider = provider;
-        return ConverterBuilder.this;
+        return ConvertSolution.this;
     }
 
     public <FROM> ParameterSolution1<FROM> take(Class<FROM> clazz) {
@@ -165,14 +182,13 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
         return new ParameterSolution1<>(Object.class);
     }
 
-    private Context.CallSolution<A> commitParameter() {
+    private void commitParameter() {
         if (forwardSolutions.size() > 0) {
             caller.commitInputConverter(callType, this);
         }
         if (backwardSolutions.size() > 0) {
             caller.commitOutputConverter(callType, this);
         }
-        return caller;
     }
 
     interface AbsAccumulator<V extends Union, R> {
@@ -258,11 +274,12 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
         boolean markedAsTogetherHead;
         boolean indeterminateMode;
         boolean annotateNothing;
+        boolean necessaryCheck;
 
-        AbsAccumulator<?, IN> forward;
+        AbsAccumulator<?, IN> inputBridge;
         AbsAccumulator<?, IN> inputTogether;
 
-        AbsAccumulator<?, OUT> backward;
+        AbsAccumulator<?, OUT> outputBridge;
         AbsAccumulator<?, OUT> outputTogether;
 
         AbsParameterSolution(AbsParameterSolution parent, Class<?> fixedType) {
@@ -273,16 +290,16 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
         abstract int size();
 
         boolean hasForward() {
-            return forward != null || inputTogether != null;
+            return inputBridge != null || inputTogether != null;
         }
 
         boolean hasBackward() {
-            return backward != null || outputTogether != null;
+            return outputBridge != null || outputTogether != null;
         }
 
         boolean isInterestedToStart(Parameter parameter) {
             if (fixedType.isAssignableFrom(parameter.getType())) {
-                if (forward != null || backward != null || markedAsTogetherHead) {
+                if (inputBridge != null || outputBridge != null || markedAsTogetherHead) {
                     return ((annotateNothing && fixedAnnotationType == null)
                             || parameter.isAnnotationPresent(fixedAnnotationType))
                             && (extraCheck == null || extraCheck.test(parameter));
@@ -295,16 +312,16 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
             return fixedType == parameter.getType() && parameter.hasNoAnnotation();
         }
 
-        public final ConverterBuilder<IN, OUT, A> build() {
+        public final ConvertSolution<IN, OUT, A> build() {
             if (parent == null && fixedAnnotationType == null) {
                 throw new CartrofitGrammarException("Must specify an annotation type before build()");
             }
             commitSolution(this);
-            return parent != null ? parent.build() : ConverterBuilder.this;
+            return parent != null ? parent.build() : ConvertSolution.this;
         }
 
-        public final Context.CallSolution<A> buildAndCommitParameter() {
-            return build().commitParameter();
+        public final void buildAndCommit() {
+            build().commitParameter();
         }
     }
 
@@ -329,24 +346,29 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
             return this;
         }
 
-        public ParameterSolution1<T> input(Accumulator<T, IN> forward) {
-            this.forward = forward;
+        public ParameterSolution1<T> setInputNecessary() {
+            this.necessaryCheck = true;
             return this;
         }
 
-        public ParameterSolution1<T> output(Accumulator<T, OUT> backward) {
-            this.backward = backward;
+        public ParameterSolution1<T> input(Accumulator<T, IN> inputBridge) {
+            this.inputBridge = inputBridge;
+            return this;
+        }
+
+        public ParameterSolution1<T> output(Accumulator<T, OUT> outputBridge) {
+            this.outputBridge = outputBridge;
             return this;
         }
 
         public ParameterSolution1<T> forwardIndeterminate(AccumulatorIndeterminate<T, IN> forward) {
-            this.forward = forward;
+            this.inputBridge = forward;
             this.indeterminateMode = true;
             return this;
         }
 
         public ParameterSolution1<T> backwardIndeterminate(AccumulatorIndeterminate<T, OUT> backward) {
-            this.backward = backward;
+            this.outputBridge = backward;
             this.indeterminateMode = true;
             return this;
         }
@@ -497,7 +519,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
                     }
                     if (record.solution.indeterminateMode) {
                         AccumulatorIndeterminate<Object, SERIALIZATION> accumulator = (AccumulatorIndeterminate<Object, SERIALIZATION>)
-                                (input ? record.solution.forward : record.solution.backward);
+                                (input ? record.solution.inputBridge : record.solution.outputBridge);
                         rawInput = accumulator.advance(rawInput, array);
                     } else {
                         AbsAccumulator<Union, SERIALIZATION> accumulator = (AbsAccumulator<Union, SERIALIZATION>)
@@ -509,7 +531,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
                     // TODO： warning if user does not call set
                 } else {
                     Accumulator<Object, SERIALIZATION> accumulator = (Accumulator<Object, SERIALIZATION>)
-                            (input ? record.solution.forward : record.solution.backward);
+                            (input ? record.solution.inputBridge : record.solution.outputBridge);
                     rawInput = accumulator.advance(rawInput, onCreateAccessibleParameter(record.start, avengers));
                 }
             }
@@ -627,7 +649,7 @@ public class ConverterBuilder<IN, OUT, A extends Annotation> {
         @Override
         public Object convert(OUT value) {
             Accumulator<Object, OUT> accumulator
-                    = (Accumulator<Object, OUT>) targetSolution.backward;
+                    = (Accumulator<Object, OUT>) targetSolution.outputBridge;
             synchronized (this) {
                 accumulator.advance(value, this);
                 Object result = tmpResult;

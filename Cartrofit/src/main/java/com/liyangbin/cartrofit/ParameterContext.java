@@ -2,33 +2,15 @@ package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.funtion.Union;
 
-public class ParameterContext {
+class ParameterContext {
 
-//    private static final String DEFAULT_TOKEN = "_default_token_";
+    private final Key key;
 
-//    private final HashMap<String, ParameterMap> parameterIndexMap = new HashMap<>();
-    private Key key;
-
-    public ParameterContext(/*CallGroup<?> group, */Key key) {
+    ParameterContext(Key key) {
         this.key = key;
-//        for (int i = 0; i < key.getParameterCount(); i++) {
-//            Parameter parameter = key.getParameterAt(i);
-//            Bind bind = parameter.getAnnotation(Bind.class);
-//            if (bind != null /*|| !parameter.isAnnotationPresent(Callback.class)*/) {
-//                String[] tokenArray = bind.token()/*bind != null ? bind.token() : DEFAULT_TOKEN*/;
-//                for (String token : tokenArray) {
-//                    ParameterMap indexBit = parameterIndexMap.get(token);
-//                    if (indexBit == null) {
-//                        indexBit = new ParameterMap();
-//                        parameterIndexMap.put(token, indexBit);
-//                    }
-//                    indexBit.addIndex(i);
-//                }
-//            }
-//        }
     }
 
-    public ParameterGroup extractParameterFromCall(Call call) {
+    ParameterGroup extractParameterFromCall(Call call) {
         if (this.key == call.getKey()) {
             return key.getImplicitParameterGroup();
         }
@@ -41,22 +23,6 @@ public class ParameterContext {
         return key.getImplicitParameterGroup();
     }
 
-//    public void prepareForParameterDeliverable(List<Call> callList) {
-//        Call onlyOneParameterReceiver = null;
-//        for (int i = 0; i < callList.size(); i++) {
-//            Call call = callList.get(i);
-//            if (call.isParameterRequired()) {
-//                if (onlyOneParameterReceiver != null) {
-//                    return;
-//                }
-//                onlyOneParameterReceiver = call;
-//            }
-//        }
-//        if (onlyOneParameterReceiver != null) {
-//            onlyOneParameterReceiver.addToken(DEFAULT_TOKEN);
-//        }
-//    }
-
     public Union getParameter(Call target, Union all) {
         for (int i = 0; i < key.getParameterGroupCount(); i++) {
             ParameterGroup group = key.getParameterGroupAt(i);
@@ -68,32 +34,6 @@ public class ParameterContext {
                 return result;
             }
         }
-//        for (Map.Entry<String, ParameterMap> parameterEntry : parameterIndexMap.entrySet()) {
-//            if (target.hasToken(parameterEntry.getKey())) {
-//                ParameterMap map = parameterEntry.getValue();
-//                return map.find(all);
-//            }
-//        }
         return Union.ofNull();
     }
-
-//    public static class ParameterMap {
-//        int indexBit;
-//        int size;
-//
-//        void addIndex(int index) {
-//            indexBit |= (1 << index);
-//            size++;
-//        }
-//
-//        Union find(Union all) {
-//            Object[] elements = new Object[size];
-//            for (int i = 0, j = 0; i < all.getCount(); i++) {
-//                if ((indexBit & (1 << i)) != 0) {
-//                    elements[j++] = all.get(i);
-//                }
-//            }
-//            return Union.of(elements);
-//        }
-//    }
 }

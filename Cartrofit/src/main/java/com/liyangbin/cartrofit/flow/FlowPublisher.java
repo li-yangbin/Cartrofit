@@ -16,7 +16,7 @@ public class FlowPublisher<T> {
     private boolean startWhenConnected;
     private boolean dispatchStickyDataEnable;
     private Supplier<T> initialStickyDataProvider;
-    private final ArrayList<SharedFlow> downStreamList = new ArrayList<>();
+    private ArrayList<SharedFlow> downStreamList = new ArrayList<>();
     private final HashMap<Consumer<T>, Flow<T>> listenerMap = new HashMap<>();
 
     public FlowPublisher(Flow<T> upStream, boolean startWhenConnected) {
@@ -82,6 +82,7 @@ public class FlowPublisher<T> {
     void onClientSubscribed(SharedFlow flow) {
         boolean doSubscribe = false;
         synchronized (this) {
+            downStreamList = new ArrayList<>(downStreamList);
             downStreamList.add(flow);
             if (!publishStarted && startWhenConnected && downStreamList.size() == 1) {
                 doSubscribe = true;
@@ -96,7 +97,12 @@ public class FlowPublisher<T> {
     synchronized void onClientSubscribeStopped(SharedFlow flow) {
         boolean doStopSubscribe = false;
         synchronized (this) {
-            if (downStreamList.remove(flow) && publishStarted
+            boolean existAndRemove = downStreamList.contains(flow);
+            if (existAndRemove) {
+                downStreamList = new ArrayList<>(downStreamList);
+                downStreamList.remove(flow);
+            }
+            if (existAndRemove && publishStarted
                     && downStreamList.size() == 0 && startWhenConnected) {
                 doStopSubscribe = true;
                 publishStarted = false;
@@ -129,21 +135,15 @@ public class FlowPublisher<T> {
         return hasData;
     }
 
-    @SuppressWarnings("unchecked")
     public void injectData(T t) {
-        ArrayList<SharedFlow> copy = null;
+        ArrayList<SharedFlow> safeFlowList;
         synchronized (FlowPublisher.this) {
             data = t;
             hasData = true;
-
-            if (downStreamList.size() > 0) {
-                copy = (ArrayList<SharedFlow>) downStreamList.clone();
-            }
+            safeFlowList = downStreamList;
         }
-        if (copy != null) {
-            for (int i = 0; i < copy.size(); i++) {
-                copy.get(i).consumer.accept(t);
-            }
+        for (int i = 0; i < safeFlowList.size(); i++) {
+            safeFlowList.get(i).consumer.accept(t);
         }
     }
 
@@ -156,46 +156,34 @@ public class FlowPublisher<T> {
 
         @Override
         public void onComplete() {
-            ArrayList<SharedFlow> copy = null;
+            ArrayList<SharedFlow> safeFlowList;
             synchronized (FlowPublisher.this) {
-                if (downStreamList.size() > 0) {
-                    copy = (ArrayList<SharedFlow>) downStreamList.clone();
-                }
+                safeFlowList = downStreamList;
             }
-            if (copy != null) {
-                for (int i = 0; i < copy.size(); i++) {
-                    copy.get(i).consumer.onComplete();
-                }
+            for (int i = 0; i < safeFlowList.size(); i++) {
+                safeFlowList.get(i).consumer.onComplete();
             }
         }
 
         @Override
         public void onCancel() {
-            ArrayList<SharedFlow> copy = null;
+            ArrayList<SharedFlow> safeFlowList;
             synchronized (FlowPublisher.this) {
-                if (downStreamList.size() > 0) {
-                    copy = (ArrayList<SharedFlow>) downStreamList.clone();
-                }
+                safeFlowList = downStreamList;
             }
-            if (copy != null) {
-                for (int i = 0; i < copy.size(); i++) {
-                    copy.get(i).consumer.onCancel();
-                }
+            for (int i = 0; i < safeFlowList.size(); i++) {
+                safeFlowList.get(i).consumer.onCancel();
             }
         }
 
         @Override
         public void onError(Throwable throwable) {
-            ArrayList<SharedFlow> copy = null;
+            ArrayList<SharedFlow> safeFlowList;
             synchronized (FlowPublisher.this) {
-                if (downStreamList.size() > 0) {
-                    copy = (ArrayList<SharedFlow>) downStreamList.clone();
-                }
+                safeFlowList = downStreamList;
             }
-            if (copy != null) {
-                for (int i = 0; i < copy.size(); i++) {
-                    copy.get(i).consumer.onError(throwable);
-                }
+            for (int i = 0; i < safeFlowList.size(); i++) {
+                safeFlowList.get(i).consumer.onError(throwable);
             }
         }
     }
