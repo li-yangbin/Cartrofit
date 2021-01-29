@@ -1,13 +1,13 @@
 package com.liyangbin.cartrofit.flow;
 
-import com.liyangbin.cartrofit.funtion.Converter;
+import java.util.function.Function;
 
 public class MappedFlow<T, R> extends Flow<R> {
 
     private final Flow<T> upStream;
-    private final Converter<T, R> converter;
+    private final Function<T, R> converter;
 
-    public MappedFlow(Flow<T> upStream, Converter<T, R> converter) {
+    public MappedFlow(Flow<T> upStream, Function<T, R> converter) {
         this.upStream = upStream;
         this.converter = converter;
     }
@@ -36,7 +36,7 @@ public class MappedFlow<T, R> extends Flow<R> {
         @Override
         public void accept(T t) {
             if (done) return;
-            downStream.accept(converter.convert(t));
+            downStream.accept(converter.apply(t));
         }
     }
 }

@@ -2,17 +2,14 @@ package com.liyangbin.cartrofit.flow;
 
 import java.util.TimerTask;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Predicate;
 
 public class TimeoutFlow<T> extends Flow<T> {
     private final Flow<T> upStream;
     private final long timeoutMillis;
-    private final Predicate<Throwable> timeoutConsumer;
 
-    public TimeoutFlow(Flow<T> upStream, long timeoutMillis, Predicate<Throwable> timeoutConsumer) {
+    public TimeoutFlow(Flow<T> upStream, long timeoutMillis) {
         this.upStream = upStream;
         this.timeoutMillis = timeoutMillis;
-        this.timeoutConsumer = timeoutConsumer;
         if (timeoutMillis <= 1) {
             throw new RuntimeException("invalid argument:" + timeoutMillis);
         }
@@ -59,9 +56,7 @@ public class TimeoutFlow<T> extends Flow<T> {
             expired = true;
             upStream.stopSubscribe();
             TimeoutException timeoutException = new TimeoutException();
-            if (timeoutConsumer == null || !timeoutConsumer.test(timeoutException)) {
-                downStream.onError(timeoutException);
-            }
+            downStream.onError(timeoutException);
         }
 
         @Override

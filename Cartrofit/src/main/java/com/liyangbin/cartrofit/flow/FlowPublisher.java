@@ -159,6 +159,10 @@ public class FlowPublisher<T> {
             ArrayList<SharedFlow> safeFlowList;
             synchronized (FlowPublisher.this) {
                 safeFlowList = downStreamList;
+                downStreamList = new ArrayList<>();
+                publishStarted = false;
+                hasData = false;
+                data = null;
             }
             for (int i = 0; i < safeFlowList.size(); i++) {
                 safeFlowList.get(i).consumer.onComplete();

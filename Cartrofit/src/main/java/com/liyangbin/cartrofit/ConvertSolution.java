@@ -1,6 +1,5 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.funtion.Converter;
 import com.liyangbin.cartrofit.funtion.Union;
 import com.liyangbin.cartrofit.funtion.Union1;
 import com.liyangbin.cartrofit.funtion.Union2;
@@ -11,6 +10,7 @@ import com.liyangbin.cartrofit.funtion.Union5;
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -32,10 +32,15 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
     }
 
     private void commitSolution(AbsParameterSolution solution) {
+        boolean checkTypeIndeterminate = solution.typeIndeterminate;
         if (solution.hasForward()) {
             boolean inserted = false;
             for (int i = 0; i < forwardSolutions.size(); i++) {
-                if (forwardSolutions.get(i).size() > solution.size()) {
+                AbsParameterSolution solutionSaved = forwardSolutions.get(i);
+                if (checkTypeIndeterminate && solutionSaved.typeIndeterminate) {
+                    throw new CartrofitGrammarException("Can only provide one free-form type solution");
+                }
+                if (solutionSaved.size() > solution.size()) {
                     forwardSolutions.add(i, solution);
                     inserted = true;
                     break;
@@ -49,6 +54,10 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         if (solution.hasBackward()) {
             boolean inserted = false;
             for (int i = 0; i < backwardSolutions.size(); i++) {
+                AbsParameterSolution solutionSaved = backwardSolutions.get(i);
+                if (checkTypeIndeterminate && solutionSaved.typeIndeterminate) {
+                    throw new CartrofitGrammarException("Can only provide one free-form type solution");
+                }
                 if (backwardSolutions.get(i).size() > solution.size()) {
                     backwardSolutions.add(i, solution);
                     inserted = true;
@@ -126,19 +135,19 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
     }
 
-    Converter<Union, IN> checkIn(ParameterGroup group) {
+    Function<Union, IN> checkIn(ParameterGroup group) {
         InputConverterImpl inputConverter = new InputConverterImpl(group);
         findSolutionDependency(true, group, inputConverter);
         return inputConverter;
     }
 
-    Converter<OUT, Union> checkOutCallback(ParameterGroup group) {
+    Function<OUT, Union> checkOutCallback(ParameterGroup group) {
         OutputConverterImpl outputConverter = new OutputConverterImpl(group);
         findSolutionDependency(false, group, outputConverter);
         return outputConverter;
     }
 
-    Converter<OUT, Object> checkOutReturn(Key key) {
+    Function<OUT, Object> checkOutReturn(Key key) {
         Parameter returnParameter = key.getReturnAsParameter();
         if (returnParameter == null) {
             return null;
@@ -258,7 +267,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         R advance(R old, ParaVal<V1> more1, ParaVal<V2> more2, ParaVal<V3> more3, ParaVal<V4> more4, ParaVal<V5> more5);
     }
 
-    interface ParaVal<V> {
+    public interface ParaVal<V> {
         Parameter getParameter();
         V get();
         void set(V value);
@@ -267,6 +276,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
     abstract class AbsParameterSolution {
         AbsParameterSolution parent;
         Class<?> fixedType;
+        boolean typeIndeterminate;
 
         Class<? extends Annotation> fixedAnnotationType;
         Predicate<Parameter> extraCheck;
@@ -314,7 +324,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
 
         public final ConvertSolution<IN, OUT, A> build() {
             if (parent == null && fixedAnnotationType == null) {
-                throw new CartrofitGrammarException("Must specify an annotation type before build()");
+                typeIndeterminate = fixedType == Object.class;
             }
             commitSolution(this);
             return parent != null ? parent.build() : ConvertSolution.this;
@@ -540,7 +550,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
 
         abstract AccessibleParameter onCreateAccessibleParameter(int index, Union parameterHost);
 
-        private abstract class AccessibleParameter implements ParaVal<Object> {
+        abstract class AccessibleParameter implements ParaVal<Object> {
             int index;
             Union parameterHost;
 
@@ -566,7 +576,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
     }
 
-    private class OutputConverterImpl extends SolutionRecordKeeper<OUT> implements Converter<OUT, Union> {
+    private class OutputConverterImpl extends SolutionRecordKeeper<OUT> implements Function<OUT, Union> {
 
         OutputConverterImpl(ParameterGroup parameterGroup) {
             super(false, parameterGroup);
@@ -577,7 +587,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
             return new WritableParameter(index, parameterHost);
         }
 
-        private class WritableParameter extends AccessibleParameter {
+        class WritableParameter extends AccessibleParameter {
 
             WritableParameter(int index, Union parameterHost) {
                 super(index, parameterHost);
@@ -590,7 +600,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
 
         @Override
-        public Union convert(OUT rawData) {
+        public Union apply(OUT rawData) {
             final int count = parameterGroup.getParameterCount();
             if (count == 0) {
                 return Union.ofNull();
@@ -601,7 +611,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
     }
 
-    private class InputConverterImpl extends SolutionRecordKeeper<IN> implements Converter<Union, IN> {
+    private class InputConverterImpl extends SolutionRecordKeeper<IN> implements Function<Union, IN> {
 
         InputConverterImpl(ParameterGroup parameterGroup) {
             super(true, parameterGroup);
@@ -612,7 +622,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
             return new ReadableParameter(index, parameterHost);
         }
 
-        private class ReadableParameter extends AccessibleParameter {
+        class ReadableParameter extends AccessibleParameter {
 
             ReadableParameter(int index, Union parameterHost) {
                 super(index, parameterHost);
@@ -625,7 +635,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
 
         @Override
-        public IN convert(Union parameterInput) {
+        public IN apply(Union parameterInput) {
             IN rawInput = inputProvider != null ? inputProvider.get() : null;
             final int count = parameterGroup.getParameterCount();
             if (count == 0) {
@@ -635,7 +645,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
     }
 
-    private class ReturnConverterImpl implements Converter<OUT, Object>, ParaVal<Object> {
+    private class ReturnConverterImpl implements Function<OUT, Object>, ParaVal<Object> {
 
         AbsParameterSolution targetSolution;
         Parameter returnAsParameter;
@@ -647,7 +657,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
 
         @Override
-        public Object convert(OUT value) {
+        public Object apply(OUT value) {
             Accumulator<Object, OUT> accumulator
                     = (Accumulator<Object, OUT>) targetSolution.outputBridge;
             synchronized (this) {

@@ -1,19 +1,19 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.MethodCategory;
-import com.liyangbin.cartrofit.funtion.Converter;
 import com.liyangbin.cartrofit.funtion.Union;
 
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.function.Function;
 import java.util.function.IntPredicate;
 
 @SuppressWarnings("unchecked")
 public final class SolutionProvider {
 
-    private static final Converter<Union, Object> sDummyInputConverter = value -> value.getCount() > 0 ? value.get(0) : null;
-    private static final Converter<Object, Union> sDummyOutputConverter = Union::of;
+    private static final Function<Union, Object> sDummyInputConverter = value -> value.getCount() > 0 ? value.get(0) : null;
+    private static final Function<Object, Union> sDummyOutputConverter = Union::of;
 
     private final ArrayList<CallSolution<?>> mCallSolutionList = new ArrayList<>();
     private final HashMap<Class<?>, ConvertSolution<?, ?, ?>> mConverterInputMap = new HashMap<>();
@@ -35,16 +35,16 @@ public final class SolutionProvider {
         mConverterOutputMap.put(callType, builder);
     }
 
-    <INPUT> Converter<Union, INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
+    <INPUT> Function<Union, INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
         ConvertSolution<INPUT, ?, ?> builder = (ConvertSolution<INPUT, ?, ?>) mConverterInputMap.get(call.getClass());
         if (builder != null) {
             return builder.checkIn(call.getBindingParameter());
         } else {
-            return (Converter<Union, INPUT>) sDummyInputConverter;
+            return (Function<Union, INPUT>) sDummyInputConverter;
         }
     }
 
-    <OUTPUT> Converter<OUTPUT, ?> findReturnOutputConverter(FixedTypeCall<?, OUTPUT> call) {
+    <OUTPUT> Function<OUTPUT, ?> findReturnOutputConverter(FixedTypeCall<?, OUTPUT> call) {
         ConvertSolution<?, OUTPUT, ?> builder = (ConvertSolution<?, OUTPUT, ?>) mConverterOutputMap.get(call.getClass());
         if (builder != null) {
             return builder.checkOutReturn(call.getKey());
@@ -53,12 +53,12 @@ public final class SolutionProvider {
         }
     }
 
-    <OUTPUT> Converter<OUTPUT, Union> findCallbackOutputConverter(FixedTypeCall<?, OUTPUT> call) {
+    <OUTPUT> Function<OUTPUT, Union> findCallbackOutputConverter(FixedTypeCall<?, OUTPUT> call) {
         ConvertSolution<?, OUTPUT, ?> builder = (ConvertSolution<?, OUTPUT, ?>) mConverterOutputMap.get(call.getClass());
         if (builder != null) {
             return builder.checkOutCallback(call.getBindingParameter());
         } else {
-            return (Converter<OUTPUT, Union>) sDummyOutputConverter;
+            return (Function<OUTPUT, Union>) sDummyOutputConverter;
         }
     }
 

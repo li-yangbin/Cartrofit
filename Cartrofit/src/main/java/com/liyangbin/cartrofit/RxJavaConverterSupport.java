@@ -31,7 +31,7 @@ class RxJavaConverter {
 class RxJavaConverterDefault implements FlowConverter<Observable<?>> {
 
     @Override
-    public Observable<?> convert(Flow<?> flow) {
+    public Observable<?> apply(Flow<?> flow) {
         return new FlowObservable<>(flow);
     }
 }
@@ -39,7 +39,7 @@ class RxJavaConverterDefault implements FlowConverter<Observable<?>> {
 class RxJavaConverterSingle implements FlowConverter<Single<?>> {
 
     @Override
-    public Single<?> convert(Flow<?> flow) {
+    public Single<?> apply(Flow<?> flow) {
         return new FlowObservable<>(flow, true).singleOrError();
     }
 }
@@ -47,7 +47,7 @@ class RxJavaConverterSingle implements FlowConverter<Single<?>> {
 class RxJavaConverterFlowable implements FlowConverter<Flowable<?>> {
 
     @Override
-    public Flowable<?> convert(Flow<?> flow) {
+    public Flowable<?> apply(Flow<?> flow) {
         return new FlowObservable<>(flow).toFlowable(BackpressureStrategy.LATEST);
     }
 }
@@ -55,7 +55,7 @@ class RxJavaConverterFlowable implements FlowConverter<Flowable<?>> {
 class RxJavaConverterMaybe implements FlowConverter<Maybe<?>> {
 
     @Override
-    public Maybe<?> convert(Flow<?> flow) {
+    public Maybe<?> apply(Flow<?> flow) {
         return new FlowObservable<>(flow, true).singleElement();
     }
 }
@@ -63,7 +63,7 @@ class RxJavaConverterMaybe implements FlowConverter<Maybe<?>> {
 class RxJavaConverterCompletable implements FlowConverter<Completable> {
 
     @Override
-    public Completable convert(Flow<?> flow) {
+    public Completable apply(Flow<?> flow) {
         return new FlowObservable<>(flow, true).ignoreElements();
     }
 }

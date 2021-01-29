@@ -1,24 +1,25 @@
 package com.liyangbin.cartrofit.flow;
 
+import androidx.lifecycle.LiveData;
+
 import com.liyangbin.cartrofit.Context;
-import com.liyangbin.cartrofit.funtion.Converter;
 
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.BiPredicate;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import androidx.lifecycle.LiveData;
 import io.reactivex.Flowable;
 import io.reactivex.Observable;
 
 public abstract class Flow<T> {
 
     private FlowPublisher<T> flowPublisher;
-    private FlowConsumer<T> flowConsumer;
     private boolean subscribeOnce;
-    private boolean subscribed;
+    FlowConsumer<T> flowConsumer;
+    boolean subscribed;
 
     public void emptySubscribe() {
         subscribe(t -> {
@@ -141,8 +142,6 @@ public abstract class Flow<T> {
 
     private static class SimpleFlow<T> extends Flow<T> implements Injector<T> {
         private final FlowSource<T> source;
-        private FlowConsumer<T> consumer;
-        private boolean expired;
 
         SimpleFlow(FlowSource<T> source) {
             this.source = source;
@@ -150,9 +149,7 @@ public abstract class Flow<T> {
 
         @Override
         protected void onSubscribeStarted(FlowConsumer<T> consumer) {
-            expired = false;
             source.startWithInjector(this);
-            this.consumer = consumer;
         }
 
         @Override
@@ -162,33 +159,37 @@ public abstract class Flow<T> {
 
         @Override
         protected void onSubscribeStopped() {
-            if (!expired) {
-                expired = true;
-                source.finishWithInjector(this);
-                consumer.onCancel();
-            }
+            source.finishWithInjector(this);
         }
 
         @Override
         public void send(T data) {
-            if (!expired) {
-                consumer.accept(data);
-            }
+            flowConsumer.accept(data);
         }
 
         @Override
         public void done() {
-            if (!expired) {
-                expired = true;
-                consumer.onComplete();
+            FlowConsumer<T> safeConsumer;
+            synchronized (this) {
+                safeConsumer = flowConsumer;
+                flowConsumer = null;
+                subscribed = false;
+            }
+            if (safeConsumer != null) {
+                safeConsumer.onComplete();
             }
         }
 
         @Override
         public void error(Throwable error) {
-            if (!expired) {
-                expired = true;
-                consumer.onError(error);
+            FlowConsumer<T> safeConsumer;
+            synchronized (this) {
+                safeConsumer = flowConsumer;
+                flowConsumer = null;
+                subscribed = false;
+            }
+            if (safeConsumer != null) {
+                safeConsumer.onError(error);
             }
         }
     }
@@ -230,55 +231,80 @@ public abstract class Flow<T> {
         return new IntervalFlow(startDelay, interval);
     }
 
-    public final Flow<T> distinct(BiPredicate<T, T> check) {
+    public Flow<T> doOnEach(Consumer<T> onEach) {
+        return doOnAction(onEach, null, null);
+    }
+
+    public Flow<T> doOnComplete(Runnable onComplete) {
+        return doOnAction(null, onComplete, null);
+    }
+
+    public Flow<T> doOnError(Consumer<Throwable> onError) {
+        return doOnAction(null, null, onError);
+    }
+
+    public <E extends Exception> Flow<T> catchException(Class<E> exceptionType, Consumer<E> onError) {
+        Objects.requireNonNull(exceptionType);
+        return doOnAction(null, null, throwable -> {
+            if (exceptionType.isInstance(throwable)) {
+                if (onError != null) {
+                    onError.accept((E) throwable);
+                }
+            } else {
+                FlowConsumer.defaultThrow(throwable);
+            }
+        });
+    }
+
+    public Flow<T> doOnAction(Consumer<T> onEach, Runnable onComplete, Consumer<Throwable> onError) {
+        return new ActionOnFlow<>(this, onEach, onComplete, onError);
+    }
+
+    public Flow<T> distinct(BiPredicate<T, T> check) {
         return new DistinctFlow<>(this, check);
     }
 
-    public final Flow<T> distinct() {
+    public Flow<T> distinct() {
         return new DistinctFlow<>(this, (t, t2) -> !Objects.equals(t, t2));
     }
 
-    public final <T2> Flow<T2> map(Converter<T, T2> converter) {
+    public <T2> Flow<T2> map(Function<T, T2> converter) {
         return new MappedFlow<>(this, converter);
     }
 
-    public final <T2> Flow<T2> flatMap(Function<T, Flow<T2>> flatMapper) {
+    public <T2> Flow<T2> flatMap(Function<T, Flow<T2>> flatMapper) {
         return new FlatMapFlow<>(this, flatMapper);
     }
 
-    public final <T2> Flow<T2> switchMap(Function<T, Flow<T2>> flatMapper) {
+    public <T2> Flow<T2> switchMap(Function<T, Flow<T2>> flatMapper) {
         return new SwitchMapFlow<>(this, flatMapper);
     }
 
-    public final Flow<T> timeout(int timeoutMillis) {
-        return new TimeoutFlow<>(this, timeoutMillis, null);
+    public Flow<T> timeout(int timeoutMillis) {
+        return new TimeoutFlow<>(this, timeoutMillis);
     }
 
-    public final Flow<T> timeout(int timeoutMillis, Predicate<Throwable> timeoutAction) {
-        return new TimeoutFlow<>(this, timeoutMillis, timeoutAction);
-    }
-
-    public final Flow<T> takeWhile(Predicate<T> check) {
+    public Flow<T> takeWhile(Predicate<T> check) {
         return new TakeFlow<>(this, check, -1);
     }
 
-    public final Flow<T> takeCount(int count) {
+    public Flow<T> takeCount(int count) {
         return new TakeFlow<>(this, null, count);
     }
 
-    public final Flow<T> take(Predicate<T> check, int count) {
+    public Flow<T> take(Predicate<T> check, int count) {
         return new TakeFlow<>(this, check, count);
     }
 
-    public final Flow<T> subscribeOn(Executor handler) {
+    public Flow<T> subscribeOn(Executor handler) {
         return new SubscribeOnFlow<>(this, handler);
     }
 
-    public final Flow<T> consumeOn(Executor handler) {
+    public Flow<T> consumeOn(Executor handler) {
         return new ConsumeOnFlow<>(this, handler);
     }
 
-    public final FlowPublisher<T> publish() {
+    public FlowPublisher<T> publish() {
         if (flowPublisher == null) {
             synchronized (this) {
                 if (flowPublisher == null) {
@@ -291,20 +317,20 @@ public abstract class Flow<T> {
         }
         return flowPublisher;
     }
-    // TODO: combine, merge
+    // TODO: combine, merge， concatMap, zip
 
     @SuppressWarnings("unchecked")
     public LiveData<T> toLiveData() {
-        return (LiveData<T>) Context.findFlowConverter(LiveData.class).convert(this);
+        return (LiveData<T>) Context.findFlowConverter(LiveData.class).apply(this);
     }
 
     @SuppressWarnings("unchecked")
     public Observable<T> toRXObservable() {
-        return (Observable<T>) Context.findFlowConverter(Observable.class).convert(this);
+        return (Observable<T>) Context.findFlowConverter(Observable.class).apply(this);
     }
 
     @SuppressWarnings("unchecked")
     public Flowable<T> toRXFlowable() {
-        return (Flowable<T>) Context.findFlowConverter(Flowable.class).convert(this);
+        return (Flowable<T>) Context.findFlowConverter(Flowable.class).apply(this);
     }
 }

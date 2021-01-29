@@ -8,7 +8,7 @@ public class Union2<T1, T2> extends Union1<T1> {
     public T2 value2;
 
     Union2(T1 value1, T2 value2) {
-        super(value1);
+        super(value1, false);
         this.value2 = value2;
     }
 

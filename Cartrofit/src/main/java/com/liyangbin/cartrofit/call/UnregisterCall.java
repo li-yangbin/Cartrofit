@@ -4,13 +4,15 @@ import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.funtion.Union;
 
+import java.util.Objects;
+
 public class UnregisterCall extends Call {
     private final RegisterCall trackCall;
 
     @Override
     public void onInit() {
-        if (key.method != null && key.method.getReturnType() == void.class) {
-            Class<?>[] classArray = key.method.getParameterTypes();
+        if (getKey().method != null && getKey().method.getReturnType() == void.class) {
+            Class<?>[] classArray = getKey().method.getParameterTypes();
             if (classArray.length == 1) {
                 if (classArray[0] == trackCall.getMethod().getParameterTypes()[0]) {
                     return;
@@ -26,7 +28,7 @@ public class UnregisterCall extends Call {
 
     @Override
     public Object mapInvoke(Union parameter) {
-        trackCall.untrack(parameter.get(0));
+        trackCall.untrack(Objects.requireNonNull(parameter.get(0)));
         return null;
     }
 }

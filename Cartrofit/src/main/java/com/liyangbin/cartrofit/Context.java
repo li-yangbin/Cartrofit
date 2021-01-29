@@ -1,6 +1,5 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.annotation.Bind;
 import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.GenerateId;
@@ -8,7 +7,6 @@ import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Inject;
 import com.liyangbin.cartrofit.annotation.Out;
 import com.liyangbin.cartrofit.annotation.Register;
-import com.liyangbin.cartrofit.annotation.Scope;
 import com.liyangbin.cartrofit.annotation.Timeout;
 import com.liyangbin.cartrofit.annotation.Token;
 import com.liyangbin.cartrofit.annotation.Unregister;
@@ -17,7 +15,6 @@ import com.liyangbin.cartrofit.call.InjectCall;
 import com.liyangbin.cartrofit.call.InjectGroupCall;
 import com.liyangbin.cartrofit.call.RegisterCall;
 import com.liyangbin.cartrofit.call.UnregisterCall;
-import com.liyangbin.cartrofit.funtion.Converter;
 import com.liyangbin.cartrofit.funtion.FlowConverter;
 import com.liyangbin.cartrofit.funtion.Union;
 
@@ -35,6 +32,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 @SuppressWarnings("unchecked")
 public abstract class Context {
@@ -57,13 +55,7 @@ public abstract class Context {
         LiveDataConverter.addSupport();
 
         ROOT_PROVIDER.create(Inject.class)
-                .provide((context, category, inject, key) -> {
-                    if (key.field != null && Modifier.isFinal(key.field.getModifiers())
-                            && key.isAnnotationPresent(In.class)) {
-                        throw new CartrofitGrammarException("Invalid final key:" + key);
-                    }
-                    return context.createInjectCommand(key);
-                });
+                .provide((context, category, inject, key) -> context.createInjectCommand(key));
 
         // TODO: delete
         /*builder.create(Combine.class)
@@ -102,12 +94,6 @@ public abstract class Context {
                         if (callbackParameter == null) {
                             throw new CartrofitGrammarException("Declare a Callback parameter as an interface " + key);
                         }
-                        for (int i = 0; i < key.getParameterCount(); i++) {
-                            if (i != callbackParameter.getDeclaredIndex() && !key.isAnnotationPresent(Bind.class)) {
-                                throw new CartrofitGrammarException("Declare other parameter by annotation "
-                                        + Bind.class);
-                            }
-                        }
                     }
                     Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
                     if (callbackParameter == null) {
@@ -128,23 +114,47 @@ public abstract class Context {
                 });
 
         ROOT_PROVIDER.create(Unregister.class)
-                .provide((context, category, unregister, key) ->
-                        new UnregisterCall((RegisterCall) context.getOrCreateCallById(key,
-                                unregister.value(), CATEGORY_TRACK)));
+                .provide((context, category, unregister, key) -> {
+                    int count = key.getParameterCount();
+                    if (count != 1) {
+                        throw new CartrofitGrammarException("Unregister must provide a single" +
+                                " one Callback parameter:" + key);
+                    }
+                    RegisterCall registerCall = (RegisterCall) context.getOrCreateCallById(key,
+                            unregister.value(), CATEGORY_DEFAULT);
+                    Key registerKey = registerCall.getKey();
+                    if (registerKey.getParameterCount() == 1) {
+                        if (key.getParameterAt(0).getType() != registerKey.getParameterAt(0).getType()) {
+                            throw new CartrofitGrammarException("Unregister must provide a single " +
+                                    "one Callback parameter under the same Callback type as well as key:" + key + " does");
+                        }
+                    } else {
+                        for (int i = 0; i < registerKey.getParameterCount(); i++) {
+                            Parameter parameter = registerKey.getParameterAt(i);
+                            if (parameter.isAnnotationPresent(Callback.class)) {
+                                if (key.getParameterAt(0).getType() != parameter.getType()) {
+                                    throw new CartrofitGrammarException("Unregister must provide a single " +
+                                            "one Callback parameter under the same Callback type as well as key:" + key + " does");
+                                }
+                            }
+                        }
+                    }
+                    return new UnregisterCall(registerCall);
+                });
 
         ROOT_PROVIDER.create(Delegate.class)
                 .provide((context, category, delegate, key) -> context.createDelegateCallById(key, delegate.value(), category));
     }
 
-    <INPUT> Converter<Union, INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
+    <INPUT> Function<Union, INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
         return mSolutionProvider.findInputConverter(call);
     }
 
-    <OUTPUT> Converter<OUTPUT, ?> findReturnOutputConverter(FixedTypeCall<?, OUTPUT> call) {
+    <OUTPUT> Function<OUTPUT, ?> findReturnOutputConverter(FixedTypeCall<?, OUTPUT> call) {
         return mSolutionProvider.findReturnOutputConverter(call);
     }
 
-    <OUTPUT> Converter<OUTPUT, Union> findCallbackOutputConverter(FixedTypeCall<?, OUTPUT> call) {
+    <OUTPUT> Function<OUTPUT, Union> findCallbackOutputConverter(FixedTypeCall<?, OUTPUT> call) {
         return mSolutionProvider.findCallbackOutputConverter(call);
     }
 
@@ -263,7 +273,7 @@ public abstract class Context {
                 + " type:" + Arrays.toString(ifTypes));
     }
 
-    static boolean classEquals(Class<?> a, Class<?> b) {
+    public static boolean classEquals(Class<?> a, Class<?> b) {
         if (a.equals(b)) {
             return true;
         }
@@ -372,7 +382,7 @@ public abstract class Context {
         return call;
     }
 
-    Call getOrCreateCallById(Key key, int id, int category) {
+    public Call getOrCreateCallById(Key key, int id, int category) {
         return getOrCreateCallById(key, key.record, id, category, false);
     }
 
@@ -515,7 +525,7 @@ public abstract class Context {
                     }
                 }
             }
-            if (injectGroupCall.getChildCount() == 0) {
+            if (injectGroupCall == null) {
                 throw new CartrofitGrammarException("Must provide In or Out Annotation " + key);
             }
             return injectGroupCall;
@@ -531,9 +541,14 @@ public abstract class Context {
             throw new CartrofitGrammarException("Can not use Inject operator on class type:" + clazz);
         }
         InjectCall injectCall = new InjectCall(clazz);
-        // TODO: category wrong
         inflateCallback(parentKey, clazz, CATEGORY_SET | CATEGORY_GET | CATEGORY_TRACK,
-                injectCall::addChildCall);
+                call -> {
+                    if (call.hasCategory(CATEGORY_SET)
+                            && Modifier.isFinal(call.getKey().field.getModifiers())) {
+                        throw new CartrofitGrammarException("Invalid final key:" + call.getKey());
+                    }
+                    injectCall.addChildCall(call);
+                });
         if (injectCall.getChildCount() == 0) {
             throw new CartrofitGrammarException("Failed to parse Inject call from type:"
                     + clazz);
@@ -545,14 +560,11 @@ public abstract class Context {
         private static final String ID_SUFFIX = "Id";
 
         Class<T> clazz;
-        String dataScope;
-        int apiArea;
         T apiObj;
 
         ArrayList<Key> childrenKey;
 
         HashMap<Integer, Method> selfDependency = new HashMap<>();
-        HashMap<Integer, ArrayList<SolutionProvider.CallSolution<?>>> grammarRuleMap = new HashMap<>();
         HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
 
         Object scopeObj;
@@ -612,9 +624,7 @@ public abstract class Context {
         public String toString() {
             return "ApiRecord{" +
                     "api=" + clazz +
-                    ", dataScope='" + dataScope + '\'' +
-                    (apiArea != Scope.DEFAULT_AREA_ID ?
-                            ", apiArea=0x" + Integer.toHexString(apiArea) : "") +
+                    ", scopeObj='" + scopeObj +
                     '}';
         }
     }

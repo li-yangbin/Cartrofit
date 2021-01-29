@@ -11,6 +11,10 @@ public interface FlowConsumer<T> extends Consumer<T> {
     }
     default void onError(Throwable throwable) {
         // called by up-stream
+        defaultThrow(throwable);
+    }
+
+    static void defaultThrow(Throwable throwable) {
         if (throwable instanceof RuntimeException) {
             throw ((RuntimeException) throwable);
         } else {

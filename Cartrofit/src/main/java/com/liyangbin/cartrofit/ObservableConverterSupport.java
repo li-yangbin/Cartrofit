@@ -47,9 +47,9 @@ class ObservableConverter {
 class ObservableConverterField implements FlowConverter<ObservableField<?>> {
 
     @Override
-    public ObservableField<?> convert(Flow<?> flow) {
+    public ObservableField<?> apply(Flow<?> flow) {
         if (!flow.isHot()) {
-            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableField");
+            throw new IllegalStateException("Can not apply cold flow:" + flow + " to ObservableField");
         }
         return new FlowObservableField<>(flow);
     }
@@ -91,9 +91,9 @@ class ObservableConverterField implements FlowConverter<ObservableField<?>> {
 class ObservableConverterInt implements FlowConverter<ObservableInt> {
 
     @Override
-    public ObservableInt convert(Flow<?> flow) {
+    public ObservableInt apply(Flow<?> flow) {
         if (!flow.isHot()) {
-            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableInt");
+            throw new IllegalStateException("Can not apply cold flow:" + flow + " to ObservableInt");
         }
         return new FlowObservableInt<>(flow);
     }
@@ -135,9 +135,9 @@ class ObservableConverterInt implements FlowConverter<ObservableInt> {
 class ObservableConverterByte implements FlowConverter<ObservableByte> {
 
     @Override
-    public ObservableByte convert(Flow<?> flow) {
+    public ObservableByte apply(Flow<?> flow) {
         if (!flow.isHot()) {
-            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableByte");
+            throw new IllegalStateException("Can not apply cold flow:" + flow + " to ObservableByte");
         }
         return new FlowObservableByte<>(flow);
     }
@@ -179,9 +179,9 @@ class ObservableConverterByte implements FlowConverter<ObservableByte> {
 class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
 
     @Override
-    public ObservableBoolean convert(Flow<?> flow) {
+    public ObservableBoolean apply(Flow<?> flow) {
         if (!flow.isHot()) {
-            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableBoolean");
+            throw new IllegalStateException("Can not apply cold flow:" + flow + " to ObservableBoolean");
         }
         return new FlowObservableBoolean<>(flow);
     }
@@ -223,9 +223,9 @@ class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
 class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
 
     @Override
-    public ObservableFloat convert(Flow<?> flow) {
+    public ObservableFloat apply(Flow<?> flow) {
         if (!flow.isHot()) {
-            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableFloat");
+            throw new IllegalStateException("Can not apply cold flow:" + flow + " to ObservableFloat");
         }
         return new FlowObservableFloat<>(flow);
     }
@@ -267,9 +267,9 @@ class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
 class ObservableConverterLong implements FlowConverter<ObservableLong> {
 
     @Override
-    public ObservableLong convert(Flow<?> flow) {
+    public ObservableLong apply(Flow<?> flow) {
         if (!flow.isHot()) {
-            throw new IllegalStateException("Can not convert cold flow:" + flow + " to ObservableLong");
+            throw new IllegalStateException("Can not apply cold flow:" + flow + " to ObservableLong");
         }
         return new FlowObservableLong<>(flow);
     }

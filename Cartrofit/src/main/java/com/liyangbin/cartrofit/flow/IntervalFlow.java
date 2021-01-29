@@ -18,6 +18,7 @@ public class IntervalFlow extends Flow<Integer> {
     @Override
     protected void onSubscribeStarted(FlowConsumer<Integer> consumer) {
         task = new ScheduleTask(consumer);
+        System.out.println("IntervalFlow onSubscribeStarted");
         if (interval == 0) {
             FlowTimer.schedule(task, startDelay);
         } else {

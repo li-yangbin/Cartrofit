@@ -17,7 +17,7 @@ public class SubscribeOnFlow<T> extends Flow.WrappedFlow<T> {
 
     @Override
     protected void onSubscribeStopped() {
-        handler.execute(() -> upStream.stopSubscribe());
+        upStream.stopSubscribe();
     }
 
     private class InnerConsumer extends WrappedFusedConsumer<T, T> {

@@ -1,7 +1,8 @@
 package com.liyangbin.cartrofit.funtion;
 
 import com.liyangbin.cartrofit.flow.Flow;
-import com.liyangbin.cartrofit.funtion.Converter;
 
-public interface FlowConverter<R> extends Converter<Flow<?>, R> {
+import java.util.function.Function;
+
+public interface FlowConverter<R> extends Function<Flow<?>, R> {
 }

@@ -40,15 +40,14 @@ public class ConsumeOnFlow<T> extends Flow.WrappedFlow<T> {
 
         @Override
         public void run() {
+            if (done) return;
 
             T newValue;
             synchronized (this) {
                 newValue = (T) mPendingData;
                 mPendingData = NOT_SET;
             }
-            if (!done) {
-                downStream.accept(newValue);
-            }
+            downStream.accept(newValue);
         }
 
         @Override

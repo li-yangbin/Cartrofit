@@ -28,8 +28,6 @@ android {
 }
 
 dependencies {
-    compileOnly files('libs/android.car.jar')
-    testImplementation files('libs/android.car.jar')
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'androidx.test.ext:junit:1.1.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
@@ -42,7 +40,4 @@ dependencies {
 
     compileOnly 'androidx.databinding:databinding-runtime:3.5.0'
     testImplementation 'androidx.databinding:databinding-runtime:3.5.0'
-
-    annotationProcessor project(':processorlib')
-    testAnnotationProcessor project(':processorlib')
 }

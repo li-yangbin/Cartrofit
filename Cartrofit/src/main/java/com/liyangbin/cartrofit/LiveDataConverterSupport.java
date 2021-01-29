@@ -21,9 +21,9 @@ class LiveDataConverter {
 
 class LiveDataConverterDefault implements FlowConverter<LiveData<?>> {
     @Override
-    public LiveData<?> convert(Flow<?> flow) {
+    public LiveData<?> apply(Flow<?> flow) {
         if (!flow.isHot()) {
-            throw new IllegalStateException("Can not convert cold flow:" + flow + " to LiveData");
+            throw new IllegalStateException("Can not apply cold flow:" + flow + " to LiveData");
         }
         return new FlowLiveData<>(flow);
     }
@@ -31,9 +31,9 @@ class LiveDataConverterDefault implements FlowConverter<LiveData<?>> {
 
 class LiveDataConverterMutable implements FlowConverter<MutableLiveData<?>> {
     @Override
-    public MutableLiveData<?> convert(Flow<?> flow) {
+    public MutableLiveData<?> apply(Flow<?> flow) {
         if (!flow.isHot()) {
-            throw new IllegalStateException("Can not convert cold flow:" + flow + " to LiveData");
+            throw new IllegalStateException("Can not apply cold flow:" + flow + " to LiveData");
         }
         return new FlowLiveData<>(flow);
     }

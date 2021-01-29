@@ -17,6 +17,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Objects;
+import java.util.concurrent.TimeoutException;
 
 public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
@@ -150,9 +151,12 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             for (int i = 0; i < getChildCount(); i++) {
                 Entry entry = getChildAt(i);
                 Flow<Object> registeredFlow = childInvoke(entry.call, parameter);
+                if (registeredFlow.isHot() && convenientTrackMode) {
+                    throw new CartrofitGrammarException("Can not use convenientTrack on hot flow source");
+                }
                 InnerObserver observer = new InnerObserver(this, entry);
                 if (convenientTrackMode && convenientTimeoutKey != null) {
-                    registeredFlow = registeredFlow.timeout(timeOutMillis, observer::onTimeOut);
+                    registeredFlow = registeredFlow.timeout(timeOutMillis);
                 }
                 commandFlowList.add(registeredFlow);
 
@@ -187,6 +191,15 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             this.callbackWrapper = callbackWrapper;
         }
 
+        @Override
+        public void onError(Throwable throwable) {
+            if (throwable instanceof TimeoutException) {
+                onTimeOut();
+            } else {
+                FlowConsumer.defaultThrow(throwable);
+            }
+        }
+
         void onTimeOut() {
             try {
                 convenientTimeoutKey.method.invoke(callbackObj);
@@ -201,7 +214,12 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             }
         }
 
-//        void scheduleTimeoutIfNeeded() {
+        @Override
+        public void onComplete() {
+            untrack(callbackObj);
+        }
+
+        //        void scheduleTimeoutIfNeeded() {
 //            if (convenientTrackMode && entry.timeoutCall != null && timer == null) {
 //                entry.timerFlow.addObserver(timer = aVoid -> {
 //                    synchronized (RegisterCall.this) {

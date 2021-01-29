@@ -1,3 +1,4 @@
+include ':CarProperty'
 include ':processorlib'
 include ':Cartrofit'
 include ':hvacDemo'
