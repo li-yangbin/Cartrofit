@@ -23,7 +23,7 @@ public class Key {
 
     public final Field field;
 
-    Context.ApiRecord<?> record;
+    ApiRecord<?> record;
     private int mId = -1;
 
     private Annotation[] annotations;
@@ -35,14 +35,14 @@ public class Key {
     private ParameterGroup implicitParameterGroup;
     private Key delegateKey;
 
-    Key(Context.ApiRecord<?> record, Method method, boolean isCallbackEntry) {
+    Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
         this.record = record;
         this.method = method;
         this.field = null;
         this.isCallbackEntry = isCallbackEntry;
     }
 
-    Key(Context.ApiRecord<?> record, Field field) {
+    Key(ApiRecord<?> record, Field field) {
         this.record = record;
         this.method = null;
         this.field = field;
@@ -69,7 +69,7 @@ public class Key {
         if (method == null) {
             return 0;
         }
-        return mId = record.selfDependencyReverse.getOrDefault(method, 0);
+        return mId = record.loadIdByCall(this);
     }
 
     public Parameter findParameterByAnnotation(Class<? extends Annotation> clazz) {
@@ -93,14 +93,14 @@ public class Key {
         if (declaredReturnType == void.class) {
             return null;
         }
-        if (Context.FLOW_CONVERTER_MAP.containsKey(declaredReturnType)
+        if (Cartrofit.FLOW_CONVERTER_MAP.containsKey(declaredReturnType)
                 || Flow.class.isAssignableFrom(declaredReturnType)) {
             Class<?> userTargetType;
             WrappedData dataAnnotation = declaredReturnType.getAnnotation(WrappedData.class);
             if (dataAnnotation != null) {
                 userTargetType = dataAnnotation.type();
             } else {
-                userTargetType = Context.WRAPPER_CLASS_MAP.get(declaredReturnType);
+                userTargetType = Cartrofit.WRAPPER_CLASS_MAP.get(declaredReturnType);
             }
             if (userTargetType != null) {
                 returnParameter = new ReturnAsParameter(userTargetType, userTargetType);
@@ -109,7 +109,7 @@ public class Key {
                 if (declaredGenericType instanceof ParameterizedType) {
                     Type[] typeArray = ((ParameterizedType) declaredGenericType).getActualTypeArguments();
                     Type typeInFlow = typeArray.length > 0 ? typeArray[0] : null;
-                    returnParameter = new ReturnAsParameter(Context.getClassFromType(typeInFlow), typeInFlow);
+                    returnParameter = new ReturnAsParameter(Cartrofit.getClassFromType(typeInFlow), typeInFlow);
                 } else {
                     throw new CartrofitGrammarException("Unsupported type:" + declaredGenericType);
                 }
@@ -393,8 +393,8 @@ public class Key {
         }
     }
 
-    public <S> S getScopeObj() {
-        return (S) record.scopeObj;
+    public <A extends Annotation> A getScope() {
+        return (A) record.scopeObj;
     }
 
     boolean isInvalid() {

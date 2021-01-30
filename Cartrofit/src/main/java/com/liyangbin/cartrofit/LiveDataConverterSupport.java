@@ -11,7 +11,7 @@ class LiveDataConverter {
     static void addSupport() {
         try {
             Class.forName("androidx.lifecycle.LiveData");
-            Context.addGlobalConverter(new LiveDataConverterDefault(),
+            Cartrofit.addGlobalConverter(new LiveDataConverterDefault(),
                     new LiveDataConverterMutable());
         } catch (ClassNotFoundException ignore) {
             // Add LiveData to gradle file to meet LiveData support

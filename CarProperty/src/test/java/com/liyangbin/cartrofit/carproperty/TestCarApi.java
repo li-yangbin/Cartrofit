@@ -7,8 +7,6 @@ import com.liyangbin.cartrofit.flow.Flow;
 import io.reactivex.Observable;
 import io.reactivex.Single;
 
-import static com.liyangbin.cartrofit.carproperty.TestCarApiId.trackStringSignal;
-
 @GenerateId
 @Scope("test")
 public interface TestCarApi {
@@ -52,8 +50,8 @@ public interface TestCarApi {
     @Track(propId = 1)
     Observable<Integer> trackIntReactive();
 
-    @Delegate(trackStringSignal)
-    Observable<String> trackIntReactiveAlias();
+//    @Delegate(trackStringSignal)
+//    Observable<String> trackIntReactiveAlias();
 
     @Track(propId = 1)
     Single<Integer> trackIntReactiveSingle();

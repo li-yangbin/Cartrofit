@@ -21,7 +21,7 @@ class ObservableConverter {
     static void addSupport() {
         try {
             Class.forName("androidx.databinding.ObservableField");
-            Context.addGlobalConverter(new ObservableConverterField(),
+            Cartrofit.addGlobalConverter(new ObservableConverterField(),
                     new ObservableConverterInt(),
                     new ObservableConverterByte(),
                     new ObservableConverterBoolean(),

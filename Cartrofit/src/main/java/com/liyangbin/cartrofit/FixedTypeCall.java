@@ -20,9 +20,9 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
     @Override
     public void onInit() {
         super.onInit();
-        Context context = getContext();
+        AbsContext context = getContext();
         inputConverter = context.findInputConverter(this);
-        if (hasCategory(Context.CATEGORY_TRACK)) {
+        if (hasCategory(AbsContext.CATEGORY_TRACK)) {
             if (getKey().isCallbackEntry) {
                 outputConverter = context.findCallbackOutputConverter(this);
             } else {
@@ -43,7 +43,7 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
     @Override
     public Object mapInvoke(Union parameter) {
         INPUT input = inputConverter.apply(parameter);
-        if (hasCategory(Context.CATEGORY_TRACK)) {
+        if (hasCategory(AbsContext.CATEGORY_TRACK)) {
             Flow<OUTPUT> result = doTrackInvoke(input);
             if (flowSubscribeExecutor != null) {
                 result = result.subscribeOn(flowSubscribeExecutor);

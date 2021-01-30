@@ -1,11 +1,11 @@
 package com.liyangbin.cartrofit.flow;
 
-import androidx.lifecycle.LiveData;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+
+import androidx.lifecycle.LiveData;
 
 public class FlowPublisher<T> {
 
@@ -19,9 +19,13 @@ public class FlowPublisher<T> {
     private ArrayList<SharedFlow> downStreamList = new ArrayList<>();
     private final HashMap<Consumer<T>, Flow<T>> listenerMap = new HashMap<>();
 
-    public FlowPublisher(Flow<T> upStream, boolean startWhenConnected) {
+    FlowPublisher(Flow<T> upStream) {
         this.upStream = upStream;
-        this.startWhenConnected = startWhenConnected;
+        if (upStream.isHot()) {
+            start();
+        } else {
+            startWhenConnected = true;
+        }
     }
 
     public void enableStickyDispatch(Supplier<T> initialDataProvider) {
@@ -29,12 +33,12 @@ public class FlowPublisher<T> {
         this.initialStickyDataProvider = initialDataProvider;
     }
 
-    public void start() {
+    private void start() {
         if (!publishStarted) {
             publishStarted = true;
+            startWhenConnected = false;
 
             upStream.subscribe(new PublishConsumer());
-            startWhenConnected = false;
         }
     }
 
@@ -55,18 +59,6 @@ public class FlowPublisher<T> {
             listenerMap.put(consumer, sharedFlow);
         }
         sharedFlow.subscribe(consumer);
-        if (dispatchStickyDataEnable) {
-            synchronized (this) {
-                if (!hasData && initialStickyDataProvider != null) {
-                    data = initialStickyDataProvider.get();
-                    hasData = true;
-                }
-                if (!hasData) {
-                    return;
-                }
-            }
-            consumer.accept(data);
-        }
     }
 
     public void removeSubscriber(FlowConsumer<T> consumer) {
@@ -91,6 +83,19 @@ public class FlowPublisher<T> {
         }
         if (doSubscribe) {
             upStream.subscribe(new PublishConsumer());
+        }
+
+        if (dispatchStickyDataEnable) {
+            synchronized (this) {
+                if (!hasData && initialStickyDataProvider != null) {
+                    data = initialStickyDataProvider.get();
+                    hasData = true;
+                }
+                if (!hasData) {
+                    return;
+                }
+            }
+            flow.consumer.accept(data);
         }
     }
 

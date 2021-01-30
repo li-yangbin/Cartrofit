@@ -16,11 +16,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public abstract class DefaultCarContext extends CarPropertyContext implements CarPropertyAccess {
 
-    static void registerDefault() {
-        CarPropertyContext.addCarPropertyHandler(Car.HVAC_SERVICE, HvacContext::new);
-        CarPropertyContext.addCarPropertyHandler(Car.VENDOR_EXTENSION_SERVICE, VendorExtensionContext::new);
-        CarPropertyContext.addCarPropertyHandler(Car.PROJECTION_SERVICE, PropertyContext::new);
-        CarPropertyContext.addCarPropertyHandler(Car.CABIN_SERVICE, CabinContext::new);
+    static void registerAsDefault() {
+        CarPropertyContext.addScopeProvider(Car.HVAC_SERVICE, HvacContext::new);
+        CarPropertyContext.addScopeProvider(Car.VENDOR_EXTENSION_SERVICE, VendorExtensionContext::new);
+        CarPropertyContext.addScopeProvider(Car.PROPERTY_SERVICE, PropertyContext::new);
+        CarPropertyContext.addScopeProvider(Car.CABIN_SERVICE, CabinContext::new);
     }
 
     static String prop2Str(int property, int area) {
@@ -134,7 +134,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
         for (FlowSourceImpl flowSource : flowSourceList) {
             if (flowSource.match(propertyId, area)) {
                 for (Flow.Injector<CarPropertyValue<?>> injector : flowSource.flowInjectors) {
-                    injector.error(new RuntimeException("property error:" + prop2Str(propertyId, area)));
+                    injector.error(new CarPropertyException(propertyId, area));
                 }
                 break;
             }
@@ -301,7 +301,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
             @Override
             public void onErrorEvent(int propertyId, int area) {
-                RuntimeException exception = new RuntimeException("Property property error:" + prop2Str(propertyId, area));
+                CarPropertyException exception = new CarPropertyException(propertyId, area);
                 for (Flow.Injector<CarPropertyValue<?>> injector : flowInjectors) {
                     injector.error(exception);
                 }

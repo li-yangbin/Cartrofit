@@ -15,7 +15,7 @@ public abstract class Call implements Cloneable {
     private ParameterContext parameterContext;
 
     private CallGroup<?> parentCall;
-    private Context context;
+    private AbsContext context;
     private List<String> tokenList;
 
     void dispatchInit(ParameterContext parameterContext) {
@@ -45,7 +45,7 @@ public abstract class Call implements Cloneable {
         return new ParameterContext(getKey());
     }
 
-    void setKey(Key key, Context context) {
+    void setKey(Key key, AbsContext context) {
         this.key = key;
         this.context = context;
     }
@@ -54,7 +54,7 @@ public abstract class Call implements Cloneable {
         return key;
     }
 
-    public Context getContext() {
+    public AbsContext getContext() {
         return context;
     }
 

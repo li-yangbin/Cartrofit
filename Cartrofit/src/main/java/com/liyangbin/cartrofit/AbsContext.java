@@ -2,7 +2,6 @@ package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.Delegate;
-import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Inject;
 import com.liyangbin.cartrofit.annotation.Out;
@@ -18,8 +17,6 @@ import com.liyangbin.cartrofit.call.UnregisterCall;
 import com.liyangbin.cartrofit.funtion.FlowConverter;
 import com.liyangbin.cartrofit.funtion.Union;
 
-import java.lang.annotation.Annotation;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -28,14 +25,13 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 @SuppressWarnings("unchecked")
-public abstract class Context {
+public abstract class AbsContext {
 
     public static final int CATEGORY_SET = 1;
     public static final int CATEGORY_GET = 1 << 1;
@@ -43,9 +39,6 @@ public abstract class Context {
 
     public static final int CATEGORY_DEFAULT = 0xffffffff;
 
-    static final HashMap<Class<?>, FlowConverter<?>> FLOW_CONVERTER_MAP = new HashMap<>();
-
-    static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
     static final Router ID_ROUTER = new Router();
     private static final SolutionProvider ROOT_PROVIDER = new SolutionProvider();
 
@@ -197,82 +190,6 @@ public abstract class Context {
         }
     }
 
-    static Class<?> getClassFromType(Type type) {
-        if (type instanceof ParameterizedType) {
-            ParameterizedType parameterizedType = (ParameterizedType) type;
-            return getClassFromType(parameterizedType.getRawType());
-        } else if (type instanceof Class) {
-            return (Class<?>) type;
-        }
-        return null;
-    }
-
-    private static Class<?> lookUp(Class<?> clazz, Class<?> lookForTarget) {
-        if (clazz == lookForTarget) {
-            throw new CartrofitGrammarException("Invalid parameter:" + clazz);
-        }
-        if (!lookForTarget.isAssignableFrom(clazz)) {
-            return null;
-        }
-        Class<?>[] ifClazzArray = clazz.getInterfaces();
-        for (Class<?> ifClazz : ifClazzArray){
-            if (ifClazz == lookForTarget) {
-                return clazz;
-            } else if (lookForTarget.isAssignableFrom(ifClazz)) {
-                Class<?>[] ifParents = ifClazz.getInterfaces();
-                for (Class<?> subIfClazz : ifParents){
-                    if (subIfClazz == lookForTarget) {
-                        return ifClazz;
-                    }
-                }
-                for (Class<?> subIfClazz : ifParents){
-                    Class<?> extendsBy = lookUp(subIfClazz, lookForTarget);
-                    if (extendsBy != null) {
-                        return extendsBy;
-                    }
-                }
-            }
-        }
-        Class<?> superClazz = clazz.getSuperclass();
-        if (superClazz != null && superClazz != Object.class) {
-            return lookUp(superClazz, lookForTarget);
-        } else {
-            return null;
-        }
-    }
-
-    public static FlowConverter<?> findFlowConverter(Class<?> target) {
-        return FLOW_CONVERTER_MAP.get(target);
-    }
-
-    static Class<?> findFlowConverterTarget(FlowConverter<?> converter) {
-        Objects.requireNonNull(converter);
-        Class<?> implementsBy = lookUp(converter.getClass(), FlowConverter.class);
-        if (implementsBy == null) {
-            throw new CartrofitGrammarException("invalid input converter:" + converter.getClass());
-        }
-        if (implementsBy.isSynthetic()) {
-            throw new CartrofitGrammarException("Do not use lambda expression in addConverter()");
-        }
-        Type[] ifTypes = implementsBy.getGenericInterfaces();
-        for (Type type : ifTypes) {
-            if (type instanceof ParameterizedType) {
-                ParameterizedType parameterizedType = (ParameterizedType) type;
-                if (parameterizedType.getRawType() == FlowConverter.class) {
-                    Type[] converterDeclaredType = parameterizedType.getActualTypeArguments();
-                    WrappedData wrappedData = implementsBy.getDeclaredAnnotation(WrappedData.class);
-                    if (wrappedData != null) {
-                        WRAPPER_CLASS_MAP.put(implementsBy, wrappedData.type());
-                    }
-                    return getClassFromType(converterDeclaredType[0]);
-                }
-            }
-        }
-
-        throw new CartrofitGrammarException("invalid converter class:" + implementsBy
-                + " type:" + Arrays.toString(ifTypes));
-    }
-
     public static boolean classEquals(Class<?> a, Class<?> b) {
         if (a.equals(b)) {
             return true;
@@ -306,44 +223,51 @@ public abstract class Context {
         }
     }
 
-    public static void addGlobalConverter(FlowConverter<?>... converters) {
-        for (FlowConverter<?> converter : converters) {
-            FLOW_CONVERTER_MAP.put(findFlowConverterTarget(converter), converter);
-        }
-    }
-
     private final SolutionProvider mSolutionProvider;
-    private final HashMap<Class<?>, ApiRecord<?>> mApiCache = new HashMap<>();
+    private boolean mIsDefaultSingleton;
+    private final HashMap<ApiRecord<?>, Object> mApiCache = new HashMap<>();
     private final HashMap<Key, Call> mCallCache = new HashMap<>();
 
-    public Context() {
+    public AbsContext() {
         mSolutionProvider = onProvideCallSolution();
     }
 
     public <T> T from(Class<T> api) {
-        synchronized (mApiCache) {
-            ApiRecord<T> record = getApi(api);
-            if (record.apiObj != null) {
-                return record.apiObj;
-            }
-            record.apiObj = (T) Proxy.newProxyInstance(api.getClassLoader(), new Class<?>[]{api},
-                    (proxy, method, args) -> {
-                        if (method.getDeclaringClass() == Object.class) {
-                            return method.invoke(record, args);
-                        }
-                        if (method.isDefault()) {
-                            throw new UnsupportedOperationException(
-                                    "Do not declare any default method in Cartrofit interface");
-                        }
-                        Call call;
-                        Key key = new Key(record, method, false);
-                        synchronized (mApiCache) {
-                            call = getOrCreateCall(key, CATEGORY_DEFAULT, true);
-                        }
-                        return call.invoke(Union.ofArray(args));
-                    });
-            return record.apiObj;
+        return from(Cartrofit.getApi(api));
+    }
+
+    void createFromCartrofit() {
+        mIsDefaultSingleton = true;
+    }
+
+    protected final boolean isDefaultSingleton() {
+        return mIsDefaultSingleton;
+    }
+
+    synchronized <T> T from(ApiRecord<T> record) {
+        T apiObj = (T) mApiCache.get(record);
+        if (apiObj != null) {
+            return apiObj;
         }
+        apiObj = (T) Proxy.newProxyInstance(record.clazz.getClassLoader(),
+                new Class<?>[]{record.clazz},
+                (proxy, method, args) -> {
+                    if (method.getDeclaringClass() == Object.class) {
+                        return method.invoke(record, args);
+                    }
+                    if (method.isDefault()) {
+                        throw new UnsupportedOperationException(
+                                "Do not declare any default method in Cartrofit interface");
+                    }
+                    Call call;
+                    Key key = new Key(record, method, false);
+                    synchronized (AbsContext.this) {
+                        call = getOrCreateCall(key, CATEGORY_DEFAULT, true);
+                    }
+                    return call.invoke(Union.ofArray(args));
+                });
+        mApiCache.put(record, apiObj);
+        return apiObj;
     }
 
     Call getOrCreateCall(Key key, int category, boolean fromCache) {
@@ -351,25 +275,25 @@ public abstract class Context {
         if (fromCache) {
             call = mCallCache.get(key);
             if (call == null) {
-                call = createCall(key, category);
+                call = onCreateCall(key, category);
                 mCallCache.put(key, call);
                 call.dispatchInit(call.getParameterContext());
             }
         } else {
-            call = createCall(key, category);
+            call = onCreateCall(key, category);
             call.dispatchInit(call.getParameterContext());
         }
         return call;
     }
 
     Call getOrCreateCallById(Key key, ApiRecord<?> record, int id, int flag, boolean fromDelegate) {
-        Method method = record.selfDependency.get(id);
+        Method method = record.findMethodById(id);
         if (method == null) {
             Class<?> apiClass = ID_ROUTER.findApiClassById(id);
             if (apiClass == record.clazz || apiClass == null) {
                 throw new CartrofitGrammarException("Can not find target Id:" + id + " from:" + record.clazz);
             }
-            return getOrCreateCallById(key, getApi(apiClass), id, flag, fromDelegate);
+            return getOrCreateCallById(key, Cartrofit.getApi(apiClass), id, flag, fromDelegate);
         }
         Key targetKey = new Key(record, method, false);
         Call call;
@@ -390,10 +314,10 @@ public abstract class Context {
         return getOrCreateCallById(key, key.record, id, category, true);
     }
 
-    private Call createCall(Key key, int category) {
+    public Call onCreateCall(Key key, int category) {
         Call call = mSolutionProvider.createCall(this, key, category);
         if (call != null) {
-            call.setKey(key, Context.this);
+            call.setKey(key, this);
 
             Token tokenAnnotation = key.getAnnotation(Token.class);
             if (tokenAnnotation != null) {
@@ -402,25 +326,15 @@ public abstract class Context {
 
             Call wrappedCall = wrapNormalTrack2RegisterIfNeeded(call);
             if (wrappedCall != null) {
-                wrappedCall.setKey(key, Context.this);
+                wrappedCall.setKey(key, this);
                 return wrappedCall;
             }
         }
         return call;
     }
 
-    private <T> ApiRecord<T> getApi(Class<T> api) {
-        ApiRecord<T> record = (ApiRecord<T>) mApiCache.get(api);
-        if (record == null) {
-            Object scope = onExtractScope(api);
-            record = new ApiRecord<>(scope, api);
-            mApiCache.put(api, record);
-        }
-        return record;
-    }
-
-    public final <T> void inflateCallback(Key key, Class<?> callbackClass,
-                                          int category, Consumer<Call> resultReceiver) {
+    public final void inflateCallback(Key key, Class<?> callbackClass,
+                                      int category, Consumer<Call> resultReceiver) {
         ArrayList<Key> childKeys = getChildKey(key, callbackClass);
         for (int i = 0; i < childKeys.size(); i++) {
             Key childKey = childKeys.get(i);
@@ -433,11 +347,11 @@ public abstract class Context {
         if (call.getKey().isCallbackEntry) {
             return null;
         }
-        return findFlowConverter(call.getKey().getReturnType());
+        return Cartrofit.findFlowConverter(call.getKey().getReturnType());
     }
 
     public ArrayList<Key> getChildKey(Key parent, Class<?> callbackClass) {
-        return getApi(callbackClass).getChildKey(parent);
+        return Cartrofit.getApi(callbackClass).getChildKey(parent);
     }
 
     public Executor getSubscribeExecutor(String tag) {
@@ -448,28 +362,8 @@ public abstract class Context {
         return null;
     }
 
-    public Object onExtractScope(Class<?> scopeClass) {
-        return null;
-    }
-
     public SolutionProvider onProvideCallSolution() {
         return ROOT_PROVIDER;
-    }
-
-    public static <A extends Annotation> A findScopeByClass(Class<A> annotationClazz, Class<?> clazz) {
-        A scope = clazz.getDeclaredAnnotation(annotationClazz);
-        if (scope != null) {
-            return scope;
-        }
-        Class<?> enclosingClass = clazz.getEnclosingClass();
-        while (enclosingClass != null) {
-            scope = enclosingClass.getDeclaredAnnotation(annotationClazz);
-            if (scope != null) {
-                return scope;
-            }
-            enclosingClass = enclosingClass.getEnclosingClass();
-        }
-        return null;
     }
 
     private Call wrapNormalTrack2RegisterIfNeeded(Call call) {
@@ -554,78 +448,5 @@ public abstract class Context {
                     + clazz);
         }
         return injectCall;
-    }
-
-    static class ApiRecord<T> {
-        private static final String ID_SUFFIX = "Id";
-
-        Class<T> clazz;
-        T apiObj;
-
-        ArrayList<Key> childrenKey;
-
-        HashMap<Integer, Method> selfDependency = new HashMap<>();
-        HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
-
-        Object scopeObj;
-
-        ApiRecord(Object scopeObj, Class<T> clazz) {
-            this.scopeObj = scopeObj;
-            this.clazz = clazz;
-
-            if (clazz.isAnnotationPresent(GenerateId.class)) {
-                try {
-                    Class<?> selfScopeClass = Class.forName(clazz.getName() + ID_SUFFIX);
-                    importDependency(selfScopeClass);
-                } catch (ClassNotFoundException impossible) {
-                    throw new IllegalStateException("impossible", impossible);
-                }
-            }
-        }
-
-        void importDependency(Class<?> target) {
-            try {
-                Method method = target.getDeclaredMethod("init", HashMap.class);
-                method.invoke(null, selfDependency);
-            } catch (ReflectiveOperationException impossible) {
-                throw new IllegalStateException(impossible);
-            }
-            for (Map.Entry<Integer, Method> entry : selfDependency.entrySet()) {
-                selfDependencyReverse.put(entry.getValue(), entry.getKey());
-            }
-        }
-
-        ArrayList<Key> getChildKey(Key parentKey) {
-            ArrayList<Key> result = new ArrayList<>();
-            if (clazz.isInterface()) {
-                Method[] methods = clazz.getDeclaredMethods();
-                for (Method method : methods) {
-                    Key childKey = new Key(this, method, true);
-                    if (!childKey.isInvalid()) {
-                        childKey.setDelegateKey(parentKey);
-                        result.add(childKey);
-                    }
-                }
-            } else {
-                Field[] fields = clazz.getDeclaredFields();
-                for (Field field : fields) {
-                    Key childKey = new Key(this, field);
-                    if (!childKey.isInvalid()) {
-                        childKey.setDelegateKey(parentKey);
-                        result.add(childKey);
-                    }
-                }
-            }
-            childrenKey = result;
-            return result;
-        }
-
-        @Override
-        public String toString() {
-            return "ApiRecord{" +
-                    "api=" + clazz +
-                    ", scopeObj='" + scopeObj +
-                    '}';
-        }
     }
 }

@@ -17,7 +17,7 @@ class RxJavaConverter {
     static void addSupport() {
         try {
             Class.forName("io.reactivex.Observable");
-            Context.addGlobalConverter(new RxJavaConverterDefault(),
+            Cartrofit.addGlobalConverter(new RxJavaConverterDefault(),
                     new RxJavaConverterFlowable(),
                     new RxJavaConverterSingle(),
                     new RxJavaConverterMaybe(),

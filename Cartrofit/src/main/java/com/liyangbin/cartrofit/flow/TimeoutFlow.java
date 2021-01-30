@@ -34,7 +34,7 @@ public class TimeoutFlow<T> extends Flow<T> {
 
     private class TimeoutConsumer extends TimerTask implements FlowConsumer<T> {
         FlowConsumer<T> downStream;
-        volatile boolean expired = true;
+        volatile boolean expired;
 
         TimeoutConsumer(FlowConsumer<T> downStream) {
             this.downStream = downStream;
@@ -45,6 +45,7 @@ public class TimeoutFlow<T> extends Flow<T> {
             if (expired) {
                 return;
             }
+            cancel();
             downStream.accept(t);
         }
 
@@ -66,7 +67,6 @@ public class TimeoutFlow<T> extends Flow<T> {
             }
             expired = true;
             cancel();
-            downStream.onCancel();
         }
 
         @Override

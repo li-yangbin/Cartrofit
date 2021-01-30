@@ -1,12 +1,10 @@
 package com.liyangbin.cartrofit.carproperty;
 
-import com.liyangbin.cartrofit.flow.Flow;
+import com.liyangbin.cartrofit.Cartrofit;
 
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import java.util.concurrent.Executors;
 
 /**
  * Example local unit test, which will execute on the development machine (host).
@@ -29,52 +27,47 @@ public class ExampleUnitTest {
 
     @BeforeClass
     public static void onStart() {
-        CarPropertyContext.addCarPropertyHandler("test", TestCarContext::new);
+        CarPropertyContext.addScopeProvider("test", TestCarContext::new);
     }
 
     @Test
     public void intGetTest() {
-        int value = CarPropertyContext.fromScope(TestCarApi.class).getIntSignal();
-        println(value);
+        int value = Cartrofit.from(TestCarApi.class).getIntSignal();
+        println("intGetTest:" + value);
     }
 
     @Test
     public void intSetTest() {
-        CarPropertyContext.fromScope(TestCarApi.class).setIntSignal(10086);
-        println(CarPropertyContext.fromScope(TestCarApi.class).getIntSignal());
+        Cartrofit.from(TestCarApi.class).setIntSignal(10086);
+        println("intSetTest:" + Cartrofit.from(TestCarApi.class).getIntSignal());
+    }
+
+    @Test
+    public void byteGetTest() {
+        println("byteGetTest:" + Cartrofit.from(TestCarApi.class).getByteSignal());
+    }
+
+    @Test
+    public void byteSetTest() {
+        Cartrofit.from(TestCarApi.class).setByteSignal(Byte.MAX_VALUE);
+        println("byteSetTest:" + Cartrofit.from(TestCarApi.class).getByteSignal());
+    }
+
+    @Test
+    public void stringGetTest() {
+        println("stringGetTest:" + Cartrofit.from(TestCarApi.class).getStringSignal());
+    }
+
+    @Test
+    public void stringSetTest() {
+        Cartrofit.from(TestCarApi.class).setStringSignal("I am a banana");
+        println("stringSetTest:" + Cartrofit.from(TestCarApi.class).getStringSignal());
     }
 
     @Test
     public void stringFlowTrack() {
-        CarPropertyContext.fromScope(TestCarApi.class).trackStringSignal()
-                .switchMap(s -> Flow.fromSource(new Flow.ColdFlowSource<Character>() {
-                    String sss = s;
-                    boolean cancel;
-            @Override
-            public void onStop() {
-                cancel = true;
-                println("===============onStop!!!!");
-            }
-
-            @Override
-            public void startWithInjector(Flow.Injector<Character> injector) {
-                println("===============start " + sss);
-                for (int i = 0; i < sss.length() && !cancel; i++) {
-                    injector.send(sss.charAt(i));
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-                if (cancel) {
-                    println("=================Cancel!!!! for:" + sss);
-                } else {
-                    println("===============Done!!!! for:" + sss);
-                    injector.done();
-                }
-            }
-        }).subscribeOn(Executors.newSingleThreadExecutor())).subscribe(ExampleUnitTest::println);
+        Cartrofit.from(TestCarApi.class).trackStringSignal()
+                .subscribe(ExampleUnitTest::println);
     }
 
     @AfterClass

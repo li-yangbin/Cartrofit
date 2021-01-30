@@ -5,9 +5,12 @@ import android.car.hardware.CarPropertyConfig;
 import android.car.hardware.CarPropertyValue;
 import android.car.hardware.property.CarPropertyEvent;
 
+import com.liyangbin.cartrofit.AbsContext;
+import com.liyangbin.cartrofit.Call;
+import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
-import com.liyangbin.cartrofit.Context;
 import com.liyangbin.cartrofit.FixedTypeCall;
+import com.liyangbin.cartrofit.Key;
 import com.liyangbin.cartrofit.SolutionProvider;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowPublisher;
@@ -19,26 +22,28 @@ import java.util.Objects;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
-public abstract class CarPropertyContext extends Context {
+public class CarPropertyContext extends AbsContext {
 
-    private static final HashMap<String, Singleton> CAR_CONTEXT_MAP = new HashMap<>();
     private static final SolutionProvider CAR_PROPERTY_SOLUTION = new SolutionProvider();
+    private static final HashMap<String, Singleton> CAR_SCOPE_CONTEXT = new HashMap<>();
 
     static {
+        Cartrofit.addContextProvider(Scope.class, CarPropertyContext::new);
+
         CAR_PROPERTY_SOLUTION.create(Get.class)
-                .provide((context, category, get, key) -> new PropertyGet(key.getScopeObj(), get));
+                .provide((context, category, get, key) -> new PropertyGet(key.getScope(), get));
 
         CAR_PROPERTY_SOLUTION.create(Set.class)
-                .provide((context, category, set, key) -> new PropertySet(key.getScopeObj(), set));
+                .provide((context, category, set, key) -> new PropertySet(key.getScope(), set));
 
         CAR_PROPERTY_SOLUTION.create(Track.class)
                 .provideAndBuildParameter(PropertyTrack.class, (context, category, track, key) -> {
-                    PropertyTrack trackCall = new PropertyTrack(key.getScopeObj(), track);
+                    PropertyTrack trackCall = new PropertyTrack(key.getScope(), track);
                     Restore restore = key.getAnnotation(Restore.class);
                     if (restore != null && restore.restoreTimeout() > 0) {
                         int setMethodId = restore.value();
                         PropertySet propertySet = (PropertySet) context.getOrCreateCallById(key,
-                                setMethodId, Context.CATEGORY_SET);
+                                setMethodId, AbsContext.CATEGORY_SET);
                         trackCall.setRestore(propertySet, restore.restoreTimeout());
                     }
                     return trackCall;
@@ -66,28 +71,17 @@ public abstract class CarPropertyContext extends Context {
                 }).buildAndCommit();
     }
 
-    public static <T> T fromScope(Class<T> api) {
-        Scope scope = api.getDeclaredAnnotation(Scope.class);
-        if (scope != null) {
-            Singleton contextProvider = CAR_CONTEXT_MAP.get(scope.value());
-            if (contextProvider != null) {
-                return contextProvider.get().from(api);
-            }
-        }
-        throw new CartrofitGrammarException("Invalid scope for:" + api);
-    }
-
-    public static void addCarPropertyHandler(String scopeName, Supplier<CarPropertyContext> initProvider) {
-        CAR_CONTEXT_MAP.put(scopeName, new Singleton(initProvider));
-    }
-
     private static class Singleton {
-        private final Supplier<CarPropertyContext> initProvider;
+        private Supplier<CarPropertyContext> initProvider;
         private CarPropertyContext instance;
+
+        Singleton(Supplier<CarPropertyContext> initProvider) {
+            this.initProvider = initProvider;
+        }
 
         CarPropertyContext get() {
             if (instance == null) {
-                synchronized (Singleton.class) {
+                synchronized (this) {
                     if (instance == null) {
                         instance = initProvider.get();
                     }
@@ -95,15 +89,22 @@ public abstract class CarPropertyContext extends Context {
             }
             return instance;
         }
+    }
 
-        Singleton(Supplier<CarPropertyContext> initProvider) {
-            this.initProvider = initProvider;
-        }
+    public static void addScopeProvider(String scope, Supplier<CarPropertyContext> provider) {
+        CAR_SCOPE_CONTEXT.put(scope, new Singleton(provider));
     }
 
     @Override
-    public Object onExtractScope(Class<?> scopeClass) {
-        return findScopeByClass(Scope.class, scopeClass);
+    public Call onCreateCall(Key key, int category) {
+        if (isDefaultSingleton()) {
+            Scope scope = key.getScope();
+            Singleton realTarget = CAR_SCOPE_CONTEXT.get(scope.value());
+            if (realTarget != null) {
+                return realTarget.get().onCreateCall(key, category);
+            }
+        }
+        return super.onCreateCall(key, category);
     }
 
     @Override
@@ -111,7 +112,9 @@ public abstract class CarPropertyContext extends Context {
         return super.onProvideCallSolution().merge(CAR_PROPERTY_SOLUTION);
     }
 
-    public abstract CarPropertyAccess getCarPropertyAccess();
+    public CarPropertyAccess getCarPropertyAccess() {
+        throw new RuntimeException("Sub-class should implement this method");
+    }
 
     public TypedCarPropertyAccess<?> getTypedCarPropertyAccess(Class<?> type) {
         if (classEquals(type, int.class)) {
@@ -301,7 +304,7 @@ public abstract class CarPropertyContext extends Context {
             Class<?> returnType = getKey().getReturnType();
             if (returnType.equals(CarPropertyConfig.class)) {
                 getType = CarType.CONFIG;
-            } else if (Context.classEquals(returnType, boolean.class)
+            } else if (AbsContext.classEquals(returnType, boolean.class)
                     && getKey().isAnnotationPresent(Availability.class)) {
                 getType = CarType.AVAILABILITY;
             }
@@ -406,7 +409,6 @@ public abstract class CarPropertyContext extends Context {
             if (isSticky) {
                 carValuePublisher.enableStickyDispatch(this::onLoadDefaultData);
             }
-            carValuePublisher.start();
 
             if (propertySet != null) {
                 Flow.fromSource(propertySet)

@@ -62,7 +62,7 @@ public final class SolutionProvider {
         }
     }
 
-    Call createCall(Context context, Key key, int category) {
+    Call createCall(AbsContext context, Key key, int category) {
         for (int i = mCallSolutionList.size() - 1; i >= 0; i--) {
             CallSolution<?> solution = mCallSolutionList.get(i);
             Call call = solution.createCall(context, category, key);
@@ -74,7 +74,7 @@ public final class SolutionProvider {
     }
 
     public interface CallProvider<A extends Annotation, T extends Call> {
-        T provide(Context context, int category, A annotation, Key key);
+        T provide(AbsContext context, int category, A annotation, Key key);
     }
 
     public SolutionProvider merge(SolutionProvider solutionProvider) {
@@ -138,7 +138,7 @@ public final class SolutionProvider {
             return new ConvertSolution<>(callType, SolutionProvider.this);
         }
 
-        private Call createCall(Context context, int category, Key key) {
+        private Call createCall(AbsContext context, int category, Key key) {
             if (predictor.test(category)) {
                 A annotation = key.getAnnotation(candidateClass);
                 if (annotation != null) {

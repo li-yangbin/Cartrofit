@@ -1,8 +1,6 @@
 package com.liyangbin.cartrofit.flow;
 
-import androidx.lifecycle.LiveData;
-
-import com.liyangbin.cartrofit.Context;
+import com.liyangbin.cartrofit.Cartrofit;
 
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -11,6 +9,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
+import androidx.lifecycle.LiveData;
 import io.reactivex.Flowable;
 import io.reactivex.Observable;
 
@@ -311,7 +310,7 @@ public abstract class Flow<T> {
                     if (subscribed || (subscribeOnce && !isHot())) {
                         throw new RuntimeException("Do transform into publisher before subscribe");
                     }
-                    flowPublisher = new FlowPublisher<>(this, true);
+                    flowPublisher = new FlowPublisher<>(this);
                 }
             }
         }
@@ -321,16 +320,16 @@ public abstract class Flow<T> {
 
     @SuppressWarnings("unchecked")
     public LiveData<T> toLiveData() {
-        return (LiveData<T>) Context.findFlowConverter(LiveData.class).apply(this);
+        return (LiveData<T>) Cartrofit.findFlowConverter(LiveData.class).apply(this);
     }
 
     @SuppressWarnings("unchecked")
     public Observable<T> toRXObservable() {
-        return (Observable<T>) Context.findFlowConverter(Observable.class).apply(this);
+        return (Observable<T>) Cartrofit.findFlowConverter(Observable.class).apply(this);
     }
 
     @SuppressWarnings("unchecked")
     public Flowable<T> toRXFlowable() {
-        return (Flowable<T>) Context.findFlowConverter(Flowable.class).apply(this);
+        return (Flowable<T>) Cartrofit.findFlowConverter(Flowable.class).apply(this);
     }
 }
