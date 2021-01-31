@@ -18,7 +18,6 @@ public class IntervalFlow extends Flow<Integer> {
     @Override
     protected void onSubscribeStarted(FlowConsumer<Integer> consumer) {
         task = new ScheduleTask(consumer);
-        System.out.println("IntervalFlow onSubscribeStarted");
         if (interval == 0) {
             FlowTimer.schedule(task, startDelay);
         } else {
@@ -41,7 +40,7 @@ public class IntervalFlow extends Flow<Integer> {
         task = null;
     }
 
-    private static class ScheduleTask extends TimerTask {
+    private class ScheduleTask extends TimerTask {
         FlowConsumer<Integer> consumer;
         AtomicInteger indexRef = new AtomicInteger();
         AtomicBoolean expiredRef = new AtomicBoolean();
@@ -56,6 +55,9 @@ public class IntervalFlow extends Flow<Integer> {
                 return;
             }
             consumer.accept(indexRef.getAndIncrement());
+            if (interval == 0) {
+                consumer.onComplete();
+            }
         }
 
         void safeCancel() {

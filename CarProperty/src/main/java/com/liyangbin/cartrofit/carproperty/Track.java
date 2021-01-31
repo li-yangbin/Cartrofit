@@ -15,7 +15,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 public @interface Track {
     int propId();
 
-    int area() default Scope.DEFAULT_AREA_ID;
+    int area() default PropertyScope.DEFAULT_AREA_ID;
 
     boolean sticky() default true;
 }

@@ -1,14 +1,14 @@
 package com.liyangbin.cartrofit.carproperty;
 
-import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.GenerateId;
+import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.flow.Flow;
 
 import io.reactivex.Observable;
 import io.reactivex.Single;
 
 @GenerateId
-@Scope("test")
+@PropertyScope("test")
 public interface TestCarApi {
 
     @Get(propId = 0)
@@ -32,6 +32,10 @@ public interface TestCarApi {
     @Track(propId = 2)
     Flow<String> trackStringSignal();
 
+    @Restore(TestCarApiId.setStringSignal)
+    @Track(propId = 2)
+    Flow<String> trackStringSignalRestore();
+
     @Get(propId = 3)
     String[] getStringArraySignal();
 
@@ -47,7 +51,7 @@ public interface TestCarApi {
     @Get(propId = 5)
     byte[] getRawByteArray();
 
-    @Track(propId = 1)
+    @Track(propId = 0)
     Observable<Integer> trackIntReactive();
 
 //    @Delegate(trackStringSignal)
@@ -55,4 +59,13 @@ public interface TestCarApi {
 
     @Track(propId = 1)
     Single<Integer> trackIntReactiveSingle();
+
+    @Register
+    void registerStringChangeListener(OnChangeListener listener);
+
+    interface OnChangeListener {
+
+        @Track(propId = 2)
+        void onChange(String value);
+    }
 }

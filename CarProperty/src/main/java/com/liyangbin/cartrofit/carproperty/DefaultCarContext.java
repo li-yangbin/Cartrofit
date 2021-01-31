@@ -8,6 +8,7 @@ import android.car.hardware.CarVendorExtensionManager;
 import android.car.hardware.cabin.CarCabinManager;
 import android.car.hardware.hvac.CarHvacManager;
 import android.car.hardware.property.CarPropertyManager;
+import android.content.Context;
 
 import com.liyangbin.cartrofit.flow.Flow;
 
@@ -16,7 +17,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public abstract class DefaultCarContext extends CarPropertyContext implements CarPropertyAccess {
 
-    static void registerAsDefault() {
+    static void registerAsDefault(Context context) {
+        ConnectHelper.ensureConnect(context);
         CarPropertyContext.addScopeProvider(Car.HVAC_SERVICE, HvacContext::new);
         CarPropertyContext.addScopeProvider(Car.VENDOR_EXTENSION_SERVICE, VendorExtensionContext::new);
         CarPropertyContext.addScopeProvider(Car.PROPERTY_SERVICE, PropertyContext::new);
@@ -145,7 +147,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
         CarHvacManager carHvacManager;
 
         HvacContext() {
-            carHvacManager = extract(Car.HVAC_SERVICE);
+            ConnectHelper.addOnConnectAction(car -> carHvacManager = extract(Car.HVAC_SERVICE));
         }
 
         @Override
@@ -222,7 +224,8 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
     private static class VendorExtensionContext extends DefaultCarContext implements CarVendorExtensionManager.CarVendorExtensionCallback {
         CarVendorExtensionManager carVendorExtensionManager;
         VendorExtensionContext() {
-            carVendorExtensionManager = extract(Car.VENDOR_EXTENSION_SERVICE);
+            ConnectHelper.addOnConnectAction(car ->
+                    carVendorExtensionManager = extract(Car.VENDOR_EXTENSION_SERVICE));
         }
 
         @Override
@@ -270,7 +273,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
         CarPropertyManager carPropertyManager;
 
         PropertyContext() {
-            carPropertyManager = extract(Car.PROPERTY_SERVICE);
+            ConnectHelper.addOnConnectAction(car -> carPropertyManager = extract(Car.PROPERTY_SERVICE));
         }
 
         class PropRegisteredSource extends FlowSourceImpl implements CarPropertyManager.CarPropertyEventListener {
@@ -344,7 +347,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
     private static class CabinContext extends DefaultCarContext implements CarCabinManager.CarCabinEventCallback {
         CarCabinManager carCabinManager;
         CabinContext() {
-            carCabinManager = extract(Car.CABIN_SERVICE);
+            ConnectHelper.addOnConnectAction(car -> carCabinManager = extract(Car.CABIN_SERVICE));
         }
 
         @Override

@@ -56,7 +56,7 @@ public final class SolutionProvider {
     <OUTPUT> Function<OUTPUT, Union> findCallbackOutputConverter(FixedTypeCall<?, OUTPUT> call) {
         ConvertSolution<?, OUTPUT, ?> builder = (ConvertSolution<?, OUTPUT, ?>) mConverterOutputMap.get(call.getClass());
         if (builder != null) {
-            return builder.checkOutCallback(call.getBindingParameter());
+            return builder.checkOutCallback(call.getKey().getImplicitParameterGroup());
         } else {
             return (Function<OUTPUT, Union>) sDummyOutputConverter;
         }

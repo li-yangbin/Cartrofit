@@ -3,6 +3,8 @@ package com.liyangbin.cartrofit;
 import android.os.Build;
 
 import com.liyangbin.cartrofit.annotation.Bind;
+import com.liyangbin.cartrofit.annotation.Callback;
+import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.flow.Flow;
 
@@ -282,9 +284,18 @@ public class Key {
             return implicitParameterGroup;
         }
         ArrayList<Parameter> parameterArrayList = new ArrayList<>();
-        for (int i = 0; i < getParameterCount(); i++) {
-            Parameter parameter = getParameterAt(i);
-            if (!parameter.isAnnotationPresent(Bind.class)) {
+        final int count = getParameterCount();
+        if (count == 1 && isAnnotationPresent(Register.class)) {
+            // in this case, the only one parameter must be the silent Callback obj, so we ignore it
+        } else {
+            anchor: for (int i = 0; i < count; i++) {
+                Parameter parameter = getParameterAt(i);
+                Annotation[] annotations = parameter.getAnnotations();
+                for (Annotation annotation : annotations) {
+                    if (annotation instanceof Bind || annotation instanceof Callback) {
+                        continue anchor;
+                    }
+                }
                 parameterArrayList.add(parameter);
             }
         }

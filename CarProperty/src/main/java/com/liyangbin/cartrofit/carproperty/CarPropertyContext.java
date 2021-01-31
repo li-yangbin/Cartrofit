@@ -16,9 +16,9 @@ import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowPublisher;
 import com.liyangbin.cartrofit.funtion.Union;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
@@ -28,7 +28,7 @@ public class CarPropertyContext extends AbsContext {
     private static final HashMap<String, Singleton> CAR_SCOPE_CONTEXT = new HashMap<>();
 
     static {
-        Cartrofit.addContextProvider(Scope.class, CarPropertyContext::new);
+        Cartrofit.addContextProvider(PropertyScope.class, CarPropertyContext::new);
 
         CAR_PROPERTY_SOLUTION.create(Get.class)
                 .provide((context, category, get, key) -> new PropertyGet(key.getScope(), get));
@@ -96,15 +96,17 @@ public class CarPropertyContext extends AbsContext {
     }
 
     @Override
-    public Call onCreateCall(Key key, int category) {
+    public Call getOrCreateCall(Key key, int category, boolean fromCache) {
         if (isDefaultSingleton()) {
-            Scope scope = key.getScope();
+            PropertyScope scope = key.getScope();
             Singleton realTarget = CAR_SCOPE_CONTEXT.get(scope.value());
             if (realTarget != null) {
-                return realTarget.get().onCreateCall(key, category);
+                return realTarget.get().getOrCreateCall(key, category, fromCache);
+            } else {
+                throw new IllegalStateException("Can not resolve target scope:" + scope.value());
             }
         }
-        return super.onCreateCall(key, category);
+        return super.getOrCreateCall(key, category, fromCache);
     }
 
     @Override
@@ -130,7 +132,7 @@ public class CarPropertyContext extends AbsContext {
         } else if (classEquals(type, String.class)) {
             return getStringCarPropertyAccess();
         }
-        throw new RuntimeException("Sub-class should implement this method");
+        throw new RuntimeException("Sub-class should implement this method type:" + type);
     }
 
     public TypedCarPropertyAccess<Integer> getIntCarPropertyAccess() {
@@ -252,7 +254,7 @@ public class CarPropertyContext extends AbsContext {
     }
 
     private static int resolveArea(int handleArea, int scopeArea) {
-        return handleArea == Scope.DEFAULT_AREA_ID ? scopeArea : handleArea;
+        return handleArea == PropertyScope.DEFAULT_AREA_ID ? scopeArea : handleArea;
     }
 
     public static abstract class PropertyAccessCall<IN, OUT> extends FixedTypeCall<IN, OUT> {
@@ -293,7 +295,7 @@ public class CarPropertyContext extends AbsContext {
     public static class PropertyGet extends PropertyAccessCall<Void, Void> {
         CarType getType = CarType.VALUE;
 
-        public PropertyGet(Scope scope, Get get) {
+        public PropertyGet(PropertyScope scope, Get get) {
             this.propertyId = get.propId();
             this.areaId = resolveArea(get.area(), scope.area());
         }
@@ -333,9 +335,9 @@ public class CarPropertyContext extends AbsContext {
     public static class PropertySet extends PropertyAccessCall<Void, Void> implements Flow.FlowSource<Object> {
         Object buildInSetValue;
         BuildInValue buildInValueUnresolved;
-        ArrayList<Flow.Injector<Object>> onInvokeListener = new ArrayList<>();
+        CopyOnWriteArrayList<Flow.Injector<Object>> onInvokeListener = new CopyOnWriteArrayList<>();
 
-        public PropertySet(Scope scope, Set set) {
+        public PropertySet(PropertyScope scope, Set set) {
             this.propertyId = set.propId();
             this.areaId = resolveArea(set.area(), scope.area());
             buildInValueUnresolved = BuildInValue.build(set.value());
@@ -353,8 +355,8 @@ public class CarPropertyContext extends AbsContext {
         @Override
         public Object mapInvoke(Union parameter) {
             Object toBeSet = buildInSetValue != null ? buildInSetValue : parameter.get(0);
-            for (int i = 0; i < onInvokeListener.size(); i++) {
-                onInvokeListener.get(i).send(toBeSet);
+            for (Flow.Injector<Object> injector : onInvokeListener) {
+                injector.send(toBeSet);
             }
             try {
                 carPropertyTypeAccess.set(propertyId, areaId, toBeSet);
@@ -387,7 +389,7 @@ public class CarPropertyContext extends AbsContext {
         int restoreMillis;
         FlowPublisher<CarPropertyValue<?>> carValuePublisher;
 
-        public PropertyTrack(Scope scope, Track track) {
+        public PropertyTrack(PropertyScope scope, Track track) {
             this.propertyId = track.propId();
             this.isSticky = track.sticky();
             this.areaId = resolveArea(track.area(), scope.area());
@@ -413,7 +415,7 @@ public class CarPropertyContext extends AbsContext {
             if (propertySet != null) {
                 Flow.fromSource(propertySet)
                     .switchMap(obj -> {
-                        CarPropertyValue<?> latestEvent = carValuePublisher.getData();
+                        final CarPropertyValue<?> latestEvent = carValuePublisher.getData();
                         // TODO: test
                         return getContext().applyRestoreFlow(PropertyTrack.this, obj)
                             .timeout(restoreMillis)

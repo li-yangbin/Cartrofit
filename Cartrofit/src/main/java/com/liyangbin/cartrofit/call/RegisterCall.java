@@ -76,29 +76,6 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
     }
 
     @Override
-    protected ParameterContext onCreateParameterContext() {
-        return convenientTrackMode ? new ConvenientTrackContext(trackCall.getKey())
-                : super.onCreateParameterContext();
-    }
-
-    private class ConvenientTrackContext extends ParameterContext {
-
-        ConvenientTrackContext(Key key) {
-            super(key);
-        }
-
-        @Override
-        public Union getParameter(Call target, Union all) {
-            if (target == trackCall) {
-                return all.exclude(callbackParaIndex);
-            } else if (target != null) {
-                return Union.ofNull();
-            }
-            throw new RuntimeException("impossible condition :" + target);
-        }
-    }
-
-    @Override
     public void onInit() {
         super.onInit();
         Parameter parameter = getKey().findParameterByAnnotation(Callback.class);

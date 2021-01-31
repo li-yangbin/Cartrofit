@@ -21,7 +21,7 @@ public class ConnectHelper<T> {
     }
 
     public static void ensureConnect(Context context) {
-        ensureConnect(context);
+        ensureConnect(context, null);
     }
 
     public static void ensureConnect(Context context, Consumer<Car> onConnect) {

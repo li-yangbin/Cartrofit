@@ -153,4 +153,22 @@ public class TestCarContext extends DefaultCarContext implements CarPropertyAcce
             }
         };
     }
+
+    @Override
+    public TypedCarPropertyAccess<?> getTypedCarPropertyAccess(Class<?> type) {
+        if (type == int[].class) {
+            return new TypedCarPropertyAccess<int[]>() {
+                @Override
+                public int[] get(int propertyId, int area) throws CarNotConnectedException {
+                    return (int[]) typeMockMap.get(propertyId).value;
+                }
+
+                @Override
+                public void set(int propertyId, int area, int[] value) throws CarNotConnectedException {
+                    typeMockMap.get(propertyId).value = value;
+                }
+            };
+        }
+        return super.getTypedCarPropertyAccess(type);
+    }
 }

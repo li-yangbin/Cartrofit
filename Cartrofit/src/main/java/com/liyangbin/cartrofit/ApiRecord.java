@@ -55,23 +55,21 @@ public class ApiRecord<T> {
         }
     }
 
-    ArrayList<Key> getChildKey(Key parentKey) {
+    ArrayList<Key> getChildKey(Class<?> targetClass) {
         ArrayList<Key> result = new ArrayList<>();
-        if (clazz.isInterface()) {
-            Method[] methods = clazz.getDeclaredMethods();
+        if (targetClass.isInterface()) {
+            Method[] methods = targetClass.getDeclaredMethods();
             for (Method method : methods) {
                 Key childKey = new Key(this, method, true);
                 if (!childKey.isInvalid()) {
-                    childKey.setDelegateKey(parentKey);
                     result.add(childKey);
                 }
             }
         } else {
-            Field[] fields = clazz.getDeclaredFields();
+            Field[] fields = targetClass.getDeclaredFields();
             for (Field field : fields) {
                 Key childKey = new Key(this, field);
                 if (!childKey.isInvalid()) {
-                    childKey.setDelegateKey(parentKey);
                     result.add(childKey);
                 }
             }

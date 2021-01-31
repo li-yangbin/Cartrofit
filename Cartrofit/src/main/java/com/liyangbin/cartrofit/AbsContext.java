@@ -9,7 +9,6 @@ import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Timeout;
 import com.liyangbin.cartrofit.annotation.Token;
 import com.liyangbin.cartrofit.annotation.Unregister;
-import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.call.InjectCall;
 import com.liyangbin.cartrofit.call.InjectGroupCall;
 import com.liyangbin.cartrofit.call.RegisterCall;
@@ -19,13 +18,9 @@ import com.liyangbin.cartrofit.funtion.Union;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Proxy;
-import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -37,9 +32,9 @@ public abstract class AbsContext {
     public static final int CATEGORY_GET = 1 << 1;
     public static final int CATEGORY_TRACK = 1 << 2;
 
-    public static final int CATEGORY_DEFAULT = 0xffffffff;
+    private static final int CATEGORY_DEFAULT = 0xffffffff;
 
-    static final Router ID_ROUTER = new Router();
+    private static final Router ID_ROUTER = new Router();
     private static final SolutionProvider ROOT_PROVIDER = new SolutionProvider();
 
     static {
@@ -270,7 +265,7 @@ public abstract class AbsContext {
         return apiObj;
     }
 
-    Call getOrCreateCall(Key key, int category, boolean fromCache) {
+    public Call getOrCreateCall(Key key, int category, boolean fromCache) {
         Call call;
         if (fromCache) {
             call = mCallCache.get(key);
@@ -324,10 +319,10 @@ public abstract class AbsContext {
                 call.setTokenList(tokenAnnotation);
             }
 
-            Call wrappedCall = wrapNormalTrack2RegisterIfNeeded(call);
+            Call wrappedCall = transformTrack2RegisterIfNeeded(call);
             if (wrappedCall != null) {
                 wrappedCall.setKey(key, this);
-                return wrappedCall;
+                call = wrappedCall;
             }
         }
         return call;
@@ -338,7 +333,7 @@ public abstract class AbsContext {
         ArrayList<Key> childKeys = getChildKey(key, callbackClass);
         for (int i = 0; i < childKeys.size(); i++) {
             Key childKey = childKeys.get(i);
-            Call call = getOrCreateCall(childKey, category, false);
+            Call call = onCreateCall(childKey, category);
             resultReceiver.accept(call);
         }
     }
@@ -351,7 +346,7 @@ public abstract class AbsContext {
     }
 
     public ArrayList<Key> getChildKey(Key parent, Class<?> callbackClass) {
-        return Cartrofit.getApi(callbackClass).getChildKey(parent);
+        return parent.record.getChildKey(callbackClass);
     }
 
     public Executor getSubscribeExecutor(String tag) {
@@ -366,7 +361,7 @@ public abstract class AbsContext {
         return ROOT_PROVIDER;
     }
 
-    private Call wrapNormalTrack2RegisterIfNeeded(Call call) {
+    private Call transformTrack2RegisterIfNeeded(Call call) {
         if (call instanceof RegisterCall || !call.hasCategory(CATEGORY_TRACK)) {
             return null;
         }

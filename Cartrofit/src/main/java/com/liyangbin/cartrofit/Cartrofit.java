@@ -1,6 +1,5 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.annotation.ApiCategory;
 import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.funtion.FlowConverter;
 
@@ -65,10 +64,9 @@ public final class Cartrofit {
             if (singletonRecord == null) {
                 Class<?> loopedClass = apiClass;
                 anchor: do {
-                    Annotation[] annotations = apiClass.getDeclaredAnnotations();
+                    Annotation[] annotations = loopedClass.getDeclaredAnnotations();
                     for (Annotation annotation : annotations) {
-                        Class<? extends Annotation> annotationType = annotation.annotationType();
-                        if (annotationType.isAnnotationPresent(ApiCategory.class)) {
+                        if (DEFAULT_CONTEXT_MAP.containsKey(annotation.annotationType())) {
                             API_CACHE.put(apiClass, singletonRecord = new ApiRecord<>(annotation, apiClass));
                             break anchor;
                         }

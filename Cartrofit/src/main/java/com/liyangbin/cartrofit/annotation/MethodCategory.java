@@ -10,8 +10,6 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Retention(RUNTIME)
 public @interface MethodCategory {
     @MethodCategoryDef int value();
-    Class<?> inputType() default Object.class;
-    Class<?> outputType() default Object.class;
 
     int CATEGORY_SET = 1;
     int CATEGORY_GET = 1 << 1;

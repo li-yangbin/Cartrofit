@@ -1,6 +1,7 @@
 package com.liyangbin.cartrofit.carproperty;
 
 import com.liyangbin.cartrofit.Cartrofit;
+import com.liyangbin.cartrofit.flow.Flow;
 
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -15,6 +16,10 @@ public class ExampleUnitTest {
 
     private static void println(String msg) {
         System.out.println(msg);
+    }
+
+    private static void print(String msg) {
+        System.out.print(msg);
     }
 
     private static void println(int msg) {
@@ -65,9 +70,36 @@ public class ExampleUnitTest {
     }
 
     @Test
-    public void stringFlowTrack() {
+    public void stringFlowTrackTest() {
         Cartrofit.from(TestCarApi.class).trackStringSignal()
                 .subscribe(ExampleUnitTest::println);
+    }
+
+    @Test
+    public void stringFlowRestoreTest() {
+        Cartrofit.from(TestCarApi.class).trackStringSignalRestore()
+                .subscribe(ExampleUnitTest::println);
+        Flow.delay(2000).doOnEach(i -> {
+            println("delay set");
+            Cartrofit.from(TestCarApi.class).setStringSignal("index:" + i);
+        }).emptySubscribe();
+    }
+
+    @Test
+    public void rxFlowConvertTest() {
+        Cartrofit.from(TestCarApi.class).trackIntReactive().subscribe(i -> {
+            println("each:" + i);
+        });
+    }
+
+    @Test
+    public void registerChangeTest() {
+        Cartrofit.from(TestCarApi.class).registerStringChangeListener(new TestCarApi.OnChangeListener() {
+            @Override
+            public void onChange(String value) {
+                println("callback received:" + value);
+            }
+        });
     }
 
     @AfterClass
