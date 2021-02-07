@@ -101,6 +101,15 @@ public class ExampleUnitTest {
             }
         });
     }
+    @Test
+    public void registerChangeAliasTest() {
+        Cartrofit.from(TestCarApi.class).registerStringChangeListenerAlias(new TestCarApi.OnChangeListener() {
+            @Override
+            public void onChange(String value) {
+                println("callback alias received:" + value);
+            }
+        });
+    }
 
     @AfterClass
     public static void onFinish() {

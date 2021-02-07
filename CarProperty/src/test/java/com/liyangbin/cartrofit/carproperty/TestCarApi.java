@@ -1,5 +1,6 @@
 package com.liyangbin.cartrofit.carproperty;
 
+import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.flow.Flow;
@@ -61,7 +62,10 @@ public interface TestCarApi {
     Single<Integer> trackIntReactiveSingle();
 
     @Register
-    void registerStringChangeListener(OnChangeListener listener);
+    void registerStringChangeListener(/*@Callback */OnChangeListener listener);
+
+    @Track(propId = 2)
+    void registerStringChangeListenerAlias(/*@Callback */OnChangeListener listener);
 
     interface OnChangeListener {
 

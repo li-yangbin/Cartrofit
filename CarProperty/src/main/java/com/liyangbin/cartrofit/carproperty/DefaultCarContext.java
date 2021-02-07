@@ -80,7 +80,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
                 return;
             }
             int area = carPropertyValue.getAreaId();
-            if ((this.area == 0 || area == 0) && (this.area & area) != 0) {
+            if (this.area == 0 || area == 0 || (this.area & area) != 0) {
 
                 if (timeoutTask != null) {
                     synchronized (this) {

@@ -390,7 +390,9 @@ public class CarPropertyContext extends AbsContext {
                     final CarPropertyValue<?> latestEvent = carValuePublisher.getData();
                     carValuePublisher.injectData(latestEvent != null ? latestEvent : onLoadDefaultData());
                 }
-            });
+            })
+            // TODO: consider having app handle CarPropertyException event
+            .catchException(CarPropertyException.class, Throwable::printStackTrace);
         }
     }
 }

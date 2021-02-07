@@ -5,19 +5,15 @@ import com.liyangbin.cartrofit.CallGroup;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.Key;
 import com.liyangbin.cartrofit.Parameter;
-import com.liyangbin.cartrofit.ParameterContext;
 import com.liyangbin.cartrofit.annotation.Callback;
-import com.liyangbin.cartrofit.annotation.Timeout;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowConsumer;
 import com.liyangbin.cartrofit.funtion.Union;
 
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Objects;
-import java.util.concurrent.TimeoutException;
 
 public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
@@ -26,27 +22,22 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
     private boolean convenientTrackMode;
     private Key convenientTrackKey;
-    private Key convenientTimeoutKey;
+    private Key convenientErrorKey;
+    private Key convenientCompleteKey;
     private Call trackCall;
-    private int timeOutMillis;
 
     public RegisterCall() {
+        // register call
     }
 
-    public RegisterCall(Call trackCall, Key trackKey, Key timeoutKey) {
+    public RegisterCall(Call trackCall, Key callbackKey, Key errorKey, Key completeKey) {
+        // register call transformed from track call
         convenientTrackMode = true;
         this.trackCall = trackCall;
-        this.convenientTrackKey = trackKey;
-        this.convenientTimeoutKey = timeoutKey;
-        if (timeoutKey != null) {
-            timeOutMillis = timeoutKey.getAnnotation(Timeout.class).value();
-        }
+        this.convenientTrackKey = callbackKey;
+        this.convenientErrorKey = errorKey;
+        this.convenientCompleteKey = completeKey;
         addChildCall(new Entry(trackCall));
-
-        Parameter parameter = getKey().findParameterByAnnotation(Callback.class);
-        if (parameter != null) {
-            callbackParaIndex = parameter.getDeclaredIndex();
-        }
     }
 
     public void addChildCall(Call entryCall, Call returnCall,
@@ -82,11 +73,6 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
         if (parameter != null) {
             callbackParaIndex = parameter.getDeclaredIndex();
         }
-    }
-
-    @Override
-    public Key getKey() {
-        return convenientTrackMode ? trackCall.getKey() : super.getKey();
     }
 
     @Override
@@ -131,10 +117,8 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
                 if (registeredFlow.isHot() && convenientTrackMode) {
                     throw new CartrofitGrammarException("Can not use convenientTrack on hot flow source");
                 }
-                InnerObserver observer = new InnerObserver(this, entry);
-                if (convenientTrackMode && convenientTimeoutKey != null) {
-                    registeredFlow = registeredFlow.timeout(timeOutMillis);
-                }
+                InnerObserver observer = new InnerObserver(convenientTrackMode ? convenientTrackKey
+                        : entry.call.getKey(), callbackObj, registeredFlow);
                 commandFlowList.add(registeredFlow);
 
                 registeredFlow.subscribe(observer);
@@ -152,109 +136,75 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
     private class InnerObserver implements FlowConsumer<Object> {
 
-        Entry entry;
-        Call returnCall;
+        Key callbackKey;
         Object callbackObj;
-        RegisterCallbackWrapper callbackWrapper;
-        Method method;
-        InjectGroupCall parameterInject;
+        Flow<?> upStream;
         boolean dispatchProcessing;
 
-        InnerObserver(RegisterCallbackWrapper callbackWrapper, Entry entry) {
-            this.entry = entry;
-            this.method = convenientTrackMode ? convenientTrackKey.method : entry.call.getMethod();
-            this.parameterInject = entry.injectCall;
-            this.callbackObj = callbackWrapper.callbackObj;
-            this.callbackWrapper = callbackWrapper;
+        InnerObserver(Key callbackKey, Object callbackObj, Flow<?> upStream) {
+            this.callbackKey = callbackKey;
+            this.callbackObj = callbackObj;
+            this.upStream = upStream;
         }
 
         @Override
         public void onError(Throwable throwable) {
-            if (throwable instanceof TimeoutException) {
-                onTimeOut();
+            if (convenientErrorKey != null) {
+                try {
+                    upStream.stopSubscribe();
+                    if (convenientErrorKey.getParameterCount() == 1) {
+                        convenientErrorKey.method.invoke(callbackObj, throwable);
+                    } else {
+                        convenientErrorKey.method.invoke(callbackObj);
+                    }
+                } catch (InvocationTargetException invokeExp) {
+                    if (invokeExp.getCause() instanceof RuntimeException) {
+                        throw (RuntimeException) invokeExp.getCause();
+                    } else {
+                        throw new RuntimeException("Callback invoke error", invokeExp.getCause());
+                    }
+                } catch (IllegalAccessException illegalAccessException) {
+                    throw new RuntimeException("Impossible", illegalAccessException);
+                }
             } else {
                 FlowConsumer.defaultThrow(throwable);
             }
         }
 
-        void onTimeOut() {
-            try {
-                convenientTimeoutKey.method.invoke(callbackObj);
-            } catch (InvocationTargetException invokeExp) {
-                if (invokeExp.getCause() instanceof RuntimeException) {
-                    throw (RuntimeException) invokeExp.getCause();
-                } else {
-                    throw new RuntimeException("Callback invoke error", invokeExp.getCause());
-                }
-            } catch (IllegalAccessException illegalAccessException) {
-                throw new RuntimeException("Impossible", illegalAccessException);
-            }
-        }
-
         @Override
         public void onComplete() {
-            untrack(callbackObj);
-        }
+            upStream.stopSubscribe();
 
-        //        void scheduleTimeoutIfNeeded() {
-//            if (convenientTrackMode && entry.timeoutCall != null && timer == null) {
-//                entry.timerFlow.addObserver(timer = aVoid -> {
-//                    synchronized (RegisterCall.this) {
-//                        if (callbackWrapper.isExpired(this)) {
-//                            return;
-//                        }
-//                        callbackWrapper.unregister();
-//
-//                    }
-//                });
-//            }
-//        }
-//
-//        void unScheduleTimeoutIfNeeded() {
-//            if (convenientTrackMode && entry.timeoutCall != null && timer != null) {
-//                entry.timerFlow.removeObserver(timer);
-//                timer = null;
-//            }
-//        }
+            if (convenientCompleteKey != null) {
+                try {
+                    convenientCompleteKey.method.invoke(callbackObj);
+                } catch (InvocationTargetException invokeExp) {
+                    if (invokeExp.getCause() instanceof RuntimeException) {
+                        throw (RuntimeException) invokeExp.getCause();
+                    } else {
+                        throw new RuntimeException("Callback invoke error", invokeExp.getCause());
+                    }
+                } catch (IllegalAccessException illegalAccessException) {
+                    throw new RuntimeException("Impossible", illegalAccessException);
+                }
+            }
+        }
 
         @Override
         public void accept(Object o) {
             if (dispatchProcessing) {
-                throw new IllegalStateException("Recursive invocation from:" + entry.call);
+                throw new IllegalStateException("Recursive invocation from " + callbackKey);
             }
             Union union = Union.of(o);
             dispatchProcessing = true;
             try {
-                int parameterCount = entry.call.getKey().getParameterCount();
-                int injectCount = parameterInject != null ? parameterInject.getChildCount() : 0;
-                Object[] parameters = new Object[parameterCount + injectCount];
+                int parameterCount = callbackKey.getParameterCount();
+                Object[] parameters = new Object[parameterCount];
                 for (int i = 0, j = 0; i < parameters.length; i++) {
-                    InjectCall injectCall = parameterInject != null ?
-                            parameterInject.findInjectCallAtParameterIndex(i) : null;
-                    if (injectCall != null) {
-                        try {
-                            parameters[i] = injectCall.targetClass.newInstance();
-                        } catch (InstantiationException e) {
-                            e.printStackTrace();
-                        }
-                    } else {
-                        parameters[i] = union.get(j++);
-                    }
+                    parameters[i] = union.get(j++);
                 }
 
-                if (parameterInject != null) {
-                    parameterInject.suppressSetAndInvoke(union);
-                }
-
-                Object result = method.invoke(callbackObj, parameters);
-
-                if (parameterInject != null) {
-                    parameterInject.suppressGetAndInvoke(union);
-                }
-
-                if (returnCall != null) {
-                    returnCall.invoke(Union.of(result));
-                }
+                callbackKey.method.invoke(callbackObj, parameters);
 
             } catch (InvocationTargetException invokeExp) {
                 if (invokeExp.getCause() instanceof RuntimeException) {

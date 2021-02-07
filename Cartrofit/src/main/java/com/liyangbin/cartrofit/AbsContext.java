@@ -4,6 +4,8 @@ import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.In;
 import com.liyangbin.cartrofit.annotation.Inject;
+import com.liyangbin.cartrofit.annotation.OnComplete;
+import com.liyangbin.cartrofit.annotation.OnError;
 import com.liyangbin.cartrofit.annotation.Out;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Timeout;
@@ -70,22 +72,12 @@ public abstract class AbsContext {
 
         ROOT_PROVIDER.create(Register.class)
                 .provide((context, category, register, key) -> {
-                    if (key.getParameterCount() == 0) {
-                        throw new CartrofitGrammarException("Register must declare a Callback parameter " + key);
-                    }
-                    if (key.getParameterCount() == 1) {
-                        if (!key.getParameterAt(0).getType().isInterface()) {
-                            throw new CartrofitGrammarException("Declare a Callback parameter as an interface " + key);
-                        }
-                    } else {
-                        Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
-                        if (callbackParameter == null) {
-                            throw new CartrofitGrammarException("Declare a Callback parameter as an interface " + key);
-                        }
-                    }
                     Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
-                    if (callbackParameter == null) {
+                    if (callbackParameter == null && key.isImplicitCallbackParameterPresent()) {
                         callbackParameter = key.getParameterAt(0);
+                    }
+                    if (callbackParameter == null) {
+                        throw new CartrofitGrammarException("Declare a Callback parameter as an interface " + key);
                     }
                     final RegisterCall registerCall = new RegisterCall();
                     context.inflateCallback(key, callbackParameter.getType(), CATEGORY_TRACK,
@@ -365,29 +357,60 @@ public abstract class AbsContext {
         if (call instanceof RegisterCall || !call.hasCategory(CATEGORY_TRACK)) {
             return null;
         }
-        Parameter callbackParameter = call.getKey().findParameterByAnnotation(Callback.class);
-        if (callbackParameter == null) {
+        Key originalKey = call.getKey();
+        if (originalKey.isCallbackEntry) {
             return null;
         }
+        Parameter callbackParameter = originalKey.findParameterByAnnotation(Callback.class);
+        if (callbackParameter == null) {
+            if (originalKey.isImplicitCallbackParameterPresent()) {
+                callbackParameter = originalKey.getParameterAt(0);
+            } else if (originalKey.getReturnType() == void.class) {
+                throw new CartrofitGrammarException("Must provide a callback parameter with Callback annotation "
+                        + originalKey);
+            } else {
+                return null;
+            }
+        } else if (!callbackParameter.getType().isInterface()) {
+            throw new CartrofitGrammarException("Must provide a callback parameter declared by interface "
+                    + originalKey);
+        }
 
-        ArrayList<Key> childrenKey = getChildKey(call.getKey(), callbackParameter.getType());
-        Key trackKey = null;
-        Key timeoutKey = null;
+        ArrayList<Key> childrenKey = getChildKey(originalKey, callbackParameter.getType());
+        Key errorKey = null;
+        Key completeKey = null;
+        Key callbackKey = null;
         for (int i = 0; i < childrenKey.size(); i++) {
             Key entryKey = childrenKey.get(i);
-            if (entryKey.isAnnotationPresent(Callback.class)) {
-                trackKey = entryKey;
-            } else if (entryKey.isAnnotationPresent(Timeout.class)) {
-                timeoutKey = entryKey;
+            if (errorKey == null && entryKey.isAnnotationPresent(OnError.class)) {
+                errorKey = entryKey;
+                int count = entryKey.getParameterCount();
+                if (count > 1 || (count == 1
+                        && !Throwable.class.isAssignableFrom(entryKey.getParameterAt(0).getType()))) {
+                    throw new CartrofitGrammarException("OnComplete method can only declare one parameter" +
+                            " by Throwable type " + entryKey);
+                }
+            } else if (completeKey == null && entryKey.isAnnotationPresent(OnComplete.class)) {
+                completeKey = entryKey;
+                if (entryKey.getParameterCount() != 0) {
+                    throw new CartrofitGrammarException("OnComplete method can not declare any parameters "
+                            + entryKey);
+                }
+            } else if (callbackKey == null && entryKey.isAnnotationPresent(Callback.class)) {
+                callbackKey = entryKey;
             }
-            if (trackKey != null && timeoutKey != null) {
+            if (callbackKey != null && entryKey != null && completeKey != null) {
                 break;
             }
         }
-        if (trackKey == null) {
-            throw new CartrofitGrammarException("Must provide a method with unregister annotation");
+        if (callbackKey == null && childrenKey.size() == 1) {
+            callbackKey = childrenKey.get(0);
         }
-        return new RegisterCall(call, trackKey, timeoutKey);
+        if (callbackKey == null) {
+            throw new CartrofitGrammarException("Must provide a method with Callback annotation");
+        }
+        call.setKey(callbackKey, this);
+        return new RegisterCall(call, callbackKey, errorKey, completeKey);
     }
 
     private Call createInjectCommand(Key key) {
