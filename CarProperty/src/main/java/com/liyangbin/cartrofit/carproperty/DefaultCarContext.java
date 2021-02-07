@@ -9,13 +9,21 @@ import android.car.hardware.cabin.CarCabinManager;
 import android.car.hardware.hvac.CarHvacManager;
 import android.car.hardware.property.CarPropertyManager;
 import android.content.Context;
+import android.os.SystemClock;
 
 import com.liyangbin.cartrofit.flow.Flow;
 
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public abstract class DefaultCarContext extends CarPropertyContext implements CarPropertyAccess {
+
+    private static final long COALESCE_TIME_MS = TimeUnit.SECONDS.toMillis(1);
+    private static final long TIMEOUT_MS = TimeUnit.SECONDS.toMillis(1);
 
     static void registerAsDefault(Context context) {
         ConnectHelper.ensureConnect(context);
@@ -44,8 +52,11 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
     final CopyOnWriteArrayList<FlowSourceImpl> flowSourceList = new CopyOnWriteArrayList<>();
 
     private static class FlowSourceImpl implements Flow.FlowSource<CarPropertyValue<?>> {
+        private static final Timer sTimeoutTracker = new Timer("property_timeout_tracker");
         final int propertyId;
         final int area;
+        long blockUntilMillis;
+        TimerTask timeoutTask;
         final CopyOnWriteArrayList<Flow.Injector<CarPropertyValue<?>>> flowInjectors = new CopyOnWriteArrayList<>();
 
         FlowSourceImpl(int propertyId, int area) {
@@ -63,6 +74,47 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
             return (this.area & area) != 0;
         }
 
+        void sendPropertyResponse(CarPropertyValue<?> carPropertyValue) {
+            int propertyId = carPropertyValue.getPropertyId();
+            if (this.propertyId != propertyId) {
+                return;
+            }
+            int area = carPropertyValue.getAreaId();
+            if ((this.area == 0 || area == 0) && (this.area & area) != 0) {
+
+                if (timeoutTask != null) {
+                    synchronized (this) {
+                        if (timeoutTask != null) {
+                            timeoutTask.cancel();
+                            timeoutTask = null;
+                        }
+                    }
+                }
+
+                if (blockUntilMillis > 0 && SystemClock.uptimeMillis() < blockUntilMillis) {
+                    return;
+                }
+                blockUntilMillis = 0;
+
+                for (Flow.Injector<CarPropertyValue<?>> injector : flowInjectors) {
+                    injector.send(carPropertyValue);
+                }
+            }
+        }
+
+        synchronized void onPropertySetCalled() {
+            blockUntilMillis = SystemClock.uptimeMillis() + COALESCE_TIME_MS;
+            if (timeoutTask != null) {
+                timeoutTask.cancel();
+            }
+            sTimeoutTracker.schedule(timeoutTask = new TimerTask() {
+                @Override
+                public void run() {
+                    onTimeout();
+                }
+            }, TIMEOUT_MS);
+        }
+
         @Override
         public void startWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
             flowInjectors.add(injector);
@@ -71,6 +123,21 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
         @Override
         public void finishWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
             flowInjectors.remove(injector);
+        }
+
+        synchronized void onTimeout() {
+            timeoutTask = null;
+            for (Flow.Injector<CarPropertyValue<?>> injector : flowInjectors) {
+                injector.error(new TimeoutException("property timeout " + prop2Str(propertyId, area)));
+            }
+        }
+    }
+
+    void onPropertySetCalled(int propId, int area) {
+        for (FlowSourceImpl flowSource : flowSourceList) {
+            if (flowSource.match(propId, area)) {
+                flowSource.onPropertySetCalled();
+            }
         }
     }
 
@@ -123,12 +190,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
     void send(CarPropertyValue<?> carPropertyValue) {
         for (FlowSourceImpl flowSource : flowSourceList) {
-            if (flowSource.match(carPropertyValue.getPropertyId(), carPropertyValue.getAreaId())) {
-                for (Flow.Injector<CarPropertyValue<?>> injector : flowSource.flowInjectors) {
-                    injector.send(carPropertyValue);
-                }
-                break;
-            }
+            flowSource.sendPropertyResponse(carPropertyValue);
         }
     }
 
@@ -185,6 +247,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Integer value) throws CarNotConnectedException {
+                    onPropertySetCalled(propertyId, area);
                     carHvacManager.setIntProperty(propertyId, area, value);
                 }
             };
@@ -200,6 +263,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Boolean value) throws CarNotConnectedException {
+                    onPropertySetCalled(propertyId, area);
                     carHvacManager.setBooleanProperty(propertyId, area, value);
                 }
             };
@@ -215,6 +279,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Float value) throws CarNotConnectedException {
+                    onPropertySetCalled(propertyId, area);
                     carHvacManager.setFloatProperty(propertyId, area, value);
                 }
             };
@@ -263,6 +328,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Object value) throws CarNotConnectedException {
+                    onPropertySetCalled(propertyId, area);
                     carVendorExtensionManager.setProperty((Class<Object>)type, propertyId, area, value);
                 }
             };
@@ -342,6 +408,54 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
         public boolean isPropertyAvailable(int propertyId, int area) throws CarNotConnectedException {
             return carPropertyManager.isPropertyAvailable(propertyId, area);
         }
+
+        @Override
+        public TypedCarPropertyAccess<Integer> getIntCarPropertyAccess() {
+            return new TypedCarPropertyAccess<Integer>() {
+                @Override
+                public Integer get(int propertyId, int area) throws CarNotConnectedException {
+                    return carPropertyManager.getIntProperty(propertyId, area);
+                }
+
+                @Override
+                public void set(int propertyId, int area, Integer value) throws CarNotConnectedException {
+                    onPropertySetCalled(propertyId, area);
+                    carPropertyManager.setIntProperty(propertyId, area, value);
+                }
+            };
+        }
+
+        @Override
+        public TypedCarPropertyAccess<Boolean> getBooleanCarPropertyAccess() {
+            return new TypedCarPropertyAccess<Boolean>() {
+                @Override
+                public Boolean get(int propertyId, int area) throws CarNotConnectedException {
+                    return carPropertyManager.getBooleanProperty(propertyId, area);
+                }
+
+                @Override
+                public void set(int propertyId, int area, Boolean value) throws CarNotConnectedException {
+                    onPropertySetCalled(propertyId, area);
+                    carPropertyManager.setBooleanProperty(propertyId, area, value);
+                }
+            };
+        }
+
+        @Override
+        public TypedCarPropertyAccess<Float> getFloatCarPropertyAccess() {
+            return new TypedCarPropertyAccess<Float>() {
+                @Override
+                public Float get(int propertyId, int area) throws CarNotConnectedException {
+                    return carPropertyManager.getFloatProperty(propertyId, area);
+                }
+
+                @Override
+                public void set(int propertyId, int area, Float value) throws CarNotConnectedException {
+                    onPropertySetCalled(propertyId, area);
+                    carPropertyManager.setFloatProperty(propertyId, area, value);
+                }
+            };
+        }
     }
 
     private static class CabinContext extends DefaultCarContext implements CarCabinManager.CarCabinEventCallback {
@@ -373,6 +487,54 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
         @Override
         public void onErrorEvent(int propertyId, int area) {
             error(propertyId, area);
+        }
+
+        @Override
+        public TypedCarPropertyAccess<Integer> getIntCarPropertyAccess() {
+            return new TypedCarPropertyAccess<Integer>() {
+                @Override
+                public Integer get(int propertyId, int area) throws CarNotConnectedException {
+                    return carCabinManager.getIntProperty(propertyId, area);
+                }
+
+                @Override
+                public void set(int propertyId, int area, Integer value) throws CarNotConnectedException {
+                    onPropertySetCalled(propertyId, area);
+                    carCabinManager.setIntProperty(propertyId, area, value);
+                }
+            };
+        }
+
+        @Override
+        public TypedCarPropertyAccess<Boolean> getBooleanCarPropertyAccess() {
+            return new TypedCarPropertyAccess<Boolean>() {
+                @Override
+                public Boolean get(int propertyId, int area) throws CarNotConnectedException {
+                    return carCabinManager.getBooleanProperty(propertyId, area);
+                }
+
+                @Override
+                public void set(int propertyId, int area, Boolean value) throws CarNotConnectedException {
+                    onPropertySetCalled(propertyId, area);
+                    carCabinManager.setBooleanProperty(propertyId, area, value);
+                }
+            };
+        }
+
+        @Override
+        public TypedCarPropertyAccess<Float> getFloatCarPropertyAccess() {
+            return new TypedCarPropertyAccess<Float>() {
+                @Override
+                public Float get(int propertyId, int area) throws CarNotConnectedException {
+                    return carCabinManager.getFloatProperty(propertyId, area);
+                }
+
+                @Override
+                public void set(int propertyId, int area, Float value) throws CarNotConnectedException {
+                    onPropertySetCalled(propertyId, area);
+                    carCabinManager.setFloatProperty(propertyId, area, value);
+                }
+            };
         }
     }
 }

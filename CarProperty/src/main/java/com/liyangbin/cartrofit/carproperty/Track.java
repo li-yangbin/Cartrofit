@@ -18,4 +18,6 @@ public @interface Track {
     int area() default PropertyScope.DEFAULT_AREA_ID;
 
     boolean sticky() default true;
+
+    boolean timeoutRestore() default true;
 }

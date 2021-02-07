@@ -17,8 +17,6 @@ import com.liyangbin.cartrofit.flow.FlowPublisher;
 import com.liyangbin.cartrofit.funtion.Union;
 
 import java.util.HashMap;
-import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
@@ -37,17 +35,8 @@ public class CarPropertyContext extends AbsContext {
                 .provide((context, category, set, key) -> new PropertySet(key.getScope(), set));
 
         CAR_PROPERTY_SOLUTION.create(Track.class)
-                .provideAndBuildParameter(PropertyTrack.class, (context, category, track, key) -> {
-                    PropertyTrack trackCall = new PropertyTrack(key.getScope(), track);
-                    Restore restore = key.getAnnotation(Restore.class);
-                    if (restore != null && restore.restoreTimeout() > 0) {
-                        int setMethodId = restore.value();
-                        PropertySet propertySet = (PropertySet) context.getOrCreateCallById(key,
-                                setMethodId, AbsContext.CATEGORY_SET);
-                        trackCall.setRestore(propertySet, restore.restoreTimeout());
-                    }
-                    return trackCall;
-                }).takeAny()
+                .provideAndBuildParameter(PropertyTrack.class, (context, category, track, key) ->
+                        new PropertyTrack(key.getScope(), track)).takeAny()
                 .noAnnotate()
                 .output((old, para) -> {
                     if (para.getParameter().getType().equals(CarPropertyEvent.class)) {
@@ -157,11 +146,6 @@ public class CarPropertyContext extends AbsContext {
 
     public TypedCarPropertyAccess<byte[]> getByteArrayCarPropertyAccess() {
         throw new RuntimeException("Sub-class should implement this method");
-    }
-
-    public Flow<?> applyRestoreFlow(PropertyTrack track, Object expected) {
-        return track.doTrackInvoke(null)
-                .take(carValue -> Objects.equals(expected, carValue.getValue()), 1);
     }
 
     private enum CarType {
@@ -332,10 +316,9 @@ public class CarPropertyContext extends AbsContext {
         }
     }
 
-    public static class PropertySet extends PropertyAccessCall<Void, Void> implements Flow.FlowSource<Object> {
+    public static class PropertySet extends PropertyAccessCall<Void, Void> {
         Object buildInSetValue;
         BuildInValue buildInValueUnresolved;
-        CopyOnWriteArrayList<Flow.Injector<Object>> onInvokeListener = new CopyOnWriteArrayList<>();
 
         public PropertySet(PropertyScope scope, Set set) {
             this.propertyId = set.propId();
@@ -355,9 +338,6 @@ public class CarPropertyContext extends AbsContext {
         @Override
         public Object mapInvoke(Union parameter) {
             Object toBeSet = buildInSetValue != null ? buildInSetValue : parameter.get(0);
-            for (Flow.Injector<Object> injector : onInvokeListener) {
-                injector.send(toBeSet);
-            }
             try {
                 carPropertyTypeAccess.set(propertyId, areaId, toBeSet);
             } catch (CarNotConnectedException connectIssue) {
@@ -365,39 +345,19 @@ public class CarPropertyContext extends AbsContext {
             }
             return null;
         }
-
-        @Override
-        public void startWithInjector(Flow.Injector<Object> injector) {
-            onInvokeListener.add(injector);
-        }
-
-        @Override
-        public void finishWithInjector(Flow.Injector<Object> injector) {
-            onInvokeListener.remove(injector);
-        }
-
-        @Override
-        public boolean isHot() {
-            return true;
-        }
     }
 
     public static class PropertyTrack extends PropertyAccessCall<Void, CarPropertyValue<?>> {
 
         boolean isSticky;
-        PropertySet propertySet;
-        int restoreMillis;
+        boolean restoreDataWhenTimeout;
         FlowPublisher<CarPropertyValue<?>> carValuePublisher;
 
         public PropertyTrack(PropertyScope scope, Track track) {
             this.propertyId = track.propId();
             this.isSticky = track.sticky();
+            this.restoreDataWhenTimeout = track.timeoutRestore();
             this.areaId = resolveArea(track.area(), scope.area());
-        }
-
-        void setRestore(PropertySet propertySet, int restoreMillis) {
-            this.propertySet = propertySet;
-            this.restoreMillis = restoreMillis;
         }
 
         @Override
@@ -410,18 +370,6 @@ public class CarPropertyContext extends AbsContext {
             }
             if (isSticky) {
                 carValuePublisher.enableStickyDispatch(this::onLoadDefaultData);
-            }
-
-            if (propertySet != null) {
-                Flow.fromSource(propertySet)
-                    .switchMap(obj -> {
-                        final CarPropertyValue<?> latestEvent = carValuePublisher.getData();
-                        // TODO: test
-                        return getContext().applyRestoreFlow(PropertyTrack.this, obj)
-                            .timeout(restoreMillis)
-                            .catchException(TimeoutException.class,
-                                    exception -> carValuePublisher.injectData(latestEvent != null ? latestEvent : onLoadDefaultData()));
-                    }).emptySubscribe();
             }
         }
 
@@ -436,7 +384,13 @@ public class CarPropertyContext extends AbsContext {
 
         @Override
         public Flow<CarPropertyValue<?>> doTrackInvoke(Void none) {
-            return carValuePublisher.share();
+            return carValuePublisher.share().catchException(TimeoutException.class, e -> {
+                e.printStackTrace();
+                if (restoreDataWhenTimeout) {
+                    final CarPropertyValue<?> latestEvent = carValuePublisher.getData();
+                    carValuePublisher.injectData(latestEvent != null ? latestEvent : onLoadDefaultData());
+                }
+            });
         }
     }
 }
