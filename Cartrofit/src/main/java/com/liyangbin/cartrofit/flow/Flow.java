@@ -20,12 +20,6 @@ public abstract class Flow<T> {
     FlowConsumer<T> flowConsumer;
     boolean subscribed;
 
-    public void emptySubscribe() {
-        subscribe(t -> {
-            // ignore
-        });
-    }
-
     synchronized boolean isSubscribeStopped() {
         return subscribeOnce && !subscribed;
     }
@@ -72,7 +66,6 @@ public abstract class Flow<T> {
         @Override
         public void onError(Throwable throwable) {
             if (!done) {
-                done = true;
                 downStream.onError(throwable);
             }
         }
@@ -163,7 +156,13 @@ public abstract class Flow<T> {
 
         @Override
         public void send(T data) {
-            flowConsumer.accept(data);
+            FlowConsumer<T> safeConsumer;
+            synchronized (this) {
+                safeConsumer = flowConsumer;
+            }
+            if (safeConsumer != null) {
+                safeConsumer.accept(data);
+            }
         }
 
         @Override
@@ -184,8 +183,6 @@ public abstract class Flow<T> {
             FlowConsumer<T> safeConsumer;
             synchronized (this) {
                 safeConsumer = flowConsumer;
-                flowConsumer = null;
-                subscribed = false;
             }
             if (safeConsumer != null) {
                 safeConsumer.onError(error);
@@ -238,24 +235,23 @@ public abstract class Flow<T> {
         return doOnAction(null, onComplete, null);
     }
 
-    public Flow<T> doOnError(Consumer<Throwable> onError) {
+    public Flow<T> doOnError(Predicate<Throwable> onError) {
         return doOnAction(null, null, onError);
     }
 
     public <E extends Exception> Flow<T> catchException(Class<E> exceptionType, Consumer<E> onError) {
         Objects.requireNonNull(exceptionType);
+        Objects.requireNonNull(onError);
         return doOnAction(null, null, throwable -> {
             if (exceptionType.isInstance(throwable)) {
-                if (onError != null) {
-                    onError.accept((E) throwable);
-                }
-            } else {
-                FlowConsumer.defaultThrow(throwable);
+                onError.accept((E) throwable);
+                return true;
             }
+            return false;
         });
     }
 
-    public Flow<T> doOnAction(Consumer<T> onEach, Runnable onComplete, Consumer<Throwable> onError) {
+    public Flow<T> doOnAction(Consumer<T> onEach, Runnable onComplete, Predicate<Throwable> onError) {
         return new ActionOnFlow<>(this, onEach, onComplete, onError);
     }
 

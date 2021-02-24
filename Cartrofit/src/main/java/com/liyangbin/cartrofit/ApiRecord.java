@@ -14,6 +14,7 @@ public class ApiRecord<T> {
 
     private HashMap<Integer, Method> selfDependency = new HashMap<>();
     private HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
+    private HashMap<Class<?>, ArrayList<Key>> childrenKeyCache = new HashMap<>();
 
     final Class<T> clazz;
     final Annotation scopeObj;
@@ -56,7 +57,11 @@ public class ApiRecord<T> {
     }
 
     ArrayList<Key> getChildKey(Class<?> targetClass) {
-        ArrayList<Key> result = new ArrayList<>();
+        ArrayList<Key> result = childrenKeyCache.get(targetClass);
+        if (result != null) {
+            return result;
+        }
+        result = new ArrayList<>();
         if (targetClass.isInterface()) {
             Method[] methods = targetClass.getDeclaredMethods();
             for (Method method : methods) {
@@ -74,6 +79,7 @@ public class ApiRecord<T> {
                 }
             }
         }
+        childrenKeyCache.put(targetClass, result);
         return result;
     }
 

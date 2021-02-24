@@ -91,10 +91,9 @@ public class SwitchMapFlow<T, U> extends Flow<T> {
 
             @Override
             public void accept(T t) {
-                if (expired) {
-                    return;
+                if (!expired) {
+                    downStream.accept(t);
                 }
-                downStream.accept(t);
             }
 
             @Override
@@ -111,12 +110,9 @@ public class SwitchMapFlow<T, U> extends Flow<T> {
 
             @Override
             public void onError(Throwable throwable) {
-                synchronized (InnerConsumer.this) {
-                    lastMappedFlow = null;
-                    expired = true;
+                if (!expired) {
+                    downStream.onError(throwable);
                 }
-                upStream.stopSubscribe();
-                downStream.onError(throwable);
             }
 
             @Override

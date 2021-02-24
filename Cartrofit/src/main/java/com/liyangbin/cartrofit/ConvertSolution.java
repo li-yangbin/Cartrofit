@@ -308,7 +308,9 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
 
         boolean isInterestedToStart(Parameter parameter) {
-            if (fixedType.isAssignableFrom(parameter.getType())) {
+            Class<?> declaredType = parameter.getType();
+            declaredType = CartrofitContext.boxTypeOf(declaredType);
+            if (fixedType.isAssignableFrom(declaredType)) {
                 if (inputBridge != null || outputBridge != null || markedAsTogetherHead) {
                     return ((annotateNothing && fixedAnnotationType == null)
                             || parameter.isAnnotationPresent(fixedAnnotationType))

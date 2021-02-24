@@ -213,7 +213,7 @@ public class Key {
             return 0;
         }
         parameterCount = getParameterCount(method);
-        if (parameters == null) {
+        if (parameters == null && parameterCount > 0) {
             parameters = new Parameter[parameterCount];
             Class<?>[] parameterClass = method.getParameterTypes();
             Type[] parameterType = method.getGenericParameterTypes();
@@ -244,7 +244,6 @@ public class Key {
             return 0;
         }
         HashMap<String, ArrayList<Parameter>> groupMap = null;
-        int freeFormParameterBits = 0;
         for (int i = 0; i < getParameterCount(); i++) {
             Parameter parameter = getParameterAt(i);
             Bind bind = parameter.getAnnotation(Bind.class);
@@ -260,8 +259,6 @@ public class Key {
                     }
                     list.add(parameter);
                 }
-            } else {
-                freeFormParameterBits |= 1 << i;
             }
         }
         parameterGroupCount = groupMap != null ? groupMap.size() : 0;
@@ -300,7 +297,8 @@ public class Key {
             } else {
                 MethodCategory methodCategory = annotation.annotationType()
                         .getDeclaredAnnotation(MethodCategory.class);
-                if ((methodCategory.value() & MethodCategory.CATEGORY_TRACK) != 0) {
+                if (methodCategory != null
+                        && (methodCategory.value() & MethodCategory.CATEGORY_TRACK) != 0) {
                     return implicitCallbackParameterPresent = true;
                 }
             }
@@ -437,9 +435,6 @@ public class Key {
 
     boolean isInvalid() {
         if (method != null) {
-            if (method.isDefault()) {
-                return true;
-            }
             return Modifier.isStatic(method.getModifiers());
         } else {
             return Modifier.isStatic(field.getModifiers());

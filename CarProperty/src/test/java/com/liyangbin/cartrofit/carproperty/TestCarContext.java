@@ -78,7 +78,7 @@ public class TestCarContext extends DefaultCarContext implements CarPropertyAcce
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-                    int key = 2;
+                    int key = 0;
                     synchronized (typeMockMap) {
                         Object obj = generateRandomValue(random, typeMockMap.get(key).clazz);
 //                        if (obj.getClass().isArray()) {

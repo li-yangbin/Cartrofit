@@ -15,7 +15,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 public @interface Set {
     int propId();
 
-    int area() default PropertyScope.DEFAULT_AREA_ID;
+    int area() default CarPropertyScope.DEFAULT_AREA_ID;
 
     CarValue value() default @CarValue(string = CarValue.EMPTY_VALUE);
 }

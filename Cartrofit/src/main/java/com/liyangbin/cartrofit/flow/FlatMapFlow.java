@@ -130,10 +130,10 @@ public class FlatMapFlow<T, U> extends Flow<T> {
             @Override
             public void onError(Throwable throwable) {
                 synchronized (InnerConsumer.this) {
-                    mappedFlowList.remove(targetFlow);
-                    expired = true;
+                    if (expired) {
+                        return;
+                    }
                 }
-                upStream.stopSubscribe();
                 downStream.onError(throwable);
             }
 

@@ -2,6 +2,7 @@ package com.liyangbin.cartrofit.carproperty;
 
 import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.GenerateId;
+import com.liyangbin.cartrofit.annotation.OnError;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.flow.Flow;
 
@@ -9,7 +10,7 @@ import io.reactivex.Observable;
 import io.reactivex.Single;
 
 @GenerateId
-@PropertyScope("test")
+@CarPropertyScope("test")
 public interface TestCarApi {
 
     @Get(propId = 0)
@@ -33,7 +34,6 @@ public interface TestCarApi {
     @Track(propId = 2)
     Flow<String> trackStringSignal();
 
-    @Restore(TestCarApiId.setStringSignal)
     @Track(propId = 2)
     Flow<String> trackStringSignalRestore();
 
@@ -62,14 +62,23 @@ public interface TestCarApi {
     Single<Integer> trackIntReactiveSingle();
 
     @Register
-    void registerStringChangeListener(/*@Callback */OnChangeListener listener);
+    void registerIntChangeListener(/*@Callback */OnChangeListener listener);
 
     @Track(propId = 2)
-    void registerStringChangeListenerAlias(/*@Callback */OnChangeListener listener);
+    void registerStringChangeListenerAlias(/*@Callback */OnChangeListenerAlias listener);
 
     interface OnChangeListener {
 
-        @Track(propId = 2)
+        @Track(propId = 0, sticky = false)
+        void onChange(int value);
+    }
+
+    interface OnChangeListenerAlias {
+
+        @Callback
         void onChange(String value);
+
+        @OnError
+        void onError(Throwable throwable);
     }
 }

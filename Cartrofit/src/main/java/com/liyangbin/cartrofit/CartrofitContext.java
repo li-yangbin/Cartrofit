@@ -8,7 +8,6 @@ import com.liyangbin.cartrofit.annotation.OnComplete;
 import com.liyangbin.cartrofit.annotation.OnError;
 import com.liyangbin.cartrofit.annotation.Out;
 import com.liyangbin.cartrofit.annotation.Register;
-import com.liyangbin.cartrofit.annotation.Timeout;
 import com.liyangbin.cartrofit.annotation.Token;
 import com.liyangbin.cartrofit.annotation.Unregister;
 import com.liyangbin.cartrofit.call.InjectCall;
@@ -28,7 +27,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 @SuppressWarnings("unchecked")
-public abstract class AbsContext {
+public abstract class CartrofitContext {
 
     public static final int CATEGORY_SET = 1;
     public static final int CATEGORY_GET = 1 << 1;
@@ -194,7 +193,10 @@ public abstract class AbsContext {
         return false;
     }
 
-    private static Class<?> boxTypeOf(Class<?> primitive) {
+    static Class<?> boxTypeOf(Class<?> primitive) {
+        if (!primitive.isPrimitive()) {
+            return primitive;
+        }
         if (primitive == int.class) {
             return Integer.class;
         } else if (primitive == float.class) {
@@ -215,7 +217,7 @@ public abstract class AbsContext {
     private final HashMap<ApiRecord<?>, Object> mApiCache = new HashMap<>();
     private final HashMap<Key, Call> mCallCache = new HashMap<>();
 
-    public AbsContext() {
+    public CartrofitContext() {
         mSolutionProvider = onProvideCallSolution();
     }
 
@@ -248,7 +250,7 @@ public abstract class AbsContext {
                     }
                     Call call;
                     Key key = new Key(record, method, false);
-                    synchronized (AbsContext.this) {
+                    synchronized (CartrofitContext.this) {
                         call = getOrCreateCall(key, CATEGORY_DEFAULT, true);
                     }
                     return call.invoke(Union.ofArray(args));
@@ -376,41 +378,49 @@ public abstract class AbsContext {
                     + originalKey);
         }
 
-        ArrayList<Key> childrenKey = getChildKey(originalKey, callbackParameter.getType());
-        Key errorKey = null;
+        Class<?> callbackType = callbackParameter.getType();
+        ArrayList<Key> childrenKey = getChildKey(originalKey, callbackType);
+        HashMap<Class<?>, Key> errorKeyMap = null;
         Key completeKey = null;
         Key callbackKey = null;
         for (int i = 0; i < childrenKey.size(); i++) {
             Key entryKey = childrenKey.get(i);
-            if (errorKey == null && entryKey.isAnnotationPresent(OnError.class)) {
-                errorKey = entryKey;
+            if (entryKey.isAnnotationPresent(OnError.class)) {
                 int count = entryKey.getParameterCount();
-                if (count > 1 || (count == 1
-                        && !Throwable.class.isAssignableFrom(entryKey.getParameterAt(0).getType()))) {
-                    throw new CartrofitGrammarException("OnComplete method can only declare one parameter" +
+                Class<?> declaredType;
+                if (count != 1 || !Throwable.class.isAssignableFrom(
+                        declaredType = entryKey.getParameterAt(0).getType())) {
+                    throw new CartrofitGrammarException("OnError method can only declare one parameter" +
                             " by Throwable type " + entryKey);
                 }
-            } else if (completeKey == null && entryKey.isAnnotationPresent(OnComplete.class)) {
+                if (errorKeyMap == null) {
+                    errorKeyMap = new HashMap<>();
+                }
+                errorKeyMap.put(declaredType, entryKey);
+            } else if (entryKey.isAnnotationPresent(OnComplete.class)) {
+                if (completeKey != null) {
+                    throw new CartrofitGrammarException("Duplicate OnComplete declaration " + entryKey);
+                }
                 completeKey = entryKey;
                 if (entryKey.getParameterCount() != 0) {
                     throw new CartrofitGrammarException("OnComplete method can not declare any parameters "
                             + entryKey);
                 }
-            } else if (callbackKey == null && entryKey.isAnnotationPresent(Callback.class)) {
+            } else if (entryKey.isAnnotationPresent(Callback.class)) {
+                if (callbackKey != null) {
+                    throw new CartrofitGrammarException("Duplicate Callback declaration " + entryKey);
+                }
                 callbackKey = entryKey;
-            }
-            if (callbackKey != null && entryKey != null && completeKey != null) {
-                break;
             }
         }
         if (callbackKey == null && childrenKey.size() == 1) {
             callbackKey = childrenKey.get(0);
         }
         if (callbackKey == null) {
-            throw new CartrofitGrammarException("Must provide a method with Callback annotation");
+            throw new CartrofitGrammarException("Must provide a method with Callback annotation in " + callbackType);
         }
         call.setKey(callbackKey, this);
-        return new RegisterCall(call, callbackKey, errorKey, completeKey);
+        return new RegisterCall(call, callbackKey, errorKeyMap, completeKey);
     }
 
     private Call createInjectCommand(Key key) {

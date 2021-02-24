@@ -9,7 +9,6 @@ import android.car.hardware.cabin.CarCabinManager;
 import android.car.hardware.hvac.CarHvacManager;
 import android.car.hardware.property.CarPropertyManager;
 import android.content.Context;
-import android.os.SystemClock;
 
 import com.liyangbin.cartrofit.flow.Flow;
 
@@ -22,10 +21,15 @@ import java.util.concurrent.TimeoutException;
 
 public abstract class DefaultCarContext extends CarPropertyContext implements CarPropertyAccess {
 
-    private static final long COALESCE_TIME_MS = TimeUnit.SECONDS.toMillis(1);
-    private static final long TIMEOUT_MS = TimeUnit.SECONDS.toMillis(1);
+    private static final Timer sTimeoutTracker = new Timer("property_timeout_tracker");
 
-    static void registerAsDefault(Context context) {
+    private static final long DEBOUNCE_TIME_MS = TimeUnit.SECONDS.toMillis(1);
+//    private static final long TIMEOUT_MS = TimeUnit.SECONDS.toMillis(1);
+
+    private long debounceTimeMillis = DEBOUNCE_TIME_MS;
+    private long timeoutMillis = 0;
+
+    public static void registerAsDefault(Context context) {
         ConnectHelper.ensureConnect(context);
         CarPropertyContext.addScopeProvider(Car.HVAC_SERVICE, HvacContext::new);
         CarPropertyContext.addScopeProvider(Car.VENDOR_EXTENSION_SERVICE, VendorExtensionContext::new);
@@ -33,9 +37,13 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
         CarPropertyContext.addScopeProvider(Car.CABIN_SERVICE, CabinContext::new);
     }
 
+    public static boolean isConnected() {
+        return ConnectHelper.isConnected();
+    }
+
     static String prop2Str(int property, int area) {
-        return "property:" + property + " hex:0x" + Integer.toHexString(property)
-                + " -- area:" + area + " hex:0x" + Integer.toHexString(area);
+        return "prop:" + property + " hex:0x" + Integer.toHexString(property)
+                + " & area:" + area + " hex:0x" + Integer.toHexString(area);
     }
 
     @SuppressWarnings("unchecked")
@@ -51,8 +59,15 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
     private boolean registered;
     final CopyOnWriteArrayList<FlowSourceImpl> flowSourceList = new CopyOnWriteArrayList<>();
 
-    private static class FlowSourceImpl implements Flow.FlowSource<CarPropertyValue<?>> {
-        private static final Timer sTimeoutTracker = new Timer("property_timeout_tracker");
+    public synchronized void setDebounceMillis(long debounceTimeMillis) {
+        this.debounceTimeMillis = debounceTimeMillis;
+    }
+
+    public synchronized void setTimeOutMillis(long timeoutMillis) {
+        this.timeoutMillis = timeoutMillis;
+    }
+
+    private class FlowSourceImpl implements Flow.FlowSource<CarPropertyValue<?>> {
         final int propertyId;
         final int area;
         long blockUntilMillis;
@@ -91,7 +106,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
                     }
                 }
 
-                if (blockUntilMillis > 0 && SystemClock.uptimeMillis() < blockUntilMillis) {
+                if (blockUntilMillis > 0 && System.currentTimeMillis() < blockUntilMillis) {
                     return;
                 }
                 blockUntilMillis = 0;
@@ -103,16 +118,20 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
         }
 
         synchronized void onPropertySetCalled() {
-            blockUntilMillis = SystemClock.uptimeMillis() + COALESCE_TIME_MS;
-            if (timeoutTask != null) {
-                timeoutTask.cancel();
+            if (debounceTimeMillis > 0) {
+                blockUntilMillis = System.currentTimeMillis() + debounceTimeMillis;
             }
-            sTimeoutTracker.schedule(timeoutTask = new TimerTask() {
-                @Override
-                public void run() {
-                    onTimeout();
+            if (timeoutMillis > 0) {
+                if (timeoutTask != null) {
+                    timeoutTask.cancel();
                 }
-            }, TIMEOUT_MS);
+                sTimeoutTracker.schedule(timeoutTask = new TimerTask() {
+                    @Override
+                    public void run() {
+                        onTimeout();
+                    }
+                }, timeoutMillis);
+            }
         }
 
         @Override
@@ -133,12 +152,14 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
         }
     }
 
-    void onPropertySetCalled(int propId, int area) {
+    @Override
+    public boolean onPropertySetIntercept(int propId, int area, Object value) {
         for (FlowSourceImpl flowSource : flowSourceList) {
             if (flowSource.match(propId, area)) {
                 flowSource.onPropertySetCalled();
             }
         }
+        return false;
     }
 
     @Override
@@ -247,7 +268,6 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Integer value) throws CarNotConnectedException {
-                    onPropertySetCalled(propertyId, area);
                     carHvacManager.setIntProperty(propertyId, area, value);
                 }
             };
@@ -263,7 +283,6 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Boolean value) throws CarNotConnectedException {
-                    onPropertySetCalled(propertyId, area);
                     carHvacManager.setBooleanProperty(propertyId, area, value);
                 }
             };
@@ -279,7 +298,6 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Float value) throws CarNotConnectedException {
-                    onPropertySetCalled(propertyId, area);
                     carHvacManager.setFloatProperty(propertyId, area, value);
                 }
             };
@@ -328,7 +346,6 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Object value) throws CarNotConnectedException {
-                    onPropertySetCalled(propertyId, area);
                     carVendorExtensionManager.setProperty((Class<Object>)type, propertyId, area, value);
                 }
             };
@@ -419,7 +436,6 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Integer value) throws CarNotConnectedException {
-                    onPropertySetCalled(propertyId, area);
                     carPropertyManager.setIntProperty(propertyId, area, value);
                 }
             };
@@ -435,7 +451,6 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Boolean value) throws CarNotConnectedException {
-                    onPropertySetCalled(propertyId, area);
                     carPropertyManager.setBooleanProperty(propertyId, area, value);
                 }
             };
@@ -451,7 +466,6 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Float value) throws CarNotConnectedException {
-                    onPropertySetCalled(propertyId, area);
                     carPropertyManager.setFloatProperty(propertyId, area, value);
                 }
             };
@@ -499,7 +513,6 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Integer value) throws CarNotConnectedException {
-                    onPropertySetCalled(propertyId, area);
                     carCabinManager.setIntProperty(propertyId, area, value);
                 }
             };
@@ -515,7 +528,6 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Boolean value) throws CarNotConnectedException {
-                    onPropertySetCalled(propertyId, area);
                     carCabinManager.setBooleanProperty(propertyId, area, value);
                 }
             };
@@ -531,7 +543,6 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
                 @Override
                 public void set(int propertyId, int area, Float value) throws CarNotConnectedException {
-                    onPropertySetCalled(propertyId, area);
                     carCabinManager.setFloatProperty(propertyId, area, value);
                 }
             };

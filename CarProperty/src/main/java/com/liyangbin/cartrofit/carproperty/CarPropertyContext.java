@@ -3,11 +3,10 @@ package com.liyangbin.cartrofit.carproperty;
 import android.car.CarNotConnectedException;
 import android.car.hardware.CarPropertyConfig;
 import android.car.hardware.CarPropertyValue;
-import android.car.hardware.property.CarPropertyEvent;
 
-import com.liyangbin.cartrofit.AbsContext;
 import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.Cartrofit;
+import com.liyangbin.cartrofit.CartrofitContext;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.FixedTypeCall;
 import com.liyangbin.cartrofit.Key;
@@ -20,13 +19,13 @@ import java.util.HashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
-public class CarPropertyContext extends AbsContext {
+public class CarPropertyContext extends CartrofitContext {
 
     private static final SolutionProvider CAR_PROPERTY_SOLUTION = new SolutionProvider();
     private static final HashMap<String, Singleton> CAR_SCOPE_CONTEXT = new HashMap<>();
 
     static {
-        Cartrofit.addContextProvider(PropertyScope.class, CarPropertyContext::new);
+        Cartrofit.addContextProvider(CarPropertyScope.class, CarPropertyContext::new);
 
         CAR_PROPERTY_SOLUTION.create(Get.class)
                 .provide((context, category, get, key) -> new PropertyGet(key.getScope(), get));
@@ -36,10 +35,11 @@ public class CarPropertyContext extends AbsContext {
 
         CAR_PROPERTY_SOLUTION.create(Track.class)
                 .provideAndBuildParameter(PropertyTrack.class, (context, category, track, key) ->
-                        new PropertyTrack(key.getScope(), track)).takeAny()
+                        new PropertyTrack(key.getScope(), track))
+                .takeAny()
                 .noAnnotate()
                 .output((old, para) -> {
-                    if (para.getParameter().getType().equals(CarPropertyEvent.class)) {
+                    if (para.getParameter().getType().equals(CarPropertyValue.class)) {
                         para.set(old);
                     } else {
                         para.set(old.getValue());
@@ -87,7 +87,7 @@ public class CarPropertyContext extends AbsContext {
     @Override
     public Call getOrCreateCall(Key key, int category, boolean fromCache) {
         if (isDefaultSingleton()) {
-            PropertyScope scope = key.getScope();
+            CarPropertyScope scope = key.getScope();
             Singleton realTarget = CAR_SCOPE_CONTEXT.get(scope.value());
             if (realTarget != null) {
                 return realTarget.get().getOrCreateCall(key, category, fromCache);
@@ -101,6 +101,14 @@ public class CarPropertyContext extends AbsContext {
     @Override
     public SolutionProvider onProvideCallSolution() {
         return super.onProvideCallSolution().merge(CAR_PROPERTY_SOLUTION);
+    }
+
+    public boolean onPropertySetIntercept(int propId, int area, Object value) {
+        return false;
+    }
+
+    public Object onPropertyGetIntercept(int propId, int area, CarType carType) {
+        return null;
     }
 
     public CarPropertyAccess getCarPropertyAccess() {
@@ -148,7 +156,7 @@ public class CarPropertyContext extends AbsContext {
         throw new RuntimeException("Sub-class should implement this method");
     }
 
-    private enum CarType {
+    public enum CarType {
         VALUE, // CarPropertyValue.getValue()
         AVAILABILITY, // CarPropertyValue.getStatus() == CarPropertyValue.STATUS_AVAILABLE
         CONFIG, // CarPropertyConfig
@@ -156,22 +164,17 @@ public class CarPropertyContext extends AbsContext {
 
     private static class BuildInValue {
         int intValue;
-        int[] intArray;
 
         boolean booleanValue;
-        boolean[] booleanArray;
 
         long longValue;
-        long[] longArray;
 
         byte byteValue;
         byte[] byteArray;
 
         float floatValue;
-        float[] floatArray;
 
         String stringValue;
-        String[] stringArray;
 
         static BuildInValue build(CarValue value) {
             if (CarValue.EMPTY_VALUE.equals(value.string())) {
@@ -180,22 +183,14 @@ public class CarPropertyContext extends AbsContext {
             BuildInValue result = new BuildInValue();
 
             result.intValue = value.Int();
-            result.intArray = value.IntArray();
-
             result.booleanValue = value.Boolean();
-            result.booleanArray = value.BooleanArray();
 
             result.byteValue = value.Byte();
             result.byteArray = value.ByteArray();
 
             result.floatValue = value.Float();
-            result.floatArray = value.FloatArray();
-
             result.longValue = value.Long();
-            result.longArray = value.LongArray();
-
             result.stringValue = value.string();
-            result.stringArray = value.stringArray();
 
             return result;
         }
@@ -203,42 +198,26 @@ public class CarPropertyContext extends AbsContext {
         Object extractValue(Class<?> clazz) {
             if (String.class == clazz) {
                 return stringValue;
-            } else if (String[].class == clazz) {
-                return stringArray;
-            }
-            else if (int.class == clazz || Integer.class == clazz) {
+            } else if (int.class == clazz || Integer.class == clazz) {
                 return intValue;
-            } else if (int[].class == clazz) {
-                return intArray;
-            }
-            else if (boolean.class == clazz || Boolean.class == clazz) {
+            } else if (boolean.class == clazz || Boolean.class == clazz) {
                 return booleanValue;
-            } else if (boolean[].class == clazz) {
-                return booleanArray;
-            }
-            else if (byte.class == clazz || Byte.class == clazz) {
+            } else if (byte.class == clazz || Byte.class == clazz) {
                 return byteValue;
             } else if (byte[].class == clazz) {
                 return byteArray;
-            }
-            else if (float.class == clazz || Float.class == clazz) {
+            } else if (float.class == clazz || Float.class == clazz) {
                 return floatValue;
-            } else if (float[].class == clazz) {
-                return floatArray;
-            }
-            else if (long.class == clazz || Long.class == clazz) {
+            } else if (long.class == clazz || Long.class == clazz) {
                 return longValue;
-            } else if (long[].class == clazz) {
-                return longArray;
-            }
-            else {
+            } else {
                 throw new CartrofitGrammarException("invalid type:" + clazz);
             }
         }
     }
 
     private static int resolveArea(int handleArea, int scopeArea) {
-        return handleArea == PropertyScope.DEFAULT_AREA_ID ? scopeArea : handleArea;
+        return handleArea == CarPropertyScope.DEFAULT_AREA_ID ? scopeArea : handleArea;
     }
 
     public static abstract class PropertyAccessCall<IN, OUT> extends FixedTypeCall<IN, OUT> {
@@ -279,7 +258,7 @@ public class CarPropertyContext extends AbsContext {
     public static class PropertyGet extends PropertyAccessCall<Void, Void> {
         CarType getType = CarType.VALUE;
 
-        public PropertyGet(PropertyScope scope, Get get) {
+        public PropertyGet(CarPropertyScope scope, Get get) {
             this.propertyId = get.propId();
             this.areaId = resolveArea(get.area(), scope.area());
         }
@@ -290,7 +269,7 @@ public class CarPropertyContext extends AbsContext {
             Class<?> returnType = getKey().getReturnType();
             if (returnType.equals(CarPropertyConfig.class)) {
                 getType = CarType.CONFIG;
-            } else if (AbsContext.classEquals(returnType, boolean.class)
+            } else if (CartrofitContext.classEquals(returnType, boolean.class)
                     && getKey().isAnnotationPresent(Availability.class)) {
                 getType = CarType.AVAILABILITY;
             }
@@ -298,6 +277,10 @@ public class CarPropertyContext extends AbsContext {
 
         @Override
         public Object mapInvoke(Union parameter) {
+            Object interceptedValue = getContext().onPropertyGetIntercept(propertyId, areaId, getType);
+            if (interceptedValue != null) {
+                return interceptedValue;
+            }
             if (getType == CarType.CONFIG) {
                 return propertyConfig;
             } else if (getType == CarType.AVAILABILITY) {
@@ -320,7 +303,7 @@ public class CarPropertyContext extends AbsContext {
         Object buildInSetValue;
         BuildInValue buildInValueUnresolved;
 
-        public PropertySet(PropertyScope scope, Set set) {
+        public PropertySet(CarPropertyScope scope, Set set) {
             this.propertyId = set.propId();
             this.areaId = resolveArea(set.area(), scope.area());
             buildInValueUnresolved = BuildInValue.build(set.value());
@@ -338,6 +321,9 @@ public class CarPropertyContext extends AbsContext {
         @Override
         public Object mapInvoke(Union parameter) {
             Object toBeSet = buildInSetValue != null ? buildInSetValue : parameter.get(0);
+            if (getContext().onPropertySetIntercept(propertyId, areaId, toBeSet)) {
+                return null;
+            }
             try {
                 carPropertyTypeAccess.set(propertyId, areaId, toBeSet);
             } catch (CarNotConnectedException connectIssue) {
@@ -353,7 +339,7 @@ public class CarPropertyContext extends AbsContext {
         boolean restoreDataWhenTimeout;
         FlowPublisher<CarPropertyValue<?>> carValuePublisher;
 
-        public PropertyTrack(PropertyScope scope, Track track) {
+        public PropertyTrack(CarPropertyScope scope, Track track) {
             this.propertyId = track.propId();
             this.isSticky = track.sticky();
             this.restoreDataWhenTimeout = track.timeoutRestore();
@@ -387,7 +373,8 @@ public class CarPropertyContext extends AbsContext {
             return carValuePublisher.share().catchException(TimeoutException.class, e -> {
                 e.printStackTrace();
                 if (restoreDataWhenTimeout) {
-                    final CarPropertyValue<?> latestEvent = carValuePublisher.getData();
+                    final CarPropertyValue<?> latestEvent = carValuePublisher.hasData()
+                            ? carValuePublisher.getData() : onLoadDefaultData();
                     carValuePublisher.injectData(latestEvent != null ? latestEvent : onLoadDefaultData());
                 }
             })

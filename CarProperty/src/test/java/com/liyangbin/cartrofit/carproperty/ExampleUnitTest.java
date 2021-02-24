@@ -82,7 +82,7 @@ public class ExampleUnitTest {
         Flow.delay(2000).doOnEach(i -> {
             println("delay set");
             Cartrofit.from(TestCarApi.class).setStringSignal("index:" + i);
-        }).emptySubscribe();
+        }).subscribe(t -> {});
     }
 
     @Test
@@ -93,22 +93,61 @@ public class ExampleUnitTest {
     }
 
     @Test
-    public void registerChangeTest() {
-        Cartrofit.from(TestCarApi.class).registerStringChangeListener(new TestCarApi.OnChangeListener() {
+    public void registerIntChangeTest() {
+        Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
             @Override
-            public void onChange(String value) {
+            public void onChange(int value) {
                 println("callback received:" + value);
             }
         });
     }
+
     @Test
     public void registerChangeAliasTest() {
-        Cartrofit.from(TestCarApi.class).registerStringChangeListenerAlias(new TestCarApi.OnChangeListener() {
+        Cartrofit.from(TestCarApi.class).registerStringChangeListenerAlias(new TestCarApi.OnChangeListenerAlias() {
             @Override
             public void onChange(String value) {
                 println("callback alias received:" + value);
             }
+
+            @Override
+            public void onError(Throwable error) {
+                println("error:" + error);
+                error.printStackTrace();
+            }
         });
+    }
+
+    @Test
+    public void timeoutTest() {
+        CarPropertyContext.addScopeProvider("test", () -> {
+            TestCarContext testCarContext = new TestCarContext();
+            testCarContext.setTimeOutMillis(3000);
+            return testCarContext;
+        });
+        Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
+            @Override
+            public void onChange(int value) {
+                println("callback received:" + value);
+            }
+        });
+        Cartrofit.from(TestCarApi.class).setIntSignal(10086);
+    }
+
+    @Test
+    public void debounceTest() {
+        CarPropertyContext.addScopeProvider("test", () -> {
+            TestCarContext testCarContext = new TestCarContext();
+            testCarContext.setDebounceMillis(5000);
+            return testCarContext;
+        });
+        Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
+            @Override
+            public void onChange(int value) {
+                println("callback received:" + value);
+            }
+        });
+        Cartrofit.from(TestCarApi.class).setIntSignal(10086);
     }
 
     @AfterClass

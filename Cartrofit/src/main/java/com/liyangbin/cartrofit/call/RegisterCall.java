@@ -12,7 +12,9 @@ import com.liyangbin.cartrofit.funtion.Union;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 public class RegisterCall extends CallGroup<RegisterCall.Entry> {
@@ -20,23 +22,22 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
     private final HashMap<Object, RegisterCallbackWrapper> callbackWrapperMapper = new HashMap<>();
     private int callbackParaIndex;
 
-    private boolean convenientTrackMode;
-    private Key convenientTrackKey;
-    private Key convenientErrorKey;
-    private Key convenientCompleteKey;
-    private Call trackCall;
+    private boolean coldTrackMode;
+    private Key coldTrackKey;
+    private HashMap<Class<?>, Key> coldErrorKeyMap;
+    private Key coldCompleteKey;
 
     public RegisterCall() {
         // register call
     }
 
-    public RegisterCall(Call trackCall, Key callbackKey, Key errorKey, Key completeKey) {
+    public RegisterCall(Call trackCall, Key callbackKey,
+                        HashMap<Class<?>, Key> errorKeyMap, Key completeKey) {
         // register call transformed from track call
-        convenientTrackMode = true;
-        this.trackCall = trackCall;
-        this.convenientTrackKey = callbackKey;
-        this.convenientErrorKey = errorKey;
-        this.convenientCompleteKey = completeKey;
+        coldTrackMode = true;
+        this.coldTrackKey = callbackKey;
+        this.coldErrorKeyMap = errorKeyMap;
+        this.coldCompleteKey = completeKey;
         addChildCall(new Entry(trackCall));
     }
 
@@ -79,7 +80,7 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
     public Object mapInvoke(Union parameter) {
         final Object callback = Objects.requireNonNull(
                 parameter.get(callbackParaIndex), "callback can not be null");
-        if (convenientTrackMode) {
+        if (coldTrackMode) {
             new RegisterCallbackWrapper(callback).register(parameter);
         } else {
             if (callbackWrapperMapper.containsKey(callback)) {
@@ -114,10 +115,10 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             for (int i = 0; i < getChildCount(); i++) {
                 Entry entry = getChildAt(i);
                 Flow<Object> registeredFlow = childInvoke(entry.call, parameter);
-                if (registeredFlow.isHot() && convenientTrackMode) {
-                    throw new CartrofitGrammarException("Can not use convenientTrack on hot flow source");
+                if (registeredFlow.isHot() && coldTrackMode) {
+                    throw new CartrofitGrammarException("Can not use cold register mode on hot flow source");
                 }
-                InnerObserver observer = new InnerObserver(convenientTrackMode ? convenientTrackKey
+                InnerObserver observer = new InnerObserver(coldTrackMode ? coldTrackKey
                         : entry.call.getKey(), callbackObj, registeredFlow);
                 commandFlowList.add(registeredFlow);
 
@@ -149,23 +150,20 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
         @Override
         public void onError(Throwable throwable) {
-            if (convenientErrorKey != null) {
-                try {
-                    upStream.stopSubscribe();
-                    if (convenientErrorKey.getParameterCount() == 1) {
-                        convenientErrorKey.method.invoke(callbackObj, throwable);
-                    } else {
-                        convenientErrorKey.method.invoke(callbackObj);
+            Key key = null;
+            if (coldErrorKeyMap != null) {
+                key = coldErrorKeyMap.get(throwable.getClass());
+                if (key == null) {
+                    for (Map.Entry<Class<?>, Key> entry : coldErrorKeyMap.entrySet()) {
+                        if (entry.getKey().isInstance(throwable)) {
+                            key = entry.getValue();
+                            break;
+                        }
                     }
-                } catch (InvocationTargetException invokeExp) {
-                    if (invokeExp.getCause() instanceof RuntimeException) {
-                        throw (RuntimeException) invokeExp.getCause();
-                    } else {
-                        throw new RuntimeException("Callback invoke error", invokeExp.getCause());
-                    }
-                } catch (IllegalAccessException illegalAccessException) {
-                    throw new RuntimeException("Impossible", illegalAccessException);
                 }
+            }
+            if (key != null) {
+                safeInvoke(key, callbackObj, throwable);
             } else {
                 FlowConsumer.defaultThrow(throwable);
             }
@@ -173,20 +171,8 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
         @Override
         public void onComplete() {
-            upStream.stopSubscribe();
-
-            if (convenientCompleteKey != null) {
-                try {
-                    convenientCompleteKey.method.invoke(callbackObj);
-                } catch (InvocationTargetException invokeExp) {
-                    if (invokeExp.getCause() instanceof RuntimeException) {
-                        throw (RuntimeException) invokeExp.getCause();
-                    } else {
-                        throw new RuntimeException("Callback invoke error", invokeExp.getCause());
-                    }
-                } catch (IllegalAccessException illegalAccessException) {
-                    throw new RuntimeException("Impossible", illegalAccessException);
-                }
+            if (coldCompleteKey != null) {
+                safeInvoke(coldCompleteKey, callbackObj);
             }
         }
 
@@ -197,25 +183,37 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
             }
             Union union = Union.of(o);
             dispatchProcessing = true;
-            try {
-                int parameterCount = callbackKey.getParameterCount();
-                Object[] parameters = new Object[parameterCount];
-                for (int i = 0, j = 0; i < parameters.length; i++) {
-                    parameters[i] = union.get(j++);
-                }
+            int parameterCount = callbackKey.getParameterCount();
+            Object[] parameters = new Object[parameterCount];
+            for (int i = 0, j = 0; i < parameters.length; i++) {
+                parameters[i] = union.get(j++);
+            }
+            safeInvoke(callbackKey, callbackObj, () -> dispatchProcessing = false, parameters);
+        }
+    }
 
-                callbackKey.method.invoke(callbackObj, parameters);
+    private static void safeInvoke(Key key, Object obj, Object... parameters) {
+        safeInvoke(key, obj, null, parameters);
+    }
 
-            } catch (InvocationTargetException invokeExp) {
-                if (invokeExp.getCause() instanceof RuntimeException) {
-                    throw (RuntimeException) invokeExp.getCause();
-                } else {
-                    throw new RuntimeException("Callback invoke error", invokeExp.getCause());
-                }
-            } catch (IllegalAccessException illegalAccessException) {
-                throw new RuntimeException("Impossible", illegalAccessException);
-            } finally {
-                dispatchProcessing = false;
+    private static void safeInvoke(Key key, Object obj, Runnable finallyAction,
+                                   Object... parameters) {
+        try {
+            key.method.invoke(obj, parameters);
+        } catch (IllegalArgumentException parameterError) {
+            throw new RuntimeException("Parameter type mismatch. Expected:" + key.method
+                    + " Actual:" + Arrays.toString(parameters));
+        } catch (InvocationTargetException invokeExp) {
+            if (invokeExp.getCause() instanceof RuntimeException) {
+                throw (RuntimeException) invokeExp.getCause();
+            } else {
+                throw new RuntimeException("Callback invoke error", invokeExp.getCause());
+            }
+        } catch (IllegalAccessException illegalAccessException) {
+            throw new RuntimeException("Impossible", illegalAccessException);
+        } finally {
+            if (finallyAction != null) {
+                finallyAction.run();
             }
         }
     }

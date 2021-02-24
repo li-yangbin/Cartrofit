@@ -1,13 +1,15 @@
 package com.liyangbin.cartrofit.flow;
 
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 public class ActionOnFlow<T> extends Flow.WrappedFlow<T> {
     private final Consumer<T> onEach;
     private final Runnable onComplete;
-    private final Consumer<Throwable> onError;
+    private final Predicate<Throwable> onError;
 
-    ActionOnFlow(Flow<T> upStream, Consumer<T> onEach, Runnable onComplete, Consumer<Throwable> onError) {
+    ActionOnFlow(Flow<T> upStream, Consumer<T> onEach, Runnable onComplete,
+                 Predicate<Throwable> onError) {
         super(upStream);
         this.onEach = onEach;
         this.onComplete = onComplete;
@@ -55,14 +57,9 @@ public class ActionOnFlow<T> extends Flow.WrappedFlow<T> {
 
         @Override
         public void onError(Throwable throwable) {
-            if (!done) {
-                done = true;
-
-                if (onError != null) {
-                    onError.accept(throwable);
-                } else {
-                    downStream.onError(throwable);
-                }
+            if (done) return;
+            if (onError == null || !onError.test(throwable)) {
+                downStream.onError(throwable);
             }
         }
 

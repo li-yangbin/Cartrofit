@@ -57,13 +57,5 @@ public class ConsumeOnFlow<T> extends Flow.WrappedFlow<T> {
                 handler.execute(() -> downStream.onComplete());
             }
         }
-
-//        @Override
-//        public void onError(Throwable throwable) {
-//            if (!done) {
-//                done = true;
-//                handler.execute(() -> downStream.onError(throwable));
-//            }
-//        }
     }
 }

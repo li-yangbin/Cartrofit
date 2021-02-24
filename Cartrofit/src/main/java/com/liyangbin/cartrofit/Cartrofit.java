@@ -11,7 +11,6 @@ import java.util.HashMap;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-@SuppressWarnings("unchecked")
 public final class Cartrofit {
 
     private Cartrofit() {
@@ -26,21 +25,30 @@ public final class Cartrofit {
         ApiRecord<T> apiRecord = getApi(clazz);
         Singleton contextSingleton = DEFAULT_CONTEXT_MAP.get(apiRecord.scopeType);
         if (contextSingleton != null) {
-            AbsContext singletonContext = contextSingleton.get();
+            CartrofitContext singletonContext = contextSingleton.get();
             return singletonContext.from(apiRecord);
         }
         throw new IllegalStateException("Can not find context provider for:" + apiRecord);
     }
 
-    private static class Singleton {
-        private Supplier<AbsContext> initProvider;
-        private AbsContext instance;
+    public static CartrofitContext contextOf(Class<?> clazz) {
+        ApiRecord<?> apiRecord = getApi(clazz);
+        Singleton contextSingleton = DEFAULT_CONTEXT_MAP.get(apiRecord.scopeType);
+        if (contextSingleton != null) {
+            return contextSingleton.get();
+        }
+        throw new IllegalStateException("Can not find context provider for:" + apiRecord);
+    }
 
-        Singleton(Supplier<AbsContext> initProvider) {
+    private static class Singleton {
+        private Supplier<CartrofitContext> initProvider;
+        private CartrofitContext instance;
+
+        Singleton(Supplier<CartrofitContext> initProvider) {
             this.initProvider = initProvider;
         }
 
-        AbsContext get() {
+        CartrofitContext get() {
             if (instance == null) {
                 synchronized (this) {
                     if (instance == null) {
@@ -54,12 +62,13 @@ public final class Cartrofit {
     }
 
     public static <A extends Annotation> void addContextProvider(Class<A> keyType,
-                                                                 Supplier<AbsContext> provider) {
+                                                                 Supplier<CartrofitContext> provider) {
         DEFAULT_CONTEXT_MAP.put(keyType, new Singleton(provider));
     }
 
     static <T> ApiRecord<T> getApi(Class<T> apiClass) {
-        synchronized (AbsContext.class) {
+        synchronized (CartrofitContext.class) {
+            @SuppressWarnings("unchecked")
             ApiRecord<T> singletonRecord = (ApiRecord<T>) API_CACHE.get(apiClass);
             if (singletonRecord == null) {
                 Class<?> loopedClass = apiClass;
@@ -74,7 +83,8 @@ public final class Cartrofit {
                     loopedClass = loopedClass.getEnclosingClass();
                 } while (loopedClass != null);
             }
-            return Objects.requireNonNull(singletonRecord, "Declare ApiCategory on class annotation");
+            return Objects.requireNonNull(singletonRecord,
+                    "Call addContextProvider() before from() accessing");
         }
     }
 
@@ -132,7 +142,7 @@ public final class Cartrofit {
         }
     }
 
-    static Class<?> findFlowConverterTarget(FlowConverter<?> converter) {
+    private static Class<?> findFlowConverterTarget(FlowConverter<?> converter) {
         Objects.requireNonNull(converter);
         Class<?> implementsBy = lookUp(converter.getClass(), FlowConverter.class);
         if (implementsBy == null) {

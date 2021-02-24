@@ -81,11 +81,9 @@ public class TimeoutFlow<T> extends Flow<T> {
 
         @Override
         public void onError(Throwable throwable) {
-            if (expired) {
-                return;
+            if (!expired) {
+                downStream.onError(throwable);
             }
-            expired = true;
-            downStream.onError(throwable);
         }
     }
 
