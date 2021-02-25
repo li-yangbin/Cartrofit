@@ -2,23 +2,15 @@ package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.Delegate;
-import com.liyangbin.cartrofit.annotation.In;
-import com.liyangbin.cartrofit.annotation.Inject;
 import com.liyangbin.cartrofit.annotation.OnComplete;
 import com.liyangbin.cartrofit.annotation.OnError;
-import com.liyangbin.cartrofit.annotation.Out;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Token;
 import com.liyangbin.cartrofit.annotation.Unregister;
-import com.liyangbin.cartrofit.call.InjectCall;
-import com.liyangbin.cartrofit.call.InjectGroupCall;
-import com.liyangbin.cartrofit.call.RegisterCall;
-import com.liyangbin.cartrofit.call.UnregisterCall;
-import com.liyangbin.cartrofit.funtion.FlowConverter;
-import com.liyangbin.cartrofit.funtion.Union;
+import com.liyangbin.cartrofit.solution.SolutionProvider;
+import com.liyangbin.cartrofit.support.SupportUtil;
 
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,35 +31,7 @@ public abstract class CartrofitContext {
     private static final SolutionProvider ROOT_PROVIDER = new SolutionProvider();
 
     static {
-        RxJavaConverter.addSupport();
-        ObservableConverter.addSupport();
-        LiveDataConverter.addSupport();
-
-        ROOT_PROVIDER.create(Inject.class)
-                .provide((context, category, inject, key) -> context.createInjectCommand(key));
-
-        // TODO: delete
-        /*builder.create(Combine.class)
-                .checkParameter((combine, key) -> {
-                    if (combine.elements().length <= 1) {
-                        throw new CartrofitGrammarException("Must declare more than one element on Combine:"
-                                + key + " elements:" + Arrays.toString(combine.elements()));
-                    }
-                    for (int i = 0; i < key.getParameterCount(); i++) {
-                        if (!key.isAnnotationPresent(Bind.class)) {
-                            throw new CartrofitGrammarException("Parameter declared by " + key
-                                    + " must be annotated by " + Bind.class);
-                        }
-                    }
-                })
-                .provide((category, combine, key) -> {
-                    CombineCall combineCall = new CombineCall();
-                    for (int element : combine.elements()) {
-                        combineCall.addChildCall(getOrCreateCallById(key, element,
-                                category & (CATEGORY_TRACK | CATEGORY_GET)));
-                    }
-                    return combineCall;
-                });*/
+        SupportUtil.addSupport();
 
         ROOT_PROVIDER.create(Register.class)
                 .provide((context, category, register, key) -> {
@@ -80,11 +44,7 @@ public abstract class CartrofitContext {
                     }
                     final RegisterCall registerCall = new RegisterCall();
                     context.inflateCallback(key, callbackParameter.getType(), CATEGORY_TRACK,
-                            call -> {
-                                Call returnCall = null/*createChildCall(key, CATEGORY_SET)TODO: delete?*/;
-                                Call parameterCall = null/* TODO: createInjectCommand(key) requirement assessment */;
-                                registerCall.addChildCall(call, returnCall, parameterCall);
-                            });
+                            registerCall::addChildCall);
                     if (registerCall.getChildCount() == 0) {
                         throw new CartrofitGrammarException("Failed to resolve callback entry point in "
                                 + callbackParameter.getType());
@@ -125,7 +85,7 @@ public abstract class CartrofitContext {
                 .provide((context, category, delegate, key) -> context.createDelegateCallById(key, delegate.value(), category));
     }
 
-    <INPUT> Function<Union, INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
+    <INPUT> Function<Object[], INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
         return mSolutionProvider.findInputConverter(call);
     }
 
@@ -133,7 +93,7 @@ public abstract class CartrofitContext {
         return mSolutionProvider.findReturnOutputConverter(call);
     }
 
-    <OUTPUT> Function<OUTPUT, Union> findCallbackOutputConverter(FixedTypeCall<?, OUTPUT> call) {
+    <OUTPUT> Function<OUTPUT, Object[]> findCallbackOutputConverter(FixedTypeCall<?, OUTPUT> call) {
         return mSolutionProvider.findCallbackOutputConverter(call);
     }
 
@@ -193,7 +153,7 @@ public abstract class CartrofitContext {
         return false;
     }
 
-    static Class<?> boxTypeOf(Class<?> primitive) {
+    public static Class<?> boxTypeOf(Class<?> primitive) {
         if (!primitive.isPrimitive()) {
             return primitive;
         }
@@ -244,7 +204,7 @@ public abstract class CartrofitContext {
                     synchronized (CartrofitContext.this) {
                         call = getOrCreateCall(key, CATEGORY_DEFAULT, true);
                     }
-                    return call.invoke(Union.ofArray(args));
+                    return call.invoke(args);
                 });
         mApiCache.put(record, apiObj);
         return apiObj;
@@ -412,60 +372,5 @@ public abstract class CartrofitContext {
         }
         call.setKey(callbackKey, this);
         return new RegisterCall(call, callbackKey, errorKeyMap, completeKey);
-    }
-
-    private Call createInjectCommand(Key key) {
-        if (key.method != null) {
-            InjectGroupCall injectGroupCall = null;
-            final int parameterCount = key.getParameterCount();
-            for (int i = 0; i < parameterCount; i++) {
-                Parameter parameter = key.getParameterAt(i);
-                boolean inDeclared = !key.isCallbackEntry && parameter.isAnnotationPresent(In.class);
-                boolean outDeclared = parameter.isAnnotationPresent(Out.class);
-
-                if (inDeclared || outDeclared) {
-                    Class<?> targetClass = parameter.getType();
-                    InjectCall injectCall = createInjectCallByClass(key, targetClass);
-
-                    if (injectGroupCall == null) {
-                        injectGroupCall = new InjectGroupCall(parameterCount);
-                    }
-
-                    if (key.isCallbackEntry) {
-                        injectGroupCall.addChildInjectCall(i, injectCall, true, false);
-                    } else {
-                        injectGroupCall.addChildInjectCall(i, injectCall, inDeclared, outDeclared);
-                    }
-                }
-            }
-            if (injectGroupCall == null) {
-                throw new CartrofitGrammarException("Must provide In or Out Annotation " + key);
-            }
-            return injectGroupCall;
-        } else if (key.field != null) {
-            return createInjectCallByClass(key, key.field.getType());
-        } else {
-            throw new RuntimeException("impossible condition key:" + key);
-        }
-    }
-
-    private InjectCall createInjectCallByClass(Key parentKey, Class<?> clazz) {
-        if (clazz.isPrimitive() || clazz.isArray() || clazz == String.class) {
-            throw new CartrofitGrammarException("Can not use Inject operator on class type:" + clazz);
-        }
-        InjectCall injectCall = new InjectCall(clazz);
-        inflateCallback(parentKey, clazz, CATEGORY_SET | CATEGORY_GET | CATEGORY_TRACK,
-                call -> {
-                    if (call.hasCategory(CATEGORY_SET)
-                            && Modifier.isFinal(call.getKey().field.getModifiers())) {
-                        throw new CartrofitGrammarException("Invalid final key:" + call.getKey());
-                    }
-                    injectCall.addChildCall(call);
-                });
-        if (injectCall.getChildCount() == 0) {
-            throw new CartrofitGrammarException("Failed to parse Inject call from type:"
-                    + clazz);
-        }
-        return injectCall;
     }
 }

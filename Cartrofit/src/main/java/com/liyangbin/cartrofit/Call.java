@@ -1,17 +1,14 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Token;
-import com.liyangbin.cartrofit.funtion.Union;
 
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public abstract class Call implements Cloneable {
+public abstract class Call {
     private Key key;
     private int category;
-    InterceptorChain interceptorChain;
     private ParameterContext parameterContext;
 
     private CallGroup<?> parentCall;
@@ -62,13 +59,6 @@ public abstract class Call implements Cloneable {
         tokenList = Arrays.asList(token.value());
     }
 
-    public void addToken(String token) {
-        if (tokenList == null) {
-            tokenList = new ArrayList<>();
-        }
-        tokenList.add(token);
-    }
-
     public boolean hasToken(String token) {
         return tokenList != null && tokenList.contains(token);
     }
@@ -76,23 +66,11 @@ public abstract class Call implements Cloneable {
     public void onInit() {
     }
 
-    void addCategory(int category) {
+    public void addCategory(int category) {
         this.category |= category;
     }
 
-    public final Object invoke(Union parameter) {
-        if (interceptorChain != null) {
-            return interceptorChain.doProcess(onCreateInvokeSession(), parameter);
-        } else {
-            try {
-                return mapInvoke(parameter);
-            } finally {
-                parameter.recycle();
-            }
-        }
-    }
-
-    public abstract Object mapInvoke(Union parameter);
+    public abstract Object invoke(Object[] parameter);
 
     void attachParent(CallGroup<?> parent) {
         parentCall = parent;
@@ -102,27 +80,8 @@ public abstract class Call implements Cloneable {
         return parentCall;
     }
 
-    protected Interceptor.InvokeSession onCreateInvokeSession() {
-        return new Interceptor.InvokeSession(this);
-    }
-
-    private void disableInOutConvert() {
-    }
-
     public final Method getMethod() {
         return key.method;
-    }
-
-    public void addInterceptor(Interceptor interceptor, boolean toBottom) {
-        if (interceptorChain != null) {
-            if (toBottom) {
-                interceptorChain.addInterceptorToBottom(interceptor);
-            } else {
-                interceptorChain.addInterceptor(interceptor);
-            }
-        } else {
-            interceptorChain = new InterceptorChain(interceptor);
-        }
     }
 
     public boolean hasCategory(int category) {

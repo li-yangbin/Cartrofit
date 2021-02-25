@@ -1,7 +1,11 @@
-package com.liyangbin.cartrofit;
+package com.liyangbin.cartrofit.solution;
 
+import com.liyangbin.cartrofit.Call;
+import com.liyangbin.cartrofit.CartrofitContext;
+import com.liyangbin.cartrofit.CartrofitGrammarException;
+import com.liyangbin.cartrofit.FixedTypeCall;
+import com.liyangbin.cartrofit.Key;
 import com.liyangbin.cartrofit.annotation.MethodCategory;
-import com.liyangbin.cartrofit.funtion.Union;
 
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
@@ -12,8 +16,8 @@ import java.util.function.IntPredicate;
 @SuppressWarnings("unchecked")
 public final class SolutionProvider {
 
-    private static final Function<Union, Object> sDummyInputConverter = value -> value.getCount() > 0 ? value.get(0) : null;
-    private static final Function<Object, Union> sDummyOutputConverter = Union::of;
+    private static final Function<Object[], Object> sDummyInputConverter = value -> value != null && value.length > 0 ? value[0] : null;
+    private static final Function<Object, Object[]> sDummyOutputConverter = o -> new Object[]{o};
 
     private final ArrayList<CallSolution<?>> mCallSolutionList = new ArrayList<>();
     private final HashMap<Class<?>, ConvertSolution<?, ?, ?>> mConverterInputMap = new HashMap<>();
@@ -35,16 +39,16 @@ public final class SolutionProvider {
         mConverterOutputMap.put(callType, builder);
     }
 
-    <INPUT> Function<Union, INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
+    public <INPUT> Function<Object[], INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
         ConvertSolution<INPUT, ?, ?> builder = (ConvertSolution<INPUT, ?, ?>) mConverterInputMap.get(call.getClass());
         if (builder != null) {
             return builder.checkIn(call.getBindingParameter());
         } else {
-            return (Function<Union, INPUT>) sDummyInputConverter;
+            return (Function<Object[], INPUT>) sDummyInputConverter;
         }
     }
 
-    <OUTPUT> Function<OUTPUT, ?> findReturnOutputConverter(FixedTypeCall<?, OUTPUT> call) {
+    public <OUTPUT> Function<OUTPUT, ?> findReturnOutputConverter(FixedTypeCall<?, OUTPUT> call) {
         ConvertSolution<?, OUTPUT, ?> builder = (ConvertSolution<?, OUTPUT, ?>) mConverterOutputMap.get(call.getClass());
         if (builder != null) {
             return builder.checkOutReturn(call.getKey());
@@ -53,16 +57,16 @@ public final class SolutionProvider {
         }
     }
 
-    <OUTPUT> Function<OUTPUT, Union> findCallbackOutputConverter(FixedTypeCall<?, OUTPUT> call) {
+    public <OUTPUT> Function<OUTPUT, Object[]> findCallbackOutputConverter(FixedTypeCall<?, OUTPUT> call) {
         ConvertSolution<?, OUTPUT, ?> builder = (ConvertSolution<?, OUTPUT, ?>) mConverterOutputMap.get(call.getClass());
         if (builder != null) {
             return builder.checkOutCallback(call.getKey().getImplicitParameterGroup());
         } else {
-            return (Function<OUTPUT, Union>) sDummyOutputConverter;
+            return (Function<OUTPUT, Object[]>) sDummyOutputConverter;
         }
     }
 
-    Call createCall(CartrofitContext context, Key key, int category) {
+    public Call createCall(CartrofitContext context, Key key, int category) {
         for (int i = mCallSolutionList.size() - 1; i >= 0; i--) {
             CallSolution<?> solution = mCallSolutionList.get(i);
             Call call = solution.createCall(context, category, key);
@@ -112,7 +116,6 @@ public final class SolutionProvider {
             if (category != null) {
                 expectedCategory = category.value();
                 if (expectedCategory == MethodCategory.CATEGORY_DEFAULT) {
-//                    keepLookingIfNull = true;
                     predictor = flag -> true;
                 } else {
                     predictor = flag -> (flag & expectedCategory) != 0;

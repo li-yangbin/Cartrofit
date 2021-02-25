@@ -1,11 +1,11 @@
-package com.liyangbin.cartrofit;
+package com.liyangbin.cartrofit.solution;
 
-import com.liyangbin.cartrofit.funtion.Union;
-import com.liyangbin.cartrofit.funtion.Union1;
-import com.liyangbin.cartrofit.funtion.Union2;
-import com.liyangbin.cartrofit.funtion.Union3;
-import com.liyangbin.cartrofit.funtion.Union4;
-import com.liyangbin.cartrofit.funtion.Union5;
+import com.liyangbin.cartrofit.CartrofitContext;
+import com.liyangbin.cartrofit.CartrofitGrammarException;
+import com.liyangbin.cartrofit.FixedTypeCall;
+import com.liyangbin.cartrofit.Key;
+import com.liyangbin.cartrofit.Parameter;
+import com.liyangbin.cartrofit.ParameterGroup;
 
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
@@ -135,13 +135,13 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
     }
 
-    Function<Union, IN> checkIn(ParameterGroup group) {
+    Function<Object[], IN> checkIn(ParameterGroup group) {
         InputConverterImpl inputConverter = new InputConverterImpl(group);
         findSolutionDependency(true, group, inputConverter);
         return inputConverter;
     }
 
-    Function<OUT, Union> checkOutCallback(ParameterGroup group) {
+    Function<OUT, Object[]> checkOutCallback(ParameterGroup group) {
         OutputConverterImpl outputConverter = new OutputConverterImpl(group);
         findSolutionDependency(false, group, outputConverter);
         return outputConverter;
@@ -198,79 +198,6 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         if (backwardSolutions.size() > 0) {
             caller.commitOutputConverter(callType, this);
         }
-    }
-
-    interface AbsAccumulator<V extends Union, R> {
-        R advanceDefault(R old, V para);
-    }
-
-    public interface AccumulatorIndeterminate<V, R> extends AbsAccumulator<Union, R> {
-
-        @Override
-        default R advanceDefault(R old, Union para) {
-            throw new UnsupportedOperationException();
-        }
-
-        R advance(R old, ParaVal<V>[] para);
-    }
-
-    public interface Accumulator<V, R> extends AbsAccumulator<Union1<ParaVal<V>>, R> {
-
-        @Override
-        default R advanceDefault(R old, Union1<ParaVal<V>> para) {
-            return advance(old, para.value1);
-        }
-
-        R advance(R old, ParaVal<V> para);
-    }
-
-    public interface Accumulator2<V1, V2, R> extends AbsAccumulator<Union2<ParaVal<V1>, ParaVal<V2>>, R> {
-
-        @Override
-        default R advanceDefault(R old, Union2<ParaVal<V1>, ParaVal<V2>> para) {
-            return advance(old, para.value1, para.value2);
-        }
-
-        R advance(R old, ParaVal<V1> more1, ParaVal<V2> more2);
-    }
-
-    public interface Accumulator3<V1, V2, V3, R>
-            extends AbsAccumulator<Union3<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>>, R> {
-
-        @Override
-        default R advanceDefault(R old, Union3<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>> para) {
-            return advance(old, para.value1, para.value2, para.value3);
-        }
-
-        R advance(R old, ParaVal<V1> more1, ParaVal<V2> more2, ParaVal<V3> more3);
-    }
-
-    public interface Accumulator4<V1, V2, V3, V4, R>
-            extends AbsAccumulator<Union4<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>, ParaVal<V4>>, R> {
-
-        @Override
-        default R advanceDefault(R old, Union4<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>, ParaVal<V4>> para) {
-            return advance(old, para.value1, para.value2, para.value3, para.value4);
-        }
-
-        R advance(R old, ParaVal<V1> more1, ParaVal<V2> more2, ParaVal<V3> more3, ParaVal<V4> more4);
-    }
-
-    public interface Accumulator5<V1, V2, V3, V4, V5, R>
-            extends AbsAccumulator<Union5<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>, ParaVal<V4>, ParaVal<V5>>, R> {
-
-        @Override
-        default R advanceDefault(R old, Union5<ParaVal<V1>, ParaVal<V2>, ParaVal<V3>, ParaVal<V4>, ParaVal<V5>> para) {
-            return advance(old, para.value1, para.value2, para.value3, para.value4, para.value5);
-        }
-
-        R advance(R old, ParaVal<V1> more1, ParaVal<V2> more2, ParaVal<V3> more3, ParaVal<V4> more4, ParaVal<V5> more5);
-    }
-
-    public interface ParaVal<V> {
-        Parameter getParameter();
-        V get();
-        void set(V value);
     }
 
     abstract class AbsParameterSolution {
@@ -521,25 +448,17 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
 
         @SuppressWarnings("unchecked")
-        final SERIALIZATION assemble(SERIALIZATION rawInput, Union avengers) {
+        final SERIALIZATION assemble(SERIALIZATION rawInput, Object[] avengers) {
             for (int i = 0; i < solutionRecords.size(); i++) {
                 SolutionRecord record = solutionRecords.get(i);
                 if (record.length > 1 || record.solution.indeterminateMode) {
-                    ParaVal<Object>[] array = new ParaVal[record.length];
+                    ParaVal[] array = new ParaVal[record.length];
                     for (int j = 0; j < array.length; j++) {
                         array[j] = onCreateAccessibleParameter(record.start + j, avengers);
                     }
-                    if (record.solution.indeterminateMode) {
-                        AccumulatorIndeterminate<Object, SERIALIZATION> accumulator = (AccumulatorIndeterminate<Object, SERIALIZATION>)
-                                (input ? record.solution.inputBridge : record.solution.outputBridge);
-                        rawInput = accumulator.advance(rawInput, array);
-                    } else {
-                        AbsAccumulator<Union, SERIALIZATION> accumulator = (AbsAccumulator<Union, SERIALIZATION>)
-                                (input ? record.solution.inputTogether : record.solution.outputTogether);
-                        Union union = Union.of(array);
-                        rawInput = accumulator.advanceDefault(rawInput, union);
-                        union.recycle();
-                    }
+                    AbsAccumulator<ParaVal[], SERIALIZATION> accumulator = (AbsAccumulator<ParaVal[], SERIALIZATION>)
+                            (input ? record.solution.inputTogether : record.solution.outputTogether);
+                    rawInput = accumulator.advance(rawInput, array);
                     // TODO： warning if user does not call set
                 } else {
                     Accumulator<Object, SERIALIZATION> accumulator = (Accumulator<Object, SERIALIZATION>)
@@ -550,13 +469,13 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
             return rawInput;
         }
 
-        abstract AccessibleParameter onCreateAccessibleParameter(int index, Union parameterHost);
+        abstract AccessibleParameter onCreateAccessibleParameter(int index, Object[] parameterHost);
 
         abstract class AccessibleParameter implements ParaVal<Object> {
             int index;
-            Union parameterHost;
+            Object[] parameterHost;
 
-            AccessibleParameter(int index, Union parameterHost) {
+            AccessibleParameter(int index, Object[] parameterHost) {
                 this.index = index;
                 this.parameterHost = parameterHost;
             }
@@ -568,30 +487,30 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
 
             @Override
             public Object get() {
-                return parameterHost.get(index);
+                return parameterHost[index];
             }
 
             @Override
             public void set(Object value) {
-                parameterHost.set(index, value);
+                parameterHost[index] = value;
             }
         }
     }
 
-    private class OutputConverterImpl extends SolutionRecordKeeper<OUT> implements Function<OUT, Union> {
+    private class OutputConverterImpl extends SolutionRecordKeeper<OUT> implements Function<OUT, Object[]> {
 
         OutputConverterImpl(ParameterGroup parameterGroup) {
             super(false, parameterGroup);
         }
 
         @Override
-        AccessibleParameter onCreateAccessibleParameter(int index, Union parameterHost) {
+        AccessibleParameter onCreateAccessibleParameter(int index, Object[] parameterHost) {
             return new WritableParameter(index, parameterHost);
         }
 
         class WritableParameter extends AccessibleParameter {
 
-            WritableParameter(int index, Union parameterHost) {
+            WritableParameter(int index, Object[] parameterHost) {
                 super(index, parameterHost);
             }
 
@@ -602,31 +521,31 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
 
         @Override
-        public Union apply(OUT rawData) {
+        public Object[] apply(OUT rawData) {
             final int count = parameterGroup.getParameterCount();
             if (count == 0) {
-                return Union.ofNull();
+                return null;
             }
-            Union parameterHost = Union.ofArray(new Object[count]);
+            Object[] parameterHost = new Object[count];
             assemble(rawData, parameterHost);
             return parameterHost;
         }
     }
 
-    private class InputConverterImpl extends SolutionRecordKeeper<IN> implements Function<Union, IN> {
+    private class InputConverterImpl extends SolutionRecordKeeper<IN> implements Function<Object[], IN> {
 
         InputConverterImpl(ParameterGroup parameterGroup) {
             super(true, parameterGroup);
         }
 
         @Override
-        AccessibleParameter onCreateAccessibleParameter(int index, Union parameterHost) {
+        AccessibleParameter onCreateAccessibleParameter(int index, Object[] parameterHost) {
             return new ReadableParameter(index, parameterHost);
         }
 
         class ReadableParameter extends AccessibleParameter {
 
-            ReadableParameter(int index, Union parameterHost) {
+            ReadableParameter(int index, Object[] parameterHost) {
                 super(index, parameterHost);
             }
 
@@ -637,7 +556,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
 
         @Override
-        public IN apply(Union parameterInput) {
+        public IN apply(Object[] parameterInput) {
             IN rawInput = inputProvider != null ? inputProvider.get() : null;
             final int count = parameterGroup.getParameterCount();
             if (count == 0) {

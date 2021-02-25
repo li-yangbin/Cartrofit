@@ -1,7 +1,5 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.funtion.Union;
-
 import java.util.ArrayList;
 
 public abstract class CallGroup<T> extends Call {
@@ -62,12 +60,7 @@ public abstract class CallGroup<T> extends Call {
         return false;
     }
 
-    protected <RESULT> RESULT childInvoke(Call child, Union parameter) {
+    protected <RESULT> RESULT childInvoke(Call child, Object[] parameter) {
         return (RESULT) child.invoke(getParameterContext().getParameter(child, parameter));
-    }
-
-    protected <RESULT> RESULT childInvokeWitInjectTarget(Call child, Union parameter, Object target) {
-        // TODO: injectable parameter will always be the last one?
-        return (RESULT) child.invoke(getParameterContext().getParameter(child, parameter).merge(target));
     }
 }

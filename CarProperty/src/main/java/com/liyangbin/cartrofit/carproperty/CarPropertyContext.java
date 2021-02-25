@@ -8,10 +8,9 @@ import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitContext;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.FixedTypeCall;
-import com.liyangbin.cartrofit.SolutionProvider;
+import com.liyangbin.cartrofit.solution.SolutionProvider;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowPublisher;
-import com.liyangbin.cartrofit.funtion.Union;
 
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
@@ -236,7 +235,7 @@ public abstract class CarPropertyContext extends CartrofitContext {
         }
 
         @Override
-        public Object mapInvoke(Union parameter) {
+        public Object invoke(Object[] parameter) {
             Object interceptedValue = getContext().onPropertyGetIntercept(propertyId, areaId, getType);
             if (interceptedValue != null) {
                 return interceptedValue;
@@ -279,8 +278,8 @@ public abstract class CarPropertyContext extends CartrofitContext {
         }
 
         @Override
-        public Object mapInvoke(Union parameter) {
-            Object toBeSet = buildInSetValue != null ? buildInSetValue : parameter.get(0);
+        public Object invoke(Object[] parameter) {
+            Object toBeSet = buildInSetValue != null ? buildInSetValue : parameter[0];
             if (getContext().onPropertySetIntercept(propertyId, areaId, toBeSet)) {
                 return null;
             }

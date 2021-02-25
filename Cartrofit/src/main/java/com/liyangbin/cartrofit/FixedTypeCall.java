@@ -2,16 +2,14 @@ package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.ScheduleOn;
 import com.liyangbin.cartrofit.flow.Flow;
-import com.liyangbin.cartrofit.funtion.FlowConverter;
-import com.liyangbin.cartrofit.funtion.Union;
 
 import java.util.concurrent.Executor;
 import java.util.function.Function;
 
 public class FixedTypeCall<INPUT, OUTPUT> extends Call {
 
-    private Function<Union, INPUT> inputConverter;
-    private Function<OUTPUT, Union> outputConverter;
+    private Function<Object[], INPUT> inputConverter;
+    private Function<OUTPUT, Object[]> outputConverter;
     private Function<OUTPUT, ?> returnConverter;
     private FlowConverter<?> flowConverter;
     private Executor flowSubscribeExecutor;
@@ -41,7 +39,7 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
     }
 
     @Override
-    public Object mapInvoke(Union parameter) {
+    public Object invoke(Object[] parameter) {
         INPUT input = inputConverter.apply(parameter);
         if (hasCategory(CartrofitContext.CATEGORY_TRACK)) {
             Flow<OUTPUT> result = doTrackInvoke(input);

@@ -1,7 +1,4 @@
-package com.liyangbin.cartrofit.call;
-
-import com.liyangbin.cartrofit.Call;
-import com.liyangbin.cartrofit.funtion.Union;
+package com.liyangbin.cartrofit;
 
 import java.util.Objects;
 
@@ -13,8 +10,8 @@ public class UnregisterCall extends Call {
     }
 
     @Override
-    public Object mapInvoke(Union parameter) {
-        trackCall.untrack(Objects.requireNonNull(parameter.get(0)));
+    public Object invoke(Object[] parameter) {
+        trackCall.untrack(Objects.requireNonNull(parameter[0]));
         return null;
     }
 }

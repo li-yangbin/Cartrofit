@@ -1,8 +1,9 @@
-package com.liyangbin.cartrofit;
+package com.liyangbin.cartrofit.support;
 
+import com.liyangbin.cartrofit.Cartrofit;
+import com.liyangbin.cartrofit.FlowConverter;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowConsumer;
-import com.liyangbin.cartrofit.funtion.FlowConverter;
 
 import io.reactivex.BackpressureStrategy;
 import io.reactivex.Completable;

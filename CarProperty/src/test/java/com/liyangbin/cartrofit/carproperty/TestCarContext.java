@@ -13,6 +13,11 @@ import java.util.Random;
 public class TestCarContext extends DefaultCarContext implements CarPropertyAccess {
 
     public static final HashMap<Integer, Combo> typeMockMap = new HashMap<>();
+    private boolean testTrackIntOrString;
+
+    public void setTestTrackIntOrString(boolean testInt) {
+        testTrackIntOrString = testInt;
+    }
 
     @Override
     public CarPropertyConfig<?> getConfig(int propertyId, int area) throws CarNotConnectedException {
@@ -78,7 +83,7 @@ public class TestCarContext extends DefaultCarContext implements CarPropertyAcce
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-                    int key = 0;
+                    int key = testTrackIntOrString ? 0 : 2;
                     synchronized (typeMockMap) {
                         Object obj = generateRandomValue(random, typeMockMap.get(key).clazz);
 //                        if (obj.getClass().isArray()) {

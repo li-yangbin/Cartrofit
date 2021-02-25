@@ -1,12 +1,10 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.funtion.Union;
-
 public class ParameterContext {
 
     private final Key key;
 
-    public ParameterContext(Key key) {
+    ParameterContext(Key key) {
         this.key = key;
     }
 
@@ -23,18 +21,18 @@ public class ParameterContext {
         return key.getImplicitParameterGroup();
     }
 
-    public Union getParameter(Call target, Union all) {
+    public Object[] getParameter(Call target, Object[] all) {
         ParameterGroup parameterGroup = extractParameterFromCall(target);
         final int count = parameterGroup.getParameterCount();
         if (count == 0) {
-            return Union.ofNull();
+            return null;
         }
-        if (all.getCount() == count) {
+        if (all.length == count) {
             return all;
         } else {
-            Union result = Union.ofArray(new Object[count]);
+            Object[] result = new Object[count];
             for (int i = 0; i < count; i++) {
-                result.set(i, all.get(parameterGroup.getParameterAt(i).getDeclaredIndex()));
+                result[i] = all[parameterGroup.getParameterAt(i).getDeclaredIndex()];
             }
             return result;
         }

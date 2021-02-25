@@ -1,7 +1,6 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.WrappedData;
-import com.liyangbin.cartrofit.funtion.FlowConverter;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.ParameterizedType;
@@ -24,7 +23,7 @@ public final class Cartrofit {
     static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
 
     public static <T> T from(Class<T> apiClass) {
-        ApiRecord<T> apiRecord = getApi(apiClass);
+        final ApiRecord<T> apiRecord = getApi(apiClass);
         return contextOf(apiRecord).from(apiRecord);
     }
 
@@ -52,7 +51,7 @@ public final class Cartrofit {
             if (instance == null) {
                 synchronized (this) {
                     if (instance == null) {
-                        instance = initProvider.get();
+                        instance = Objects.requireNonNull(initProvider.get());
                     }
                 }
             }
@@ -60,8 +59,8 @@ public final class Cartrofit {
         }
     }
 
-    public static <A extends Annotation> void registerSingletonFactory(Class<A> keyType,
-                                                                       Supplier<CartrofitContext> provider) {
+    public static <A extends Annotation> void registerAsSingleton(Class<A> keyType,
+                                                                  Supplier<CartrofitContext> provider) {
         CONTEXT_FACTORY_CACHE.put(keyType, new ContextFactory<>(keyType, provider));
     }
 

@@ -1,14 +1,8 @@
-package com.liyangbin.cartrofit.call;
+package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.Call;
-import com.liyangbin.cartrofit.CallGroup;
-import com.liyangbin.cartrofit.CartrofitGrammarException;
-import com.liyangbin.cartrofit.Key;
-import com.liyangbin.cartrofit.Parameter;
 import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowConsumer;
-import com.liyangbin.cartrofit.funtion.Union;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
@@ -17,7 +11,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public class RegisterCall extends CallGroup<RegisterCall.Entry> {
+public class RegisterCall extends CallGroup<Call> {
 
     private final HashMap<Object, RegisterCallbackWrapper> callbackWrapperMapper = new HashMap<>();
     private int callbackParaIndex;
@@ -38,33 +32,12 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
         this.coldTrackKey = callbackKey;
         this.coldErrorKeyMap = errorKeyMap;
         this.coldCompleteKey = completeKey;
-        addChildCall(new Entry(trackCall));
-    }
-
-    public void addChildCall(Call entryCall, Call returnCall,
-                      Call parameterOutCall) {
-        addChildCall(new Entry(entryCall, returnCall, (InjectGroupCall) parameterOutCall));
-    }
-
-    static class Entry {
-        Call call;
-        Call returnCall;
-        InjectGroupCall injectCall;
-
-        Entry(Call call, Call returnCall, InjectGroupCall injectCall) {
-            this.call = call;
-            this.returnCall = returnCall;
-            this.injectCall = injectCall;
-        }
-
-        Entry(Call call) {
-            this.call = call;
-        }
+        addChildCall(trackCall);
     }
 
     @Override
-    protected Call asCall(Entry entry) {
-        return entry.call;
+    protected Call asCall(Call entry) {
+        return entry;
     }
 
     @Override
@@ -77,9 +50,9 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
     }
 
     @Override
-    public Object mapInvoke(Union parameter) {
+    public Object invoke(Object[] parameter) {
         final Object callback = Objects.requireNonNull(
-                parameter.get(callbackParaIndex), "callback can not be null");
+                parameter[callbackParaIndex], "callback can not be null");
         if (coldTrackMode) {
             new RegisterCallbackWrapper(callback).register(parameter);
         } else {
@@ -102,24 +75,24 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
     private class RegisterCallbackWrapper {
         Object callbackObj;
-        ArrayList<Flow<Object>> commandFlowList = new ArrayList<>();
+        ArrayList<Flow<Object[]>> commandFlowList = new ArrayList<>();
 
         RegisterCallbackWrapper(Object callbackObj) {
             this.callbackObj = callbackObj;
         }
 
-        void register(Union parameter) {
+        void register(Object[] parameter) {
             if (commandFlowList.size() > 0) {
                 throw new CartrofitGrammarException("impossible situation");
             }
             for (int i = 0; i < getChildCount(); i++) {
-                Entry entry = getChildAt(i);
-                Flow<Object> registeredFlow = childInvoke(entry.call, parameter);
+                Call call = getChildAt(i);
+                Flow<Object[]> registeredFlow = childInvoke(call, parameter);
                 if (registeredFlow.isHot() && coldTrackMode) {
                     throw new CartrofitGrammarException("Can not use cold register mode on hot flow source");
                 }
                 InnerObserver observer = new InnerObserver(coldTrackMode ? coldTrackKey
-                        : entry.call.getKey(), callbackObj, registeredFlow);
+                        : call.getKey(), callbackObj, registeredFlow);
                 commandFlowList.add(registeredFlow);
 
                 registeredFlow.subscribe(observer);
@@ -128,14 +101,14 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
 
         void unregister() {
             for (int i = 0; i < commandFlowList.size(); i++) {
-                Flow<Object> registeredFlow = commandFlowList.get(i);
+                Flow<Object[]> registeredFlow = commandFlowList.get(i);
                 registeredFlow.stopSubscribe();
             }
             commandFlowList.clear();
         }
     }
 
-    private class InnerObserver implements FlowConsumer<Object> {
+    private class InnerObserver implements FlowConsumer<Object[]> {
 
         Key callbackKey;
         Object callbackObj;
@@ -177,17 +150,11 @@ public class RegisterCall extends CallGroup<RegisterCall.Entry> {
         }
 
         @Override
-        public void accept(Object o) {
+        public void accept(Object[] parameters) {
             if (dispatchProcessing) {
                 throw new IllegalStateException("Recursive invocation from " + callbackKey);
             }
-            Union union = Union.of(o);
             dispatchProcessing = true;
-            int parameterCount = callbackKey.getParameterCount();
-            Object[] parameters = new Object[parameterCount];
-            for (int i = 0, j = 0; i < parameters.length; i++) {
-                parameters[i] = union.get(j++);
-            }
             safeInvoke(callbackKey, callbackObj, () -> dispatchProcessing = false, parameters);
         }
     }

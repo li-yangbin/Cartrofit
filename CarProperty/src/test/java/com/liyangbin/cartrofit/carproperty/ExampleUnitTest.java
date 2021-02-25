@@ -133,6 +133,7 @@ public class ExampleUnitTest {
     @Test
     public void debounceTest() {
         Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setDebounceMillis(7000);
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestTrackIntOrString(true);
         Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
             @Override
             public void onChange(int value) {
