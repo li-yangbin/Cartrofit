@@ -9,6 +9,7 @@ import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public final class Cartrofit {
@@ -17,34 +18,33 @@ public final class Cartrofit {
     }
 
     private static final HashMap<Class<?>, ApiRecord<?>> API_CACHE = new HashMap<>();
-    private static final HashMap<Class<? extends Annotation>, Singleton> DEFAULT_CONTEXT_MAP = new HashMap<>();
+    private static final HashMap<Class<? extends Annotation>, ContextFactory<?>>
+            CONTEXT_FACTORY_CACHE = new HashMap<>();
     static final HashMap<Class<?>, FlowConverter<?>> FLOW_CONVERTER_MAP = new HashMap<>();
     static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
 
-    public static <T> T from(Class<T> clazz) {
-        ApiRecord<T> apiRecord = getApi(clazz);
-        Singleton contextSingleton = DEFAULT_CONTEXT_MAP.get(apiRecord.scopeType);
-        if (contextSingleton != null) {
-            CartrofitContext singletonContext = contextSingleton.get();
-            return singletonContext.from(apiRecord);
-        }
-        throw new IllegalStateException("Can not find context provider for:" + apiRecord);
+    public static <T> T from(Class<T> apiClass) {
+        ApiRecord<T> apiRecord = getApi(apiClass);
+        return contextOf(apiRecord).from(apiRecord);
     }
 
-    public static CartrofitContext contextOf(Class<?> clazz) {
-        ApiRecord<?> apiRecord = getApi(clazz);
-        Singleton contextSingleton = DEFAULT_CONTEXT_MAP.get(apiRecord.scopeType);
-        if (contextSingleton != null) {
-            return contextSingleton.get();
-        }
-        throw new IllegalStateException("Can not find context provider for:" + apiRecord);
+    public static <T extends CartrofitContext> T contextOf(Class<?> apiClass) {
+        return contextOf(getApi(apiClass));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends CartrofitContext> T contextOf(ApiRecord<?> apiRecord) {
+        ContextFactory<?> factory = CONTEXT_FACTORY_CACHE.get(apiRecord.scopeType);
+        CartrofitContext context = factory != null ? factory.get(apiRecord.scopeObj) : null;
+        return (T) Objects.requireNonNull(context,
+                "Can not find context provider for:" + apiRecord.clazz);
     }
 
     private static class Singleton {
-        private Supplier<CartrofitContext> initProvider;
+        private Supplier<? extends CartrofitContext> initProvider;
         private CartrofitContext instance;
 
-        Singleton(Supplier<CartrofitContext> initProvider) {
+        Singleton(Supplier<? extends CartrofitContext> initProvider) {
             this.initProvider = initProvider;
         }
 
@@ -53,7 +53,6 @@ public final class Cartrofit {
                 synchronized (this) {
                     if (instance == null) {
                         instance = initProvider.get();
-                        instance.createFromCartrofit();
                     }
                 }
             }
@@ -61,9 +60,49 @@ public final class Cartrofit {
         }
     }
 
-    public static <A extends Annotation> void addContextProvider(Class<A> keyType,
-                                                                 Supplier<CartrofitContext> provider) {
-        DEFAULT_CONTEXT_MAP.put(keyType, new Singleton(provider));
+    public static <A extends Annotation> void registerSingletonFactory(Class<A> keyType,
+                                                                       Supplier<CartrofitContext> provider) {
+        CONTEXT_FACTORY_CACHE.put(keyType, new ContextFactory<>(keyType, provider));
+    }
+
+    public static <A extends Annotation> ContextFactory<A> createSingletonFactory(Class<A> keyType,
+                                                                                  Function<A, ?> keyMapper) {
+        ContextFactory<A> factory = new ContextFactory<>(keyType, keyMapper);
+        CONTEXT_FACTORY_CACHE.put(keyType, factory);
+        return factory;
+    }
+
+    public static final class ContextFactory<A extends Annotation> {
+        private Function<A, ?> keyMapper;
+        private Class<A> keyType;
+        private Singleton normalSingleton;
+        private HashMap<Object, Singleton> mappedSingleton = new HashMap<>();
+
+        ContextFactory(Class<A> keyType, Supplier<CartrofitContext> provider) {
+            this.keyType = Objects.requireNonNull(keyType);
+            this.normalSingleton = new Singleton(provider);
+        }
+
+        ContextFactory(Class<A> keyType, Function<A, ?> keyMapper) {
+            this.keyType = Objects.requireNonNull(keyType);
+            this.keyMapper = Objects.requireNonNull(keyMapper);
+        }
+
+        CartrofitContext get(Annotation keySrc) {
+            if (!keyType.equals(keySrc.annotationType())) {
+                return null;
+            }
+            if (normalSingleton != null) {
+                return normalSingleton.get();
+            }
+            Object key = keyMapper.apply((A) keySrc);
+            Singleton mappedProvider = mappedSingleton.get(key);
+            return mappedProvider != null ? mappedProvider.get() : null;
+        }
+
+        public void register(Object key, Supplier<? extends CartrofitContext> provider) {
+            mappedSingleton.put(key, new Singleton(provider));
+        }
     }
 
     static <T> ApiRecord<T> getApi(Class<T> apiClass) {
@@ -75,7 +114,7 @@ public final class Cartrofit {
                 anchor: do {
                     Annotation[] annotations = loopedClass.getDeclaredAnnotations();
                     for (Annotation annotation : annotations) {
-                        if (DEFAULT_CONTEXT_MAP.containsKey(annotation.annotationType())) {
+                        if (CONTEXT_FACTORY_CACHE.containsKey(annotation.annotationType())) {
                             API_CACHE.put(apiClass, singletonRecord = new ApiRecord<>(annotation, apiClass));
                             break anchor;
                         }
@@ -84,7 +123,7 @@ public final class Cartrofit {
                 } while (loopedClass != null);
             }
             return Objects.requireNonNull(singletonRecord,
-                    "Call addContextProvider() before from() accessing");
+                    "Failed to find valid context annotation from:" + apiClass);
         }
     }
 

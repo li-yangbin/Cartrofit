@@ -4,29 +4,25 @@ import android.car.CarNotConnectedException;
 import android.car.hardware.CarPropertyConfig;
 import android.car.hardware.CarPropertyValue;
 
-import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitContext;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.FixedTypeCall;
-import com.liyangbin.cartrofit.Key;
 import com.liyangbin.cartrofit.SolutionProvider;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowPublisher;
 import com.liyangbin.cartrofit.funtion.Union;
 
-import java.util.HashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
-public class CarPropertyContext extends CartrofitContext {
+public abstract class CarPropertyContext extends CartrofitContext {
 
     private static final SolutionProvider CAR_PROPERTY_SOLUTION = new SolutionProvider();
-    private static final HashMap<String, Singleton> CAR_SCOPE_CONTEXT = new HashMap<>();
+    private static final Cartrofit.ContextFactory<CarPropertyScope> SCOPE_FACTORY =
+            Cartrofit.createSingletonFactory(CarPropertyScope.class, CarPropertyScope::value);
 
     static {
-        Cartrofit.addContextProvider(CarPropertyScope.class, CarPropertyContext::new);
-
         CAR_PROPERTY_SOLUTION.create(Get.class)
                 .provide((context, category, get, key) -> new PropertyGet(key.getScope(), get));
 
@@ -60,42 +56,8 @@ public class CarPropertyContext extends CartrofitContext {
                 }).buildAndCommit();
     }
 
-    private static class Singleton {
-        private Supplier<CarPropertyContext> initProvider;
-        private CarPropertyContext instance;
-
-        Singleton(Supplier<CarPropertyContext> initProvider) {
-            this.initProvider = initProvider;
-        }
-
-        CarPropertyContext get() {
-            if (instance == null) {
-                synchronized (this) {
-                    if (instance == null) {
-                        instance = initProvider.get();
-                    }
-                }
-            }
-            return instance;
-        }
-    }
-
-    public static void addScopeProvider(String scope, Supplier<CarPropertyContext> provider) {
-        CAR_SCOPE_CONTEXT.put(scope, new Singleton(provider));
-    }
-
-    @Override
-    public Call getOrCreateCall(Key key, int category, boolean fromCache) {
-        if (isDefaultSingleton()) {
-            CarPropertyScope scope = key.getScope();
-            Singleton realTarget = CAR_SCOPE_CONTEXT.get(scope.value());
-            if (realTarget != null) {
-                return realTarget.get().getOrCreateCall(key, category, fromCache);
-            } else {
-                throw new IllegalStateException("Can not resolve target scope:" + scope.value());
-            }
-        }
-        return super.getOrCreateCall(key, category, fromCache);
+    public static void registerScopeProvider(String scope, Supplier<CarPropertyContext> provider) {
+        SCOPE_FACTORY.register(scope, provider);
     }
 
     @Override
@@ -111,9 +73,7 @@ public class CarPropertyContext extends CartrofitContext {
         return null;
     }
 
-    public CarPropertyAccess getCarPropertyAccess() {
-        throw new RuntimeException("Sub-class should implement this method");
-    }
+    public abstract CarPropertyAccess getCarPropertyAccess();
 
     public TypedCarPropertyAccess<?> getTypedCarPropertyAccess(Class<?> type) {
         if (classEquals(type, int.class)) {
@@ -342,7 +302,7 @@ public class CarPropertyContext extends CartrofitContext {
         public PropertyTrack(CarPropertyScope scope, Track track) {
             this.propertyId = track.propId();
             this.isSticky = track.sticky();
-            this.restoreDataWhenTimeout = track.timeoutRestore();
+            this.restoreDataWhenTimeout = track.restoreIfTimeout();
             this.areaId = resolveArea(track.area(), scope.area());
         }
 
@@ -354,9 +314,7 @@ public class CarPropertyContext extends CartrofitContext {
             } catch (CarNotConnectedException connectIssue) {
                 throw new RuntimeException(connectIssue);
             }
-            if (isSticky) {
-                carValuePublisher.enableStickyDispatch(this::onLoadDefaultData);
-            }
+            carValuePublisher.setDispatchStickyDataEnable(isSticky, this::onLoadDefaultData);
         }
 
         public CarPropertyValue<Object> onLoadDefaultData() {
@@ -373,9 +331,7 @@ public class CarPropertyContext extends CartrofitContext {
             return carValuePublisher.share().catchException(TimeoutException.class, e -> {
                 e.printStackTrace();
                 if (restoreDataWhenTimeout) {
-                    final CarPropertyValue<?> latestEvent = carValuePublisher.hasData()
-                            ? carValuePublisher.getData() : onLoadDefaultData();
-                    carValuePublisher.injectData(latestEvent != null ? latestEvent : onLoadDefaultData());
+                    carValuePublisher.injectData(carValuePublisher.getData());
                 }
             })
             // TODO: consider having app handle CarPropertyException event

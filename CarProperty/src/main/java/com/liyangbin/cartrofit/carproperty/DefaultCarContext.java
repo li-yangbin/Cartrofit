@@ -31,10 +31,10 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
 
     public static void registerAsDefault(Context context) {
         ConnectHelper.ensureConnect(context);
-        CarPropertyContext.addScopeProvider(Car.HVAC_SERVICE, HvacContext::new);
-        CarPropertyContext.addScopeProvider(Car.VENDOR_EXTENSION_SERVICE, VendorExtensionContext::new);
-        CarPropertyContext.addScopeProvider(Car.PROPERTY_SERVICE, PropertyContext::new);
-        CarPropertyContext.addScopeProvider(Car.CABIN_SERVICE, CabinContext::new);
+        CarPropertyContext.registerScopeProvider(Car.HVAC_SERVICE, HvacContext::new);
+        CarPropertyContext.registerScopeProvider(Car.VENDOR_EXTENSION_SERVICE, VendorExtensionContext::new);
+        CarPropertyContext.registerScopeProvider(Car.PROPERTY_SERVICE, PropertyContext::new);
+        CarPropertyContext.registerScopeProvider(Car.CABIN_SERVICE, CabinContext::new);
     }
 
     public static boolean isConnected() {
@@ -304,7 +304,8 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
         }
     }
 
-    private static class VendorExtensionContext extends DefaultCarContext implements CarVendorExtensionManager.CarVendorExtensionCallback {
+    private static class VendorExtensionContext extends DefaultCarContext
+            implements CarVendorExtensionManager.CarVendorExtensionCallback {
         CarVendorExtensionManager carVendorExtensionManager;
         VendorExtensionContext() {
             ConnectHelper.addOnConnectAction(car ->
@@ -360,6 +361,7 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
         }
 
         class PropRegisteredSource extends FlowSourceImpl implements CarPropertyManager.CarPropertyEventListener {
+            boolean expired;
 
             PropRegisteredSource(int propertyId, int area) {
                 super(propertyId, area);
@@ -372,9 +374,15 @@ public abstract class DefaultCarContext extends CarPropertyContext implements Ca
             @Override
             public void finishWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
                 super.finishWithInjector(injector);
-                if (flowInjectors.size() == 0) {
-                    carPropertyManager.unregisterListener(this);
-                    flowSourceList.remove(this);
+
+                if (flowInjectors.size() == 0 && !expired) {
+                    synchronized (this) {
+                        if (!expired) {
+                            carPropertyManager.unregisterListener(this);
+                            flowSourceList.remove(this);
+                            expired = true;
+                        }
+                    }
                 }
             }
 

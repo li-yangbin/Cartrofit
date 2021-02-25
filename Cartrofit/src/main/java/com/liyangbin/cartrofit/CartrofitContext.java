@@ -213,7 +213,6 @@ public abstract class CartrofitContext {
     }
 
     private final SolutionProvider mSolutionProvider;
-    private boolean mIsDefaultSingleton;
     private final HashMap<ApiRecord<?>, Object> mApiCache = new HashMap<>();
     private final HashMap<Key, Call> mCallCache = new HashMap<>();
 
@@ -223,14 +222,6 @@ public abstract class CartrofitContext {
 
     public <T> T from(Class<T> api) {
         return from(Cartrofit.getApi(api));
-    }
-
-    void createFromCartrofit() {
-        mIsDefaultSingleton = true;
-    }
-
-    protected final boolean isDefaultSingleton() {
-        return mIsDefaultSingleton;
     }
 
     synchronized <T> T from(ApiRecord<T> record) {

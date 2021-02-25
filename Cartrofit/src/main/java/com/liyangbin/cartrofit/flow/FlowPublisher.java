@@ -28,8 +28,8 @@ public class FlowPublisher<T> {
         }
     }
 
-    public void enableStickyDispatch(Supplier<T> initialDataProvider) {
-        dispatchStickyDataEnable = true;
+    public void setDispatchStickyDataEnable(boolean dispatchStickyDataEnable, Supplier<T> initialDataProvider) {
+        this.dispatchStickyDataEnable = dispatchStickyDataEnable;
         this.initialStickyDataProvider = initialDataProvider;
     }
 
@@ -127,10 +127,12 @@ public class FlowPublisher<T> {
     }
 
     public T getData() {
-        synchronized (this) {
-            if (!hasData) {
-                data = initialStickyDataProvider.get();
-                hasData = true;
+        if (!hasData) {
+            synchronized (this) {
+                if (!hasData) {
+                    data = initialStickyDataProvider.get();
+                    hasData = true;
+                }
             }
         }
         return data;

@@ -32,7 +32,7 @@ public class ExampleUnitTest {
 
     @BeforeClass
     public static void onStart() {
-        CarPropertyContext.addScopeProvider("test", TestCarContext::new);
+        CarPropertyContext.registerScopeProvider("test", TestCarContext::new);
     }
 
     @Test
@@ -120,11 +120,7 @@ public class ExampleUnitTest {
 
     @Test
     public void timeoutTest() {
-        CarPropertyContext.addScopeProvider("test", () -> {
-            TestCarContext testCarContext = new TestCarContext();
-            testCarContext.setTimeOutMillis(3000);
-            return testCarContext;
-        });
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTimeOutMillis(3000);
         Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
             @Override
             public void onChange(int value) {
@@ -136,11 +132,7 @@ public class ExampleUnitTest {
 
     @Test
     public void debounceTest() {
-        CarPropertyContext.addScopeProvider("test", () -> {
-            TestCarContext testCarContext = new TestCarContext();
-            testCarContext.setDebounceMillis(5000);
-            return testCarContext;
-        });
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setDebounceMillis(7000);
         Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
             @Override
             public void onChange(int value) {

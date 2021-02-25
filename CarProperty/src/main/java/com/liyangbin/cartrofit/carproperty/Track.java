@@ -19,5 +19,5 @@ public @interface Track {
 
     boolean sticky() default true;
 
-    boolean timeoutRestore() default true;
+    boolean restoreIfTimeout() default true;
 }

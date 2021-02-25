@@ -113,6 +113,13 @@ class FlowObservable<T> extends Observable<T> implements FlowConsumer<T>, Dispos
     }
 
     @Override
+    public void onError(Throwable throwable) {
+        if (!disposed) {
+            observer.onError(throwable);
+        }
+    }
+
+    @Override
     public void onComplete() {
         if (!disposed) {
             observer.onComplete();
