@@ -1,13 +1,16 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Token;
+import com.liyangbin.cartrofit.flow.Flow;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 public abstract class Call {
     private Key key;
+    private ArrayList<ExceptionHandler<?>> exceptionHandlers;
     private int category;
     private ParameterContext parameterContext;
 
@@ -16,11 +19,7 @@ public abstract class Call {
     private List<String> tokenList;
 
     void dispatchInit(ParameterContext parameterContext) {
-        if (key.field != null) {
-            key.field.setAccessible(true);
-        }
         this.parameterContext = parameterContext;
-
         onInit();
     }
 
@@ -42,9 +41,10 @@ public abstract class Call {
         return new ParameterContext(getKey());
     }
 
-    void setKey(Key key, CartrofitContext context) {
+    void attach(Key key, CartrofitContext context, ArrayList<ExceptionHandler<?>> exceptionHandlers) {
         this.key = key;
         this.context = context;
+        this.exceptionHandlers = exceptionHandlers;
     }
 
     public Key getKey() {
@@ -70,7 +70,46 @@ public abstract class Call {
         this.category |= category;
     }
 
-    public abstract Object invoke(Object[] parameter);
+    final Object exceptionalInvoke(Object[] parameter) throws Throwable {
+        try {
+            Object interceptedValue = getContext().onInterceptCallInvocation(this, parameter);
+            if (interceptedValue != Cartrofit.SKIP) {
+                return interceptedValue;
+            }
+            return invoke(parameter);
+        } catch (Throwable suspect) {
+            if (suspect instanceof RuntimeException) {
+                throw suspect;
+            }
+            if (exceptionHandlers != null) {
+                for (int i = 0; i < exceptionHandlers.size(); i++) {
+                    ExceptionHandler<?> handler = exceptionHandlers.get(i);
+                    Object handledResult = handler.handleException(suspect, this, parameter);
+                    if (handledResult != Cartrofit.SKIP) {
+                        return handledResult;
+                    }
+                }
+            }
+            throw suspect;
+        }
+    }
+
+    final boolean handleFlowCallbackException(Throwable suspect, Object callback) {
+        if (suspect instanceof RuntimeException) {
+            return false;
+        }
+        if (exceptionHandlers != null) {
+            for (int i = 0; i < exceptionHandlers.size(); i++) {
+                ExceptionHandler<?> handler = exceptionHandlers.get(i);
+                if (handler.handleFlowCallbackException(suspect, this, callback)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public abstract Object invoke(Object[] parameter) throws Throwable;
 
     void attachParent(CallGroup<?> parent) {
         parentCall = parent;

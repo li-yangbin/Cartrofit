@@ -11,14 +11,15 @@ public interface FlowConsumer<T> extends Consumer<T> {
     }
     default void onError(Throwable throwable) {
         // called by up-stream
-        defaultThrow(throwable);
+        defaultThrow(throwable, null);
     }
 
-    static void defaultThrow(Throwable throwable) {
-        if (throwable instanceof RuntimeException) {
-            throw ((RuntimeException) throwable);
-        } else {
-            throw new RuntimeException(throwable);
+    static void defaultThrow(Throwable throwable, Class<?> from) {
+        if (from == null) {
+            throw new RuntimeException("Implement onError method to handle exception", throwable);
         }
+        throw new RuntimeException("Crash due to uncaught exception!!" +
+                " Consider either using ExceptionHandler for type '" + throwable.getClass().getSimpleName()
+                + "' or adding @OnError method in " + from, throwable);
     }
 }

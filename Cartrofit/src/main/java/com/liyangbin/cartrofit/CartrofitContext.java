@@ -10,6 +10,7 @@ import com.liyangbin.cartrofit.annotation.Unregister;
 import com.liyangbin.cartrofit.solution.SolutionProvider;
 import com.liyangbin.cartrofit.support.SupportUtil;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
@@ -175,9 +176,25 @@ public abstract class CartrofitContext {
     private final SolutionProvider mSolutionProvider;
     private final HashMap<ApiRecord<?>, Object> mApiCache = new HashMap<>();
     private final HashMap<Key, Call> mCallCache = new HashMap<>();
+    private ArrayList<ExceptionHandler<?>> mExceptionHandlers;
+    private boolean mCatchExceptionByDefault = true;
 
     public CartrofitContext() {
         mSolutionProvider = onProvideCallSolution();
+    }
+
+    public void addExceptionHandler(ExceptionHandler<?> handler) {
+        if (mExceptionHandlers == null) {
+            mExceptionHandlers = new ArrayList<>();
+        }
+        mExceptionHandlers.add(handler);
+    }
+
+    public void setIsCatchExceptionByDefault(boolean catchExceptionByDefault) {
+        mCatchExceptionByDefault = catchExceptionByDefault;
+    }
+
+    public void onApiCreated(Annotation annotation, Class<?> apiType) {
     }
 
     public <T> T from(Class<T> api) {
@@ -189,6 +206,7 @@ public abstract class CartrofitContext {
         if (apiObj != null) {
             return apiObj;
         }
+        onApiCreated(record.scopeObj, record.clazz);
         apiObj = (T) Proxy.newProxyInstance(record.clazz.getClassLoader(),
                 new Class<?>[]{record.clazz},
                 (proxy, method, args) -> {
@@ -204,7 +222,7 @@ public abstract class CartrofitContext {
                     synchronized (CartrofitContext.this) {
                         call = getOrCreateCall(key, CATEGORY_DEFAULT, true);
                     }
-                    return call.invoke(args);
+                    return call.exceptionalInvoke(args);
                 });
         mApiCache.put(record, apiObj);
         return apiObj;
@@ -257,20 +275,38 @@ public abstract class CartrofitContext {
     public Call onCreateCall(Key key, int category) {
         Call call = mSolutionProvider.createCall(this, key, category);
         if (call != null) {
-            call.setKey(key, this);
+            ArrayList<ExceptionHandler<?>> callExceptionHandlers = new ArrayList<>();
+            if (mExceptionHandlers != null && mExceptionHandlers.size() > 0) {
+                for (int i = 0; i < mExceptionHandlers.size(); i++) {
+                    ExceptionHandler<?> handler = mExceptionHandlers.get(i);
+                    if (!key.isExceptionDeclared(handler.getType())) {
+                        callExceptionHandlers.add(handler);
+                    }
+                }
+            } /*else if (mCatchExceptionByDefault && !key.isCallbackEntry
+                    && !key.isExceptionDeclared(Throwable.class)) {
+                callExceptionHandlers.add(ExceptionHandler.ALL);
+            }*/
+
+            RegisterCall wrappedCall = transformTrack2RegisterIfNeeded(call, key);
+            if (wrappedCall != null) {
+                wrappedCall.attach(key, this, callExceptionHandlers);
+                call.attach(wrappedCall.getColdTrackKey(), this, null);
+                call = wrappedCall;
+            } else {
+                call.attach(key, this, callExceptionHandlers);
+            }
 
             Token tokenAnnotation = key.getAnnotation(Token.class);
             if (tokenAnnotation != null) {
                 call.setTokenList(tokenAnnotation);
             }
-
-            Call wrappedCall = transformTrack2RegisterIfNeeded(call);
-            if (wrappedCall != null) {
-                wrappedCall.setKey(key, this);
-                call = wrappedCall;
-            }
         }
         return call;
+    }
+
+    public Object onInterceptCallInvocation(Call call, Object[] parameter) throws Throwable {
+        return Cartrofit.SKIP;
     }
 
     public final void inflateCallback(Key key, Class<?> callbackClass,
@@ -278,8 +314,17 @@ public abstract class CartrofitContext {
         ArrayList<Key> childKeys = getChildKey(key, callbackClass);
         for (int i = 0; i < childKeys.size(); i++) {
             Key childKey = childKeys.get(i);
+            if (childKey.isAnnotationPresent(OnError.class)
+                    || childKey.isAnnotationPresent(OnComplete.class)) {
+                // TODO: Support OnError
+                throw new CartrofitGrammarException("Can not declare OnError or OnComplete "
+                        + "in Register grammar " + childKey
+                        + ". Consider adding callback in your track method");
+            }
             Call call = onCreateCall(childKey, category);
-            resultReceiver.accept(call);
+            if (call != null) {
+                resultReceiver.accept(call);
+            }
         }
     }
 
@@ -306,11 +351,10 @@ public abstract class CartrofitContext {
         return ROOT_PROVIDER;
     }
 
-    private Call transformTrack2RegisterIfNeeded(Call call) {
+    private RegisterCall transformTrack2RegisterIfNeeded(Call call, Key originalKey) {
         if (call instanceof RegisterCall || !call.hasCategory(CATEGORY_TRACK)) {
             return null;
         }
-        Key originalKey = call.getKey();
         if (originalKey.isCallbackEntry) {
             return null;
         }
@@ -370,7 +414,6 @@ public abstract class CartrofitContext {
         if (callbackKey == null) {
             throw new CartrofitGrammarException("Must provide a method with Callback annotation in " + callbackType);
         }
-        call.setKey(callbackKey, this);
         return new RegisterCall(call, callbackKey, errorKeyMap, completeKey);
     }
 }

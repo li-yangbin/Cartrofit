@@ -3,10 +3,10 @@ package com.liyangbin.cartrofit;
 import com.liyangbin.cartrofit.annotation.GenerateId;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class ApiRecord<T> {
@@ -15,6 +15,7 @@ public class ApiRecord<T> {
     private HashMap<Integer, Method> selfDependency = new HashMap<>();
     private HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
     private HashMap<Class<?>, ArrayList<Key>> childrenKeyCache = new HashMap<>();
+    private List<Class<? extends ExceptionHandler>> exceptionHandlers;
 
     final Class<T> clazz;
     final Annotation scopeObj;
@@ -66,14 +67,6 @@ public class ApiRecord<T> {
             Method[] methods = targetClass.getDeclaredMethods();
             for (Method method : methods) {
                 Key childKey = new Key(this, method, true);
-                if (!childKey.isInvalid()) {
-                    result.add(childKey);
-                }
-            }
-        } else {
-            Field[] fields = targetClass.getDeclaredFields();
-            for (Field field : fields) {
-                Key childKey = new Key(this, field);
                 if (!childKey.isInvalid()) {
                     result.add(childKey);
                 }

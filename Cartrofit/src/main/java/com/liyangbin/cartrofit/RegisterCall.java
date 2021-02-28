@@ -35,6 +35,10 @@ public class RegisterCall extends CallGroup<Call> {
         addChildCall(trackCall);
     }
 
+    Key getColdTrackKey() {
+        return coldTrackKey;
+    }
+
     @Override
     protected Call asCall(Call entry) {
         return entry;
@@ -50,24 +54,26 @@ public class RegisterCall extends CallGroup<Call> {
     }
 
     @Override
-    public Object invoke(Object[] parameter) {
+    public Object invoke(Object[] parameter) throws Throwable {
         final Object callback = Objects.requireNonNull(
                 parameter[callbackParaIndex], "callback can not be null");
-        if (coldTrackMode) {
-            new RegisterCallbackWrapper(callback).register(parameter);
-        } else {
+        RegisterCallbackWrapper wrapper;
+        synchronized (callbackWrapperMapper) {
             if (callbackWrapperMapper.containsKey(callback)) {
                 return null;
             }
-            RegisterCallbackWrapper wrapper = new RegisterCallbackWrapper(callback);
+            wrapper = new RegisterCallbackWrapper(callback);
             callbackWrapperMapper.put(callback, wrapper);
-            wrapper.register(parameter);
         }
+        wrapper.register(parameter);
         return null;
     }
 
     void untrack(Object callback) {
-        RegisterCallbackWrapper wrapper = callbackWrapperMapper.remove(callback);
+        RegisterCallbackWrapper wrapper;
+        synchronized (callbackWrapperMapper) {
+            wrapper = callbackWrapperMapper.remove(callback);
+        }
         if (wrapper != null) {
             wrapper.unregister();
         }
@@ -81,16 +87,13 @@ public class RegisterCall extends CallGroup<Call> {
             this.callbackObj = callbackObj;
         }
 
-        void register(Object[] parameter) {
+        void register(Object[] parameter) throws Throwable {
             if (commandFlowList.size() > 0) {
                 throw new CartrofitGrammarException("impossible situation");
             }
             for (int i = 0; i < getChildCount(); i++) {
                 Call call = getChildAt(i);
                 Flow<Object[]> registeredFlow = childInvoke(call, parameter);
-                if (registeredFlow.isHot() && coldTrackMode) {
-                    throw new CartrofitGrammarException("Can not use cold register mode on hot flow source");
-                }
                 InnerObserver observer = new InnerObserver(coldTrackMode ? coldTrackKey
                         : call.getKey(), callbackObj, registeredFlow);
                 commandFlowList.add(registeredFlow);
@@ -137,16 +140,21 @@ public class RegisterCall extends CallGroup<Call> {
             }
             if (key != null) {
                 safeInvoke(key, callbackObj, throwable);
-            } else {
-                FlowConsumer.defaultThrow(throwable);
+            } else if (!handleFlowCallbackException(throwable, callbackObj)) {
+                FlowConsumer.defaultThrow(throwable,
+                        getKey().getParameterAt(callbackParaIndex).getType());
             }
         }
 
         @Override
         public void onComplete() {
+            synchronized (callbackWrapperMapper) {
+                callbackWrapperMapper.remove(callbackKey);
+            }
             if (coldCompleteKey != null) {
                 safeInvoke(coldCompleteKey, callbackObj);
             }
+            callbackKey = null;
         }
 
         @Override

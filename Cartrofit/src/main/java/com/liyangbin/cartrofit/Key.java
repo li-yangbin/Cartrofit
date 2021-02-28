@@ -24,12 +24,11 @@ public class Key {
     public final Method method;
     public final boolean isCallbackEntry;
 
-    public final Field field;
-
     ApiRecord<?> record;
     private int mId = -1;
 
     private Annotation[] annotations;
+    private Class<?>[] declaredExceptions;
     private int parameterCount = -1;
     private int parameterGroupCount = -1;
     private Parameter returnParameter;
@@ -43,15 +42,7 @@ public class Key {
     Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
         this.record = record;
         this.method = method;
-        this.field = null;
         this.isCallbackEntry = isCallbackEntry;
-    }
-
-    Key(ApiRecord<?> record, Field field) {
-        this.record = record;
-        this.method = null;
-        this.field = field;
-        this.isCallbackEntry = false;
     }
 
     void setDelegateKey(Key delegateKey) {
@@ -434,18 +425,13 @@ public class Key {
     }
 
     boolean isInvalid() {
-        if (method != null) {
-            return Modifier.isStatic(method.getModifiers());
-        } else {
-            return Modifier.isStatic(field.getModifiers());
-        }
+        return Modifier.isStatic(method.getModifiers());
     }
 
     public Annotation[] getAnnotations() {
         if (annotations == null) {
             Annotation[] fromDelegate = delegateKey != null ? delegateKey.getAnnotations() : null;
-            Annotation[] fromSelf = method != null ? method.getDeclaredAnnotations()
-                    : field.getDeclaredAnnotations();
+            Annotation[] fromSelf = method.getDeclaredAnnotations();
             if (fromDelegate == null || fromDelegate.length == 0) {
                 annotations = fromSelf;
             } else if (fromSelf != null) {
@@ -468,39 +454,48 @@ public class Key {
     }
 
     public Class<?> getReturnType() {
-        return method != null ? method.getReturnType() : field.getType();
+        return method.getReturnType();
+    }
+
+    public boolean isExceptionDeclared(Class<? extends Throwable> type) {
+        if (isCallbackEntry) {
+            return false;
+        }
+        if (declaredExceptions == null) {
+            declaredExceptions = method.getExceptionTypes();
+        }
+        for (Class<?> declaredException : declaredExceptions) {
+            if (RuntimeException.class.isAssignableFrom(declaredException)) {
+                // ignore RuntimeException declaration
+                continue;
+            }
+            if (type.isAssignableFrom(declaredException)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     String getName() {
-        return method != null ? method.getName() : field.getName();
+        return method.getName();
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-
         Key key = (Key) o;
-
-        if (isCallbackEntry != key.isCallbackEntry) return false;
-        if (!Objects.equals(method, key.method)) return false;
-        return Objects.equals(field, key.field);
+        return method.equals(key.method);
     }
 
     @Override
     public int hashCode() {
-        int result = method != null ? method.hashCode() : 0;
-        result = 31 * result + (field != null ? field.hashCode() : 0);
-        result = 31 * result + (isCallbackEntry ? 1 : 0);
-        return result;
+        return Objects.hash(method);
     }
 
     @Override
     public String toString() {
-        return "Key{" + (method != null ? ("method="
-                + method.getDeclaringClass().getSimpleName()
-                + "::" + method.getName())
-                : ("field=" + field.getDeclaringClass().getSimpleName()
-                + "::" + field.getName())) + '}';
+        return "Key{" + method.getDeclaringClass().getSimpleName()
+                + "::" + method.getName() + '}';
     }
 }

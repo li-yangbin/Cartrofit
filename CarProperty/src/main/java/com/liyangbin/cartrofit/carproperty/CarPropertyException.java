@@ -1,11 +1,11 @@
 package com.liyangbin.cartrofit.carproperty;
 
-public class CarPropertyException extends RuntimeException {
+public class CarPropertyException extends Exception {
     public int propertyId;
     public int area;
 
-    CarPropertyException(int propertyId, int area) {
-        super("property error " + DefaultCarContext.prop2Str(propertyId, area));
+    public CarPropertyException(int propertyId, int area) {
+        super("property error " + CarPropertyContext.prop2Str(propertyId, area));
         this.propertyId = propertyId;
         this.area = area;
     }

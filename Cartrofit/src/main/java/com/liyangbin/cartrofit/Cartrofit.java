@@ -21,6 +21,7 @@ public final class Cartrofit {
             CONTEXT_FACTORY_CACHE = new HashMap<>();
     static final HashMap<Class<?>, FlowConverter<?>> FLOW_CONVERTER_MAP = new HashMap<>();
     static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
+    public static final Object SKIP = new Object();
 
     public static <T> T from(Class<T> apiClass) {
         final ApiRecord<T> apiRecord = getApi(apiClass);
@@ -52,6 +53,7 @@ public final class Cartrofit {
                 synchronized (this) {
                     if (instance == null) {
                         instance = Objects.requireNonNull(initProvider.get());
+                        initProvider = null;
                     }
                 }
             }

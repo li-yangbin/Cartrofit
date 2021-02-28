@@ -1,5 +1,7 @@
 package com.liyangbin.cartrofit.carproperty;
 
+import android.car.CarNotConnectedException;
+
 import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.OnError;
@@ -18,6 +20,9 @@ public interface TestCarApi {
 
     @Set(propId = 0)
     void setIntSignal(int value);
+
+    @Set(propId = 0)
+    void setIntSignalIfThrow(int value) throws CarNotConnectedException;
 
     @Get(propId = 1)
     int[] getIntArraySignal();
@@ -67,6 +72,9 @@ public interface TestCarApi {
     @Track(propId = 2)
     void registerStringChangeListenerAlias(/*@Callback */OnChangeListenerAlias listener);
 
+    @Track(propId = 0)
+    void registerIntErrorChangeListener(/*@Callback */OnErrorChangeListener listener);
+
     interface OnChangeListener {
 
         @Track(propId = 0, sticky = false)
@@ -80,5 +88,14 @@ public interface TestCarApi {
 
         @OnError
         void onError(Throwable throwable);
+    }
+
+    interface OnErrorChangeListener {
+
+        @Callback
+        void onChange(int value);
+
+        @OnError
+        void onError(CarPropertyException caught);
     }
 }

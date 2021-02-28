@@ -60,7 +60,7 @@ public abstract class CallGroup<T> extends Call {
         return false;
     }
 
-    protected <RESULT> RESULT childInvoke(Call child, Object[] parameter) {
+    protected <RESULT> RESULT childInvoke(Call child, Object[] parameter) throws Throwable {
         return (RESULT) child.invoke(getParameterContext().getParameter(child, parameter));
     }
 }

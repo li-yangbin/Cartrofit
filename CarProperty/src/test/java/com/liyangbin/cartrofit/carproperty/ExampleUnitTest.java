@@ -1,5 +1,7 @@
 package com.liyangbin.cartrofit.carproperty;
 
+import android.car.CarNotConnectedException;
+
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.flow.Flow;
 
@@ -132,7 +134,7 @@ public class ExampleUnitTest {
 
     @Test
     public void debounceTest() {
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setDebounceMillis(7000);
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setDebounceMillis(3000);
         Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestTrackIntOrString(true);
         Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
             @Override
@@ -141,6 +143,45 @@ public class ExampleUnitTest {
             }
         });
         Cartrofit.from(TestCarApi.class).setIntSignal(10086);
+    }
+
+    @Test
+    public void exceptionTest() {
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestException(true);
+        try {
+            Cartrofit.from(TestCarApi.class).setIntSignalIfThrow(10086);
+        } catch (CarNotConnectedException e) {
+            println("exception caught " + e);
+        }
+    }
+
+    @Test
+    public void callbackExceptionWithoutCaughtTest() {
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestException(true);
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestTrackIntOrString(true);
+        Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
+            @Override
+            public void onChange(int value) {
+                println("callback received:" + value);
+            }
+        });
+    }
+
+    @Test
+    public void callbackExceptionTest() {
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestException(true);
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestTrackIntOrString(true);
+        Cartrofit.from(TestCarApi.class).registerIntErrorChangeListener(new TestCarApi.OnErrorChangeListener() {
+            @Override
+            public void onChange(int value) {
+                println("callback received:" + value);
+            }
+
+            @Override
+            public void onError(CarPropertyException caught) {
+                println("callback error " + caught);
+            }
+        });
     }
 
     @AfterClass

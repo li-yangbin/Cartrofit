@@ -10,13 +10,43 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-public class TestCarContext extends DefaultCarContext implements CarPropertyAccess {
+public class TestCarContext extends CarPropertyContext<Object> {
 
     public static final HashMap<Integer, Combo> typeMockMap = new HashMap<>();
     private boolean testTrackIntOrString;
+    private boolean testException;
+
+    public TestCarContext() {
+        super(new DummyAccess());
+    }
+
+    private static class DummyAccess implements CarManagerAccess<Object> {
+
+        @Override
+        public void tryConnect() {
+        }
+
+        @Override
+        public Object get() throws CarNotConnectedException {
+            return null;
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return true;
+        }
+
+        @Override
+        public void addOnCarAvailabilityListener(CarAvailabilityListener listener) {
+        }
+    }
 
     public void setTestTrackIntOrString(boolean testInt) {
         testTrackIntOrString = testInt;
+    }
+
+    public void setTestException(boolean testException) {
+        this.testException = testException;
     }
 
     @Override
@@ -75,7 +105,7 @@ public class TestCarContext extends DefaultCarContext implements CarPropertyAcce
             @Override
             public void run() {
                 Random random = new Random();
-                boolean token = false;
+                int counter = 0;
                 while (true) {
                     long sleep = (long) (random.nextFloat() * 1000);
                     try {
@@ -91,9 +121,13 @@ public class TestCarContext extends DefaultCarContext implements CarPropertyAcce
 //                        } else {
 //                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + obj + "============================");
 //                        }
-                        send(new CarPropertyValue<>(key, 0, obj));
+                        if (testException && counter % 3 == 0) {
+                            error(key, 0);
+                        } else {
+                            send(new CarPropertyValue<>(key, 0, obj));
+                        }
                     }
-                    token = !token;
+                    counter ++;
                 }
             }
         }, "test_thread");
@@ -130,8 +164,8 @@ public class TestCarContext extends DefaultCarContext implements CarPropertyAcce
     }
 
     @Override
-    public TypedCarPropertyAccess<Integer> getIntCarPropertyAccess() {
-        return new TypedCarPropertyAccess<Integer>() {
+    public CarPropertyAccess<Integer> getIntCarPropertyAccess() {
+        return new CarPropertyAccess<Integer>() {
             @Override
             public Integer get(int propertyId, int area) throws CarNotConnectedException {
                 return (Integer) typeMockMap.get(propertyId).value;
@@ -139,14 +173,18 @@ public class TestCarContext extends DefaultCarContext implements CarPropertyAcce
 
             @Override
             public void set(int propertyId, int area, Integer value) throws CarNotConnectedException {
-                typeMockMap.get(propertyId).value = value;
+                if (testException) {
+                    throw new CarNotConnectedException("tesst");
+                } else {
+                    typeMockMap.get(propertyId).value = value;
+                }
             }
         };
     }
 
     @Override
-    public TypedCarPropertyAccess<String> getStringCarPropertyAccess() {
-        return new TypedCarPropertyAccess<String>() {
+    public CarPropertyAccess<String> getStringCarPropertyAccess() {
+        return new CarPropertyAccess<String>() {
             @Override
             public String get(int propertyId, int area) throws CarNotConnectedException {
                 return (String) typeMockMap.get(propertyId).value;
@@ -160,9 +198,9 @@ public class TestCarContext extends DefaultCarContext implements CarPropertyAcce
     }
 
     @Override
-    public TypedCarPropertyAccess<?> getTypedCarPropertyAccess(Class<?> type) {
+    public CarPropertyAccess<?> getCarPropertyAccess(Class<?> type) {
         if (type == int[].class) {
-            return new TypedCarPropertyAccess<int[]>() {
+            return new CarPropertyAccess<int[]>() {
                 @Override
                 public int[] get(int propertyId, int area) throws CarNotConnectedException {
                     return (int[]) typeMockMap.get(propertyId).value;
@@ -174,6 +212,6 @@ public class TestCarContext extends DefaultCarContext implements CarPropertyAcce
                 }
             };
         }
-        return super.getTypedCarPropertyAccess(type);
+        return super.getCarPropertyAccess(type);
     }
 }

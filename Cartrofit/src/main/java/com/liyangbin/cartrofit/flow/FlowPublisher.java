@@ -3,7 +3,6 @@ package com.liyangbin.cartrofit.flow;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 import androidx.lifecycle.LiveData;
 
@@ -15,7 +14,7 @@ public class FlowPublisher<T> {
     private boolean publishStarted;
     private boolean startWhenConnected;
     private boolean dispatchStickyDataEnable;
-    private Supplier<T> initialStickyDataProvider;
+    private InitialDataProvider<T> initialDataProvider;
     private ArrayList<SharedFlow> downStreamList = new ArrayList<>();
     private final HashMap<Consumer<T>, Flow<T>> listenerMap = new HashMap<>();
 
@@ -28,9 +27,14 @@ public class FlowPublisher<T> {
         }
     }
 
-    public void setDispatchStickyDataEnable(boolean dispatchStickyDataEnable, Supplier<T> initialDataProvider) {
+    public interface InitialDataProvider<T> {
+        T get() throws Throwable;
+    }
+
+    public void setDispatchStickyDataEnable(boolean dispatchStickyDataEnable,
+                                            InitialDataProvider<T> initialDataProvider) {
         this.dispatchStickyDataEnable = dispatchStickyDataEnable;
-        this.initialStickyDataProvider = initialDataProvider;
+        this.initialDataProvider = initialDataProvider;
     }
 
     private void start() {
@@ -87,8 +91,13 @@ public class FlowPublisher<T> {
 
         if (dispatchStickyDataEnable) {
             synchronized (this) {
-                if (!hasData && initialStickyDataProvider != null) {
-                    data = initialStickyDataProvider.get();
+                if (!hasData && initialDataProvider != null) {
+                    try {
+                        data = initialDataProvider.get();
+                    } catch (Throwable throwable) {
+                        flow.consumer.onError(throwable);
+                        return;
+                    }
                     hasData = true;
                 }
                 if (!hasData) {
@@ -126,13 +135,30 @@ public class FlowPublisher<T> {
         return share().toLiveData();
     }
 
+    public T getData(T defaultValue) {
+        return hasData ? data : defaultValue;
+    }
+
     public T getData() {
-        if (!hasData) {
-            synchronized (this) {
-                if (!hasData) {
-                    data = initialStickyDataProvider.get();
+        if (hasData) {
+            return data;
+        }
+        ArrayList<SharedFlow> safeErrorReceiver = null;
+        Throwable error = null;
+        synchronized (this) {
+            if (!hasData && initialDataProvider != null) {
+                try {
+                    data = initialDataProvider.get();
                     hasData = true;
+                } catch (Throwable throwable) {
+                    safeErrorReceiver = downStreamList;
+                    error = throwable;
                 }
+            }
+        }
+        if (safeErrorReceiver != null) {
+            for (int i = 0; i < safeErrorReceiver.size(); i++) {
+                safeErrorReceiver.get(i).consumer.onError(error);
             }
         }
         return data;

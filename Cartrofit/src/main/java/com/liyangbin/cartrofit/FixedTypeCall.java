@@ -39,7 +39,7 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
     }
 
     @Override
-    public Object invoke(Object[] parameter) {
+    public Object invoke(Object[] parameter) throws Throwable {
         INPUT input = inputConverter.apply(parameter);
         if (hasCategory(CartrofitContext.CATEGORY_TRACK)) {
             Flow<OUTPUT> result = doTrackInvoke(input);
@@ -61,11 +61,11 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
         }
     }
 
-    public Flow<OUTPUT> doTrackInvoke(INPUT input) {
+    public Flow<OUTPUT> doTrackInvoke(INPUT input) throws Throwable {
         return null;
     }
 
-    public OUTPUT doTypedInvoke(INPUT input) {
+    public OUTPUT doTypedInvoke(INPUT input) throws Throwable {
         return null;
     }
 }
