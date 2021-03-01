@@ -2,9 +2,9 @@ package com.liyangbin.cartrofit.carproperty;
 
 import android.car.CarNotConnectedException;
 
-public interface CarManagerAccess<CAR> {
+public interface CarServiceAccess<CAR_MANAGER> {
     void tryConnect();
-    CAR get() throws CarNotConnectedException;
+    CAR_MANAGER get() throws CarNotConnectedException;
     boolean isAvailable();
     void addOnCarAvailabilityListener(CarAvailabilityListener listener);
 }

@@ -184,6 +184,41 @@ public class ExampleUnitTest {
         });
     }
 
+    @Test
+    public void unregisterTest() {
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestTrackIntOrString(true);
+        TestCarApi.OnChangeListener listener;
+        Cartrofit.from(TestCarApi.class).registerIntChangeListener(listener = new TestCarApi.OnChangeListener() {
+            @Override
+            public void onChange(int value) {
+                println("callback received:" + value);
+            }
+        });
+        try {
+            Thread.sleep(3000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        Cartrofit.from(TestCarApi.class).unregisterIntChangeListener(listener);
+    }
+
+    @Test
+    public void unregisterWithAliasTest() {
+        TestCarApi.OnChangeListenerAlias listener;
+        Cartrofit.from(TestCarApi.class).registerStringChangeListenerAlias(listener = new TestCarApi.OnChangeListenerAlias() {
+            @Override
+            public void onChange(String value) {
+                println("callback received:" + value);
+            }
+        });
+        try {
+            Thread.sleep(3000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        Cartrofit.from(TestCarApi.class).unregisterStringChangeListenerAlias(listener);
+    }
+
     @AfterClass
     public static void onFinish() {
         try {

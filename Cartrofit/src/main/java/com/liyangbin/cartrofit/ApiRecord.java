@@ -76,6 +76,10 @@ public class ApiRecord<T> {
         return result;
     }
 
+    ArrayList<Key> getChildKey() {
+        return getChildKey(clazz);
+    }
+
     @Override
     public String toString() {
         return "ApiRecord{" +

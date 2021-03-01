@@ -1,7 +1,7 @@
 package com.liyangbin.cartrofit;
 
+import com.liyangbin.cartrofit.annotation.MethodCategory;
 import com.liyangbin.cartrofit.annotation.Token;
-import com.liyangbin.cartrofit.flow.Flow;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -123,7 +123,7 @@ public abstract class Call {
         return key.method;
     }
 
-    public boolean hasCategory(int category) {
+    boolean hasCategory(int category) {
         return (this.category & category) != 0;
     }
 

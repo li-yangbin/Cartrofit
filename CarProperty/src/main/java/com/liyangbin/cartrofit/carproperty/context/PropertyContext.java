@@ -10,7 +10,7 @@ import android.content.Context;
 import com.liyangbin.cartrofit.carproperty.CarPropertyAccess;
 import com.liyangbin.cartrofit.carproperty.CarPropertyContext;
 import com.liyangbin.cartrofit.carproperty.CarPropertyException;
-import com.liyangbin.cartrofit.carproperty.DefaultCarManagerAccess;
+import com.liyangbin.cartrofit.carproperty.DefaultCarServiceAccess;
 import com.liyangbin.cartrofit.flow.Flow;
 
 import java.util.List;
@@ -18,47 +18,29 @@ import java.util.List;
 public class PropertyContext extends CarPropertyContext<CarPropertyManager> {
 
     public PropertyContext(Context context) {
-        super(new DefaultCarManagerAccess<>(context, Car.PROPERTY_SERVICE));
+        super(new DefaultCarServiceAccess<>(context, Car.PROPERTY_SERVICE));
+        registerOnceFlowSource = false;
     }
 
     class PropRegisteredSource extends PropertyFlowSource implements CarPropertyManager.CarPropertyEventListener {
-        boolean connected;
 
         public PropRegisteredSource(int propertyId, int area) {
             super(propertyId, area);
         }
 
         @Override
-        public void startWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
-            super.startWithInjector(injector);
-
-            if (!connected) {
-                synchronized (this) {
-                    if (!connected) {
-                        try {
-                            getManagerLazily().registerListener(this, propertyId, 0f);
-                            connected = true;
-                        } catch (CarNotConnectedException connectedException) {
-                            injector.error(connectedException);
-                        }
-                    }
-                }
-            }
-        }
-
-        @Override
         public void finishWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
             super.finishWithInjector(injector);
 
-            if (getSubscriberCount() == 0 && connected) {
-                synchronized (this) {
-                    if (connected) {
+            if (getSubscriberCount() == 0 && registered) {
+                synchronized (PropertyContext.this) {
+                    if (registered) {
                         try {
                             getManagerLazily().unregisterListener(this);
                         } catch (CarNotConnectedException ignore) {
                         }
                         flowSourceList.remove(this);
-                        connected = false;
+                        registered = false;
                     }
                 }
             }
@@ -86,8 +68,9 @@ public class PropertyContext extends CarPropertyContext<CarPropertyManager> {
     }
 
     @Override
-    public void onRegister() throws CarNotConnectedException {
-        // ignore
+    public void onRegister(PropertyFlowSource source) throws CarNotConnectedException {
+        PropRegisteredSource registeredSource = (PropRegisteredSource) source;
+        getManagerLazily().registerListener(registeredSource, registeredSource.propertyId, 0f);
     }
 
     @Override

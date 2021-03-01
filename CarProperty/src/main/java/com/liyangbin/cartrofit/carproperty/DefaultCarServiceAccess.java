@@ -7,11 +7,10 @@ import android.content.Context;
 import android.content.ServiceConnection;
 import android.os.IBinder;
 
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Objects;
 
-public class DefaultCarManagerAccess<CAR> implements CarManagerAccess<CAR> {
+public class DefaultCarServiceAccess<CAR> implements CarServiceAccess<CAR> {
     private static boolean sConnected;
     private static boolean sConnecting;
     private static Car sCar;
@@ -20,7 +19,7 @@ public class DefaultCarManagerAccess<CAR> implements CarManagerAccess<CAR> {
     private final String managerKey;
     private final Context context;
 
-    public DefaultCarManagerAccess(Context context, String managerKey) {
+    public DefaultCarServiceAccess(Context context, String managerKey) {
         this.context = context;
         this.managerKey = managerKey;
     }
@@ -36,7 +35,11 @@ public class DefaultCarManagerAccess<CAR> implements CarManagerAccess<CAR> {
         if (sCar == null || !sConnected) {
             throw new CarNotConnectedException("CarService has not connected yet");
         }
-        return (CAR) sCar.getCarManager(managerKey);
+        try {
+            return (CAR) sCar.getCarManager(managerKey);
+        } catch (Throwable throwable) {
+            throw new CarNotConnectedException("getCarManager failed", throwable);
+        }
     }
 
     @Override
@@ -46,7 +49,11 @@ public class DefaultCarManagerAccess<CAR> implements CarManagerAccess<CAR> {
 
     @Override
     public void addOnCarAvailabilityListener(CarAvailabilityListener listener) {
-        sAvailabilityListener.add(Objects.requireNonNull(listener));
+        Objects.requireNonNull(listener);
+        sAvailabilityListener.add(listener);
+        if (sConnected) {
+            listener.onCarAvailable();
+        }
     }
 
     public static void ensureConnect(Context context) {

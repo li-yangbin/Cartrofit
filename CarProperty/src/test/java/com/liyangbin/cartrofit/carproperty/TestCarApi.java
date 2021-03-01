@@ -6,6 +6,7 @@ import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.GenerateId;
 import com.liyangbin.cartrofit.annotation.OnError;
 import com.liyangbin.cartrofit.annotation.Register;
+import com.liyangbin.cartrofit.annotation.Unregister;
 import com.liyangbin.cartrofit.flow.Flow;
 
 import io.reactivex.Observable;
@@ -69,8 +70,14 @@ public interface TestCarApi {
     @Register
     void registerIntChangeListener(/*@Callback */OnChangeListener listener);
 
+    @Unregister(TestCarApiId.registerIntChangeListener)
+    void unregisterIntChangeListener(/*@Callback */OnChangeListener listener);
+
     @Track(propId = 2)
     void registerStringChangeListenerAlias(/*@Callback */OnChangeListenerAlias listener);
+
+    @Unregister(TestCarApiId.registerStringChangeListenerAlias)
+    void unregisterStringChangeListenerAlias(/*@Callback */OnChangeListenerAlias listener);
 
     @Track(propId = 0)
     void registerIntErrorChangeListener(/*@Callback */OnErrorChangeListener listener);
@@ -87,7 +94,8 @@ public interface TestCarApi {
         void onChange(String value);
 
         @OnError
-        void onError(Throwable throwable);
+        default void onError(Throwable throwable) {
+        }
     }
 
     interface OnErrorChangeListener {

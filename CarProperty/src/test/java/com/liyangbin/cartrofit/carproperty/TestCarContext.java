@@ -20,7 +20,7 @@ public class TestCarContext extends CarPropertyContext<Object> {
         super(new DummyAccess());
     }
 
-    private static class DummyAccess implements CarManagerAccess<Object> {
+    private static class DummyAccess implements CarServiceAccess<Object> {
 
         @Override
         public void tryConnect() {
@@ -65,7 +65,7 @@ public class TestCarContext extends CarPropertyContext<Object> {
     }
 
     @Override
-    public void onRegister() throws CarNotConnectedException {
+    public void onRegister(PropertyFlowSource source) throws CarNotConnectedException {
     }
 
     @Override
@@ -119,7 +119,7 @@ public class TestCarContext extends CarPropertyContext<Object> {
 //                        if (obj.getClass().isArray()) {
 //                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + Arrays.toString((Object[])obj));
 //                        } else {
-//                            System.out.println("value change after:" + sleep + "ms key:" + key + " value:" + obj + "============================");
+                            System.out.println("dispatch value change key:" + key + " value:" + obj + "============================");
 //                        }
                         if (testException && counter % 3 == 0) {
                             error(key, 0);

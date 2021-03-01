@@ -1,7 +1,7 @@
 package com.liyangbin.cartrofit;
 
 public interface ParameterGroup {
-    String token();
+    boolean isTaken(Call call);
     int getParameterCount();
     Parameter getParameterAt(int index);
     Key getDeclaredKey();

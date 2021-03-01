@@ -14,7 +14,7 @@ public class ParameterContext {
         }
         for (int i = 0; i < key.getParameterGroupCount(); i++) {
             ParameterGroup subGroup = key.getParameterGroupAt(i);
-            if (call.hasToken(subGroup.token())) {
+            if (subGroup.isTaken(call)) {
                 return subGroup;
             }
         }

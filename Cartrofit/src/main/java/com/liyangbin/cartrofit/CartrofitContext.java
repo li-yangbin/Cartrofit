@@ -283,10 +283,10 @@ public abstract class CartrofitContext {
                         callExceptionHandlers.add(handler);
                     }
                 }
-            } /*else if (mCatchExceptionByDefault && !key.isCallbackEntry
+            } else if (mCatchExceptionByDefault && !key.isCallbackEntry
                     && !key.isExceptionDeclared(Throwable.class)) {
                 callExceptionHandlers.add(ExceptionHandler.ALL);
-            }*/
+            }
 
             RegisterCall wrappedCall = transformTrack2RegisterIfNeeded(call, key);
             if (wrappedCall != null) {
@@ -352,10 +352,7 @@ public abstract class CartrofitContext {
     }
 
     private RegisterCall transformTrack2RegisterIfNeeded(Call call, Key originalKey) {
-        if (call instanceof RegisterCall || !call.hasCategory(CATEGORY_TRACK)) {
-            return null;
-        }
-        if (originalKey.isCallbackEntry) {
+        if (!call.hasCategory(CATEGORY_TRACK) || originalKey.isCallbackEntry) {
             return null;
         }
         Parameter callbackParameter = originalKey.findParameterByAnnotation(Callback.class);

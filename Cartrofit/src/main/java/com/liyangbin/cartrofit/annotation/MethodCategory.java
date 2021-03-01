@@ -15,5 +15,5 @@ public @interface MethodCategory {
     int CATEGORY_GET = 1 << 1;
     int CATEGORY_TRACK = 1 << 2;
 
-    int CATEGORY_DEFAULT = 0xf0000000 | CATEGORY_SET | CATEGORY_GET | CATEGORY_TRACK;
+    int CATEGORY_DEFAULT = 0xf0000000;
 }

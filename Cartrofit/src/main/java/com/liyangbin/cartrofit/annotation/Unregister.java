@@ -10,5 +10,5 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Retention(RUNTIME)
 @MethodCategory(MethodCategory.CATEGORY_DEFAULT)
 public @interface Unregister {
-    int value() default 0;
+    int value();
 }

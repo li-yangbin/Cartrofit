@@ -10,7 +10,6 @@ import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.flow.Flow;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -163,8 +162,8 @@ public class Key {
         }
 
         @Override
-        public String token() {
-            return "";
+        public boolean isTaken(Call call) {
+            return false;
         }
 
         @Override
@@ -234,29 +233,37 @@ public class Key {
         if (method == null) {
             return 0;
         }
-        HashMap<String, ArrayList<Parameter>> groupMap = null;
+        HashMap<Tokenizer, ArrayList<Parameter>> groupMap = null;
         for (int i = 0; i < getParameterCount(); i++) {
             Parameter parameter = getParameterAt(i);
             Bind bind = parameter.getAnnotation(Bind.class);
             if (bind != null) {
-                for (String token : bind.token()) {
-                    if (groupMap == null) {
-                        groupMap = new HashMap<>();
-                    }
-                    ArrayList<Parameter> list = groupMap.get(token);
-                    if (list == null) {
-                        list = new ArrayList<>();
-                        groupMap.put(token, list);
-                    }
-                    list.add(parameter);
+                boolean hasTokenDeclared = bind.token().length() > 0;
+                if (!hasTokenDeclared && bind.id() == 0) {
+                    throw new CartrofitGrammarException("Invalid Bind grammar " + this);
                 }
+                Tokenizer tokenizer;
+                if (hasTokenDeclared) {
+                    tokenizer = new Tokenizer(bind.token());
+                } else {
+                    tokenizer = new Tokenizer(bind.id());
+                }
+                if (groupMap == null) {
+                    groupMap = new HashMap<>();
+                }
+                ArrayList<Parameter> list = groupMap.get(tokenizer);
+                if (list == null) {
+                    list = new ArrayList<>();
+                    groupMap.put(tokenizer, list);
+                }
+                list.add(parameter);
             }
         }
         parameterGroupCount = groupMap != null ? groupMap.size() : 0;
         parameterGroups = new ParameterGroup[parameterGroupCount];
         if (groupMap != null) {
             int index = 0;
-            for (Map.Entry<String, ArrayList<Parameter>> entry : groupMap.entrySet()) {
+            for (Map.Entry<Tokenizer, ArrayList<Parameter>> entry : groupMap.entrySet()) {
                 parameterGroups[index++] = new ParameterGroupImpl(entry.getKey(), entry.getValue());
             }
         }
@@ -315,7 +322,7 @@ public class Key {
                 parameterArrayList.add(parameter);
             }
         }
-        return implicitParameterGroup = new ParameterGroupImpl("implicit", parameterArrayList);
+        return implicitParameterGroup = new ParameterGroupImpl(new Tokenizer("implicit"), parameterArrayList);
     }
 
     private class ParameterImpl implements Parameter {
@@ -389,19 +396,46 @@ public class Key {
         }
     }
 
+    private static class Tokenizer {
+        String token;
+        int id;
+
+        Tokenizer(int id) {
+            this.id = id;
+        }
+
+        Tokenizer(String token) {
+            this.token = token;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Tokenizer token1 = (Tokenizer) o;
+            return token != null ? token.equals(token1.token) : id == token1.id;
+        }
+
+        @Override
+        public int hashCode() {
+            return token != null ? token.hashCode() : id;
+        }
+    }
+
     private class ParameterGroupImpl implements ParameterGroup {
 
-        private final String token;
+        private final Tokenizer tokenizer;
         private final ArrayList<Parameter> parameters;
 
-        ParameterGroupImpl(String token, ArrayList<Parameter> parameters) {
-            this.token = token;
+        ParameterGroupImpl(Tokenizer tokenizer, ArrayList<Parameter> parameters) {
+            this.tokenizer = tokenizer;
             this.parameters = parameters;
         }
 
         @Override
-        public String token() {
-            return token;
+        public boolean isTaken(Call call) {
+            return tokenizer.token != null ?
+                    call.hasToken(tokenizer.token) : call.getId() == tokenizer.id;
         }
 
         @Override

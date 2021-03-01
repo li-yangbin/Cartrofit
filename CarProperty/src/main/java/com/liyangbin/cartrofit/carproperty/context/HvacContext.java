@@ -9,7 +9,7 @@ import android.content.Context;
 
 import com.liyangbin.cartrofit.carproperty.CarPropertyAccess;
 import com.liyangbin.cartrofit.carproperty.CarPropertyContext;
-import com.liyangbin.cartrofit.carproperty.DefaultCarManagerAccess;
+import com.liyangbin.cartrofit.carproperty.DefaultCarServiceAccess;
 
 import java.util.List;
 
@@ -17,7 +17,7 @@ public class HvacContext extends CarPropertyContext<CarHvacManager>
         implements CarHvacManager.CarHvacEventCallback {
 
     public HvacContext(Context context) {
-        super(new DefaultCarManagerAccess<>(context, Car.HVAC_SERVICE));
+        super(new DefaultCarServiceAccess<>(context, Car.HVAC_SERVICE));
     }
 
     @Override
@@ -26,7 +26,7 @@ public class HvacContext extends CarPropertyContext<CarHvacManager>
     }
 
     @Override
-    public void onRegister() throws CarNotConnectedException {
+    public void onRegister(PropertyFlowSource source) throws CarNotConnectedException {
         getManagerLazily().registerCallback(this);
     }
 

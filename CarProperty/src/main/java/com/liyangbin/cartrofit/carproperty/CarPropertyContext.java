@@ -27,7 +27,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
-public abstract class CarPropertyContext<T> extends CartrofitContext implements CarAvailabilityListener {
+public abstract class CarPropertyContext<CAR> extends CartrofitContext implements CarAvailabilityListener {
 
     private static final SolutionProvider CAR_PROPERTY_SOLUTION = new SolutionProvider();
     private static final Cartrofit.ContextFactory<CarPropertyScope> SCOPE_FACTORY =
@@ -81,7 +81,7 @@ public abstract class CarPropertyContext<T> extends CartrofitContext implements 
     public static final long TIMEOUT_MS = 0;
 
     public static void registerAsDefault(Context context) {
-        DefaultCarManagerAccess.ensureConnect(context);
+        DefaultCarServiceAccess.ensureConnect(context);
 
         CarPropertyContext.registerScopeProvider(Car.HVAC_SERVICE,
                 () -> new HvacContext(context));
@@ -97,15 +97,16 @@ public abstract class CarPropertyContext<T> extends CartrofitContext implements 
     private long timeoutMillis = TIMEOUT_MS;
     private List<CarPropertyConfig> carPropertyConfigs;
 
-    private CarManagerAccess<T> managerAccess;
-    private T manager;
-    protected boolean registered;
+    private CarServiceAccess<CAR> serviceAccess;
+    private CAR manager;
+    protected boolean registerOnceFlowSource = true;
+    private boolean registeredForAll;
     protected final CopyOnWriteArrayList<PropertyFlowSource> flowSourceList = new CopyOnWriteArrayList<>();
 
-    public CarPropertyContext(CarManagerAccess<T> managerAccess) {
-        this.managerAccess = Objects.requireNonNull(managerAccess);
-        managerAccess.tryConnect();
-        managerAccess.addOnCarAvailabilityListener(this);
+    public CarPropertyContext(CarServiceAccess<CAR> serviceAccess) {
+        this.serviceAccess = Objects.requireNonNull(serviceAccess);
+        serviceAccess.tryConnect();
+        serviceAccess.addOnCarAvailabilityListener(this);
     }
 
     public void setDebounceMillis(long debounceTimeMillis) {
@@ -121,20 +122,20 @@ public abstract class CarPropertyContext<T> extends CartrofitContext implements 
         return super.onProvideCallSolution().merge(CAR_PROPERTY_SOLUTION);
     }
 
-    public T getManagerLazily() throws CarNotConnectedException {
+    public CAR getManagerLazily() throws CarNotConnectedException {
         if (manager != null) {
             return manager;
         }
         synchronized (this) {
             if (manager == null) {
-                manager = managerAccess.get();
+                manager = serviceAccess.get();
             }
             return manager;
         }
     }
 
     public final boolean isAvailable() {
-        return managerAccess.isAvailable();
+        return serviceAccess.isAvailable();
     }
 
     @Override
@@ -153,23 +154,27 @@ public abstract class CarPropertyContext<T> extends CartrofitContext implements 
 
     @Override
     public void onCarAvailable() {
-        if (!registered) {
-            synchronized (CarPropertyContext.this) {
-                if (!registered) {
-                    try {
-                        onRegister();
-                        registered = true;
-                    } catch (CarNotConnectedException connectedException) {
-                        throw new RuntimeException("impossible", connectedException);
+        synchronized (CarPropertyContext.this) {
+            try {
+                if (registerOnceFlowSource) {
+                    onRegister(null);
+                    registeredForAll = true;
+                } else {
+                    for (PropertyFlowSource flowSource : flowSourceList) {
+                        flowSource.registerOnAttempt();
                     }
                 }
+            } catch (CarNotConnectedException connectedException) {
+                throw new RuntimeException("impossible", connectedException);
             }
         }
     }
 
     @Override
     public void onCarUnavailable() {
-        registered = false;
+        synchronized (CarPropertyContext.this) {
+            manager = null;
+        }
     }
 
     public boolean onInterceptPropertySet(PropertySet propertySet)
@@ -195,6 +200,8 @@ public abstract class CarPropertyContext<T> extends CartrofitContext implements 
     public class PropertyFlowSource implements Flow.FlowSource<CarPropertyValue<?>> {
         public final int propertyId;
         public final int area;
+        public boolean registered;
+        private boolean registerAttempted;
         long blockUntilMillis;
         TimerTask timeoutTask;
         final CopyOnWriteArrayList<Flow.Injector<CarPropertyValue<?>>> flowInjectors = new CopyOnWriteArrayList<>();
@@ -204,7 +211,7 @@ public abstract class CarPropertyContext<T> extends CartrofitContext implements 
             this.area = area;
         }
 
-        boolean match(int propertyId, int area) {
+        public boolean match(int propertyId, int area) {
             return propertyMatch(this.propertyId, this.area, propertyId, area);
         }
 
@@ -250,20 +257,37 @@ public abstract class CarPropertyContext<T> extends CartrofitContext implements 
             }
         }
 
-        @Override
-        public void startWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
-            flowInjectors.add(injector);
-            if (!registered) {
-                synchronized (CarPropertyContext.this) {
-                    if (!registered) {
-                        try {
-                            onRegister();
-                            registered = true;
-                        } catch (CarNotConnectedException connectedException) {
-                            injector.error(connectedException);
+        void registerOnAttempt() throws CarNotConnectedException {
+            if (!registerAttempted) {
+                return;
+            }
+            if (registerOnceFlowSource) {
+                if (!registeredForAll) {
+                    synchronized (CarPropertyContext.this) {
+                        if (!registeredForAll) {
+                            onRegister(this);
+                            registeredForAll = true;
                         }
                     }
                 }
+            } else if (!registered) {
+                synchronized (CarPropertyContext.this) {
+                    if (!registered) {
+                        onRegister(this);
+                        registered = true;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void startWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
+            flowInjectors.add(injector);
+            try {
+                registerAttempted = true;
+                registerOnAttempt();
+            } catch (CarNotConnectedException error) {
+                injector.error(error);
             }
         }
 
@@ -336,10 +360,6 @@ public abstract class CarPropertyContext<T> extends CartrofitContext implements 
         return Flow.fromSource(source);
     }
 
-    private boolean flowSourceMatch(PropertyFlowSource source1, PropertyFlowSource source2) {
-        return propertyMatch(source1.propertyId, source1.area, source2.propertyId, source2.area);
-    }
-
     // ================ CarXXXXManager Abstract Interface ================
 
     public boolean propertyMatch(int this_propertyId, int this_area,
@@ -355,7 +375,7 @@ public abstract class CarPropertyContext<T> extends CartrofitContext implements 
 
     public abstract List<CarPropertyConfig> onLoadConfig() throws CarNotConnectedException;
 
-    public abstract void onRegister() throws CarNotConnectedException;
+    public abstract void onRegister(PropertyFlowSource flowSource) throws CarNotConnectedException;
 
     public abstract boolean isPropertyAvailable(int propertyId, int area) throws CarNotConnectedException;
 

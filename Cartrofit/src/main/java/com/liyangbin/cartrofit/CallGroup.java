@@ -47,19 +47,6 @@ public abstract class CallGroup<T> extends Call {
         return false;
     }
 
-    @Override
-    public boolean hasCategory(int category) {
-        if (super.hasCategory(category)) {
-            return true;
-        }
-        for (int i = 0; i < childrenCallList.size(); i++) {
-            if (asCall(childrenCallList.get(i)).hasCategory(category)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     protected <RESULT> RESULT childInvoke(Call child, Object[] parameter) throws Throwable {
         return (RESULT) child.invoke(getParameterContext().getParameter(child, parameter));
     }

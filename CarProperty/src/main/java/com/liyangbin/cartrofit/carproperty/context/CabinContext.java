@@ -9,7 +9,7 @@ import android.content.Context;
 
 import com.liyangbin.cartrofit.carproperty.CarPropertyAccess;
 import com.liyangbin.cartrofit.carproperty.CarPropertyContext;
-import com.liyangbin.cartrofit.carproperty.DefaultCarManagerAccess;
+import com.liyangbin.cartrofit.carproperty.DefaultCarServiceAccess;
 
 import java.util.List;
 
@@ -17,7 +17,7 @@ public class CabinContext extends CarPropertyContext<CarCabinManager> implements
         CarCabinManager.CarCabinEventCallback {
 
     public CabinContext(Context context) {
-        super(new DefaultCarManagerAccess<>(context, Car.CABIN_SERVICE));
+        super(new DefaultCarServiceAccess<>(context, Car.CABIN_SERVICE));
     }
 
     @Override
@@ -26,7 +26,7 @@ public class CabinContext extends CarPropertyContext<CarCabinManager> implements
     }
 
     @Override
-    public void onRegister() throws CarNotConnectedException {
+    public void onRegister(PropertyFlowSource source) throws CarNotConnectedException {
         getManagerLazily().registerCallback(this);
     }
 

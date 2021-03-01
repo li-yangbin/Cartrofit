@@ -1,6 +1,7 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Callback;
+import com.liyangbin.cartrofit.annotation.MethodCategory;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowConsumer;
 
@@ -21,11 +22,11 @@ public class RegisterCall extends CallGroup<Call> {
     private HashMap<Class<?>, Key> coldErrorKeyMap;
     private Key coldCompleteKey;
 
-    public RegisterCall() {
+    RegisterCall() {
         // register call
     }
 
-    public RegisterCall(Call trackCall, Key callbackKey,
+    RegisterCall(Call trackCall, Key callbackKey,
                         HashMap<Class<?>, Key> errorKeyMap, Key completeKey) {
         // register call transformed from track call
         coldTrackMode = true;
