@@ -1,8 +1,8 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.annotation.MethodCategory;
 import com.liyangbin.cartrofit.annotation.Token;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -10,6 +10,7 @@ import java.util.List;
 
 public abstract class Call {
     private Key key;
+    private Annotation annotation;
     private ArrayList<ExceptionHandler<?>> exceptionHandlers;
     private int category;
     private ParameterContext parameterContext;
@@ -47,6 +48,10 @@ public abstract class Call {
         this.exceptionHandlers = exceptionHandlers;
     }
 
+    public Annotation getAnnotation() {
+        return annotation;
+    }
+
     public Key getKey() {
         return key;
     }
@@ -66,8 +71,9 @@ public abstract class Call {
     public void onInit() {
     }
 
-    public void addCategory(int category) {
-        this.category |= category;
+    public void setCategoryAndAnnotation(int category, Annotation annotation) {
+        this.category = category;
+        this.annotation = annotation;
     }
 
     final Object exceptionalInvoke(Object[] parameter) throws Throwable {

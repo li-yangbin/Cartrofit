@@ -17,6 +17,7 @@ import com.liyangbin.cartrofit.carproperty.context.PropertyContext;
 import com.liyangbin.cartrofit.carproperty.context.VendorExtensionContext;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowPublisher;
+import com.liyangbin.cartrofit.flow.LifeAwareHotFlowSource;
 import com.liyangbin.cartrofit.solution.SolutionProvider;
 
 import java.util.List;
@@ -34,18 +35,16 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
             Cartrofit.createSingletonFactory(CarPropertyScope.class, CarPropertyScope::value);
 
     static {
-        CAR_PROPERTY_SOLUTION.create(Get.class)
-                .provide((context, category, get, key) -> new PropertyGet(key.getScope(), get));
+        CAR_PROPERTY_SOLUTION.create(Get.class, PropertyGet.class)
+                .provide((get, key) -> new PropertyGet(key.getScope(), get));
 
-        CAR_PROPERTY_SOLUTION.create(Set.class)
-                .provide((context, category, set, key) -> new PropertySet(key.getScope(), set));
+        CAR_PROPERTY_SOLUTION.create(Set.class, PropertySet.class)
+                .provide((set, key) -> new PropertySet(key.getScope(), set));
 
-        CAR_PROPERTY_SOLUTION.create(Track.class)
-                .provideAndBuildParameter(PropertyTrack.class, (context, category, track, key) ->
-                        new PropertyTrack(key.getScope(), track))
+        CAR_PROPERTY_SOLUTION.createWithFixedType(Track.class, PropertyTrack.class)
+                .provideAndBuildParameter((track, key) -> new PropertyTrack(key.getScope(), track))
                 .takeAny()
-                .noAnnotate()
-                .output((old, para) -> {
+                .output((a, old, para) -> {
                     if (para.getParameter().getType().equals(CarPropertyValue.class)) {
                         para.set(old);
                     } else {
@@ -53,15 +52,13 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
                     }
                     return old;
                 }).build()
-                .take(boolean.class)
-                .annotateWith(Availability.class)
-                .output((old, para) -> {
+                .takeWithAnnotation(boolean.class, Availability.class)
+                .output((a, old, para) -> {
                     para.set(old.getStatus() == CarPropertyValue.STATUS_AVAILABLE);
                     return old;
                 }).build()
-                .take(int.class)
-                .annotateWith(Availability.class)
-                .output((old, para) -> {
+                .takeWithAnnotation(int.class, Availability.class)
+                .output((a, old, para) -> {
                     para.set(old.getStatus());
                     return old;
                 }).buildAndCommit();
@@ -119,7 +116,7 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
 
     @Override
     public SolutionProvider onProvideCallSolution() {
-        return super.onProvideCallSolution().merge(CAR_PROPERTY_SOLUTION);
+        return CAR_PROPERTY_SOLUTION;
     }
 
     public CAR getManagerLazily() throws CarNotConnectedException {
@@ -197,14 +194,13 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
         return null;
     }
 
-    public class PropertyFlowSource implements Flow.FlowSource<CarPropertyValue<?>> {
+    public class PropertyFlowSource extends LifeAwareHotFlowSource<CarPropertyValue<?>> {
         public final int propertyId;
         public final int area;
         public boolean registered;
         private boolean registerAttempted;
         long blockUntilMillis;
         TimerTask timeoutTask;
-        final CopyOnWriteArrayList<Flow.Injector<CarPropertyValue<?>>> flowInjectors = new CopyOnWriteArrayList<>();
 
         public PropertyFlowSource(int propertyId, int area) {
             this.propertyId = propertyId;
@@ -215,11 +211,7 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
             return propertyMatch(this.propertyId, this.area, propertyId, area);
         }
 
-        public int getSubscriberCount() {
-            return flowInjectors.size();
-        }
-
-        public void sendPropertyChange(CarPropertyValue<?> carPropertyValue) {
+        public void publishPropertyChange(CarPropertyValue<?> carPropertyValue) {
             if (timeoutTask != null) {
                 synchronized (this) {
                     if (timeoutTask != null) {
@@ -234,15 +226,7 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
             }
             blockUntilMillis = 0;
 
-            for (Flow.Injector<CarPropertyValue<?>> injector : flowInjectors) {
-                injector.send(carPropertyValue);
-            }
-        }
-
-        public void sendPropertyError(Throwable error) {
-            for (Flow.Injector<CarPropertyValue<?>> injector : flowInjectors) {
-                injector.error(error);
-            }
+            publish(carPropertyValue);
         }
 
         synchronized void onPropertySetCalled() {
@@ -281,19 +265,13 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
         }
 
         @Override
-        public void startWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
-            flowInjectors.add(injector);
+        public void onActive() {
             try {
                 registerAttempted = true;
                 registerOnAttempt();
             } catch (CarNotConnectedException error) {
-                injector.error(error);
+                publishError(error);
             }
-        }
-
-        @Override
-        public void finishWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
-            flowInjectors.remove(injector);
         }
 
         private class TimeoutTask extends TimerTask {
@@ -303,10 +281,8 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
                 synchronized(PropertyFlowSource.this) {
                     if (timeoutTask == this) {
                         timeoutTask = null;
-                        for (Flow.Injector<CarPropertyValue<?>> injector : flowInjectors) {
-                            injector.error(new TimeoutException("property timeout "
-                                    + prop2Str(propertyId, area)));
-                        }
+                        publishError(new TimeoutException("property timeout "
+                                + prop2Str(propertyId, area)));
                     }
                 }
             }
@@ -330,7 +306,7 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
     public void send(CarPropertyValue<?> carPropertyValue) {
         for (PropertyFlowSource flowSource : flowSourceList) {
             if (flowSource.match(carPropertyValue.getPropertyId(), carPropertyValue.getAreaId())) {
-                flowSource.sendPropertyChange(carPropertyValue);
+                flowSource.publishPropertyChange(carPropertyValue);
                 break;
             }
         }
@@ -339,7 +315,7 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
     public void error(int propertyId, int area) {
         for (PropertyFlowSource flowSource : flowSourceList) {
             if (flowSource.match(propertyId, area)) {
-                flowSource.sendPropertyError(new CarPropertyException(propertyId, area));
+                flowSource.publishError(new CarPropertyException(propertyId, area));
                 break;
             }
         }
@@ -629,7 +605,7 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
         }
 
         @Override
-        public Flow<CarPropertyValue<?>> doTrackInvoke(Void none) {
+        public Flow<CarPropertyValue<?>> onTrackInvoke(Void none) {
             return getPropertyPublisher().share().catchException(TimeoutException.class, e -> {
                 e.printStackTrace();
                 if (restoreDataWhenTimeout && carValuePublisher != null) {

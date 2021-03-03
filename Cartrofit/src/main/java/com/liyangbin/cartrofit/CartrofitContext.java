@@ -2,11 +2,13 @@ package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.Delegate;
+import com.liyangbin.cartrofit.annotation.MethodCategory;
 import com.liyangbin.cartrofit.annotation.OnComplete;
 import com.liyangbin.cartrofit.annotation.OnError;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Token;
 import com.liyangbin.cartrofit.annotation.Unregister;
+import com.liyangbin.cartrofit.solution.CallProvider2;
 import com.liyangbin.cartrofit.solution.SolutionProvider;
 import com.liyangbin.cartrofit.support.SupportUtil;
 
@@ -22,68 +24,73 @@ import java.util.function.Function;
 @SuppressWarnings("unchecked")
 public abstract class CartrofitContext {
 
-    public static final int CATEGORY_SET = 1;
-    public static final int CATEGORY_GET = 1 << 1;
-    public static final int CATEGORY_TRACK = 1 << 2;
-
-    private static final int CATEGORY_DEFAULT = 0xffffffff;
-
     private static final Router ID_ROUTER = new Router();
     private static final SolutionProvider ROOT_PROVIDER = new SolutionProvider();
 
     static {
         SupportUtil.addSupport();
 
-        ROOT_PROVIDER.create(Register.class)
-                .provide((context, category, register, key) -> {
-                    Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
-                    if (callbackParameter == null && key.isImplicitCallbackParameterPresent()) {
-                        callbackParameter = key.getParameterAt(0);
+        ROOT_PROVIDER.create(Register.class, RegisterCall.class)
+                .provide(new CallProvider2<Register, RegisterCall>() {
+                    @Override
+                    public RegisterCall provide(CartrofitContext context, int category, Register annotation, Key key) {
+                        Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
+                        if (callbackParameter == null && key.isImplicitCallbackParameterPresent()) {
+                            callbackParameter = key.getParameterAt(0);
+                        }
+                        if (callbackParameter == null) {
+                            throw new CartrofitGrammarException("Declare a Callback parameter as an interface " + key);
+                        }
+                        final RegisterCall registerCall = new RegisterCall();
+                        context.inflateCallback(key, callbackParameter.getType(), MethodCategory.CATEGORY_TRACK,
+                                registerCall::addChildCall);
+                        if (registerCall.getChildCount() == 0) {
+                            throw new CartrofitGrammarException("Failed to resolve callback entry point in "
+                                    + callbackParameter.getType());
+                        }
+                        return registerCall;
                     }
-                    if (callbackParameter == null) {
-                        throw new CartrofitGrammarException("Declare a Callback parameter as an interface " + key);
-                    }
-                    final RegisterCall registerCall = new RegisterCall();
-                    context.inflateCallback(key, callbackParameter.getType(), CATEGORY_TRACK,
-                            registerCall::addChildCall);
-                    if (registerCall.getChildCount() == 0) {
-                        throw new CartrofitGrammarException("Failed to resolve callback entry point in "
-                                + callbackParameter.getType());
-                    }
-                    return registerCall;
                 });
 
-        ROOT_PROVIDER.create(Unregister.class)
-                .provide((context, category, unregister, key) -> {
-                    int count = key.getParameterCount();
-                    if (count != 1) {
-                        throw new CartrofitGrammarException("Unregister must provide a single" +
-                                " one Callback parameter:" + key);
-                    }
-                    RegisterCall registerCall = (RegisterCall) context.getOrCreateCallById(key,
-                            unregister.value(), CATEGORY_DEFAULT);
-                    Key registerKey = registerCall.getKey();
-                    if (registerKey.getParameterCount() == 1) {
-                        if (key.getParameterAt(0).getType() != registerKey.getParameterAt(0).getType()) {
-                            throw new CartrofitGrammarException("Unregister must provide a single " +
-                                    "one Callback parameter under the same Callback type as well as key:" + key + " does");
+        ROOT_PROVIDER.create(Unregister.class, UnregisterCall.class)
+                .provide(new CallProvider2<Unregister, UnregisterCall>() {
+                    @Override
+                    public UnregisterCall provide(CartrofitContext context, int category, Unregister unregister, Key key) {
+                        int count = key.getParameterCount();
+                        if (count != 1) {
+                            throw new CartrofitGrammarException("Unregister must provide a single" +
+                                    " one Callback parameter:" + key);
                         }
-                    } else {
-                        for (int i = 0; i < registerKey.getParameterCount(); i++) {
-                            Parameter parameter = registerKey.getParameterAt(i);
-                            if (parameter.isAnnotationPresent(Callback.class)) {
-                                if (key.getParameterAt(0).getType() != parameter.getType()) {
-                                    throw new CartrofitGrammarException("Unregister must provide a single " +
-                                            "one Callback parameter under the same Callback type as well as key:" + key + " does");
+                        RegisterCall registerCall = (RegisterCall) context.getOrCreateCallById(key,
+                                unregister.value(), MethodCategory.CATEGORY_DEFAULT);
+                        Key registerKey = registerCall.getKey();
+                        if (registerKey.getParameterCount() == 1) {
+                            if (key.getParameterAt(0).getType() != registerKey.getParameterAt(0).getType()) {
+                                throw new CartrofitGrammarException("Unregister must provide a single " +
+                                        "one Callback parameter under the same Callback type as well as key:" + key + " does");
+                            }
+                        } else {
+                            for (int i = 0; i < registerKey.getParameterCount(); i++) {
+                                Parameter parameter = registerKey.getParameterAt(i);
+                                if (parameter.isAnnotationPresent(Callback.class)) {
+                                    if (key.getParameterAt(0).getType() != parameter.getType()) {
+                                        throw new CartrofitGrammarException("Unregister must provide a single " +
+                                                "one Callback parameter under the same Callback type as well as key:" + key + " does");
+                                    }
                                 }
                             }
                         }
+                        return new UnregisterCall(registerCall);
                     }
-                    return new UnregisterCall(registerCall);
                 });
 
-        ROOT_PROVIDER.create(Delegate.class)
-                .provide((context, category, delegate, key) -> context.createDelegateCallById(key, delegate.value(), category));
+        ROOT_PROVIDER.create(Delegate.class, Call.class)
+                .provide(new CallProvider2<Delegate, Call>() {
+                    @Override
+                    public Call provide(CartrofitContext context, int category, Delegate delegate, Key key) {
+                        return context.createDelegateCallById(key, delegate.value(), category);
+                    }
+                });
     }
 
     <INPUT> Function<Object[], INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
@@ -180,7 +187,11 @@ public abstract class CartrofitContext {
     private boolean mCatchExceptionByDefault = true;
 
     public CartrofitContext() {
-        mSolutionProvider = onProvideCallSolution();
+        final SolutionProvider solutionProvider = onProvideCallSolution();
+        if (solutionProvider == null) {
+            throw new CartrofitGrammarException("Sub-class must return a valid solution provider");
+        }
+        mSolutionProvider = ROOT_PROVIDER.merge(solutionProvider);
     }
 
     public void addExceptionHandler(ExceptionHandler<?> handler) {
@@ -220,7 +231,7 @@ public abstract class CartrofitContext {
                     Call call;
                     Key key = new Key(record, method, false);
                     synchronized (CartrofitContext.this) {
-                        call = getOrCreateCall(key, CATEGORY_DEFAULT, true);
+                        call = getOrCreateCall(key, MethodCategory.CATEGORY_DEFAULT, true);
                     }
                     return call.exceptionalInvoke(args);
                 });
@@ -347,12 +358,10 @@ public abstract class CartrofitContext {
         return null;
     }
 
-    public SolutionProvider onProvideCallSolution() {
-        return ROOT_PROVIDER;
-    }
+    public abstract SolutionProvider onProvideCallSolution();
 
     private RegisterCall transformTrack2RegisterIfNeeded(Call call, Key originalKey) {
-        if (!call.hasCategory(CATEGORY_TRACK) || originalKey.isCallbackEntry) {
+        if (!call.hasCategory(MethodCategory.CATEGORY_TRACK) || originalKey.isCallbackEntry) {
             return null;
         }
         Parameter callbackParameter = originalKey.findParameterByAnnotation(Callback.class);

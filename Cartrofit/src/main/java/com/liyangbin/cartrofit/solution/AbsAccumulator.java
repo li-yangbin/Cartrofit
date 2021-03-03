@@ -1,5 +1,7 @@
 package com.liyangbin.cartrofit.solution;
 
-interface AbsAccumulator<V, R> {
-    R advance(R old, V para);
+import java.lang.annotation.Annotation;
+
+interface AbsAccumulator<A extends Annotation, V, R> {
+    R advance(A annotation, R old, V para);
 }

@@ -1,5 +1,6 @@
 package com.liyangbin.cartrofit.solution;
 
+import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CartrofitContext;
 import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.FixedTypeCall;
@@ -10,21 +11,21 @@ import com.liyangbin.cartrofit.ParameterGroup;
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.function.Supplier;
 
 public class ConvertSolution<IN, OUT, A extends Annotation> {
 
-    private Supplier<IN> inputProvider;
+    private BiFunction<A, Key, IN> inputProvider;
     private final ArrayList<AbsParameterSolution> forwardSolutions = new ArrayList<>();
     private final ArrayList<AbsParameterSolution> backwardSolutions = new ArrayList<>();
     private final Class<?> callType;
     private final SolutionProvider caller;
-    private final AbsParameterSolution plainOutSolution = takeAny().output((old, para) -> {
+    private final AbsParameterSolution plainOutSolution = takeAny().output((a, old, para) -> {
         para.set(old);
         return old;
-    }).noAnnotate();
+    });
 
     ConvertSolution(Class<? extends FixedTypeCall<IN, OUT>> callType, SolutionProvider caller) {
         this.callType = callType;
@@ -135,8 +136,8 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
     }
 
-    Function<Object[], IN> checkIn(ParameterGroup group) {
-        InputConverterImpl inputConverter = new InputConverterImpl(group);
+    Function<Object[], IN> checkIn(ParameterGroup group, Call call) {
+        InputConverterImpl inputConverter = new InputConverterImpl(group, call);
         findSolutionDependency(true, group, inputConverter);
         return inputConverter;
     }
@@ -178,17 +179,27 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
     }
 
-    public ConvertSolution<IN, OUT, A> provideBasic(Supplier<IN> provider) {
-        this.inputProvider = provider;
+    public ConvertSolution<IN, OUT, A> provideBasic(BiFunction<A, Key, IN> inputProvider) {
+        this.inputProvider = inputProvider;
         return ConvertSolution.this;
     }
 
-    public <FROM> ParameterSolution1<FROM> take(Class<FROM> clazz) {
-        return new ParameterSolution1<>(clazz);
+    public <FROM> ParameterSolution1<Annotation, FROM> take(Class<FROM> clazz) {
+        return new ParameterSolution1<>(clazz, null);
     }
 
-    public ParameterSolution1<Object> takeAny() {
-        return new ParameterSolution1<>(Object.class);
+    public <PA extends Annotation, FROM> ParameterSolution1<PA, FROM>
+            takeWithAnnotation(Class<FROM> clazz, Class<PA> parameterAnnotationType) {
+        return new ParameterSolution1<>(clazz, parameterAnnotationType);
+    }
+
+    public ParameterSolution1<Annotation, Object> takeAny() {
+        return new ParameterSolution1<>(Object.class, null);
+    }
+
+    public <PA extends Annotation> ParameterSolution1<PA, Object>
+            takeAnyWithAnnotation(Class<PA> parameterAnnotationType) {
+        return new ParameterSolution1<>(Object.class, parameterAnnotationType);
     }
 
     private void commitParameter() {
@@ -200,28 +211,29 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
     }
 
-    abstract class AbsParameterSolution {
-        AbsParameterSolution parent;
-        Class<?> fixedType;
+    abstract class AbsParameterSolution<PA extends Annotation, T> {
+        AbsParameterSolution<PA, ?> parent;
+        Class<T> fixedType;
         boolean typeIndeterminate;
 
-        Class<? extends Annotation> fixedAnnotationType;
+        Class<PA> fixedAnnotationType;
         Predicate<Parameter> extraCheck;
 
         boolean markedAsTogetherHead;
         boolean indeterminateMode;
-        boolean annotateNothing;
         boolean necessaryCheck;
 
-        AbsAccumulator<?, IN> inputBridge;
-        AbsAccumulator<?, IN> inputTogether;
+        AbsAccumulator<PA, ParaVal[], IN> inputBridge;
+        AbsAccumulator<PA, ?, IN> inputTogether;
 
-        AbsAccumulator<?, OUT> outputBridge;
-        AbsAccumulator<?, OUT> outputTogether;
+        AbsAccumulator<PA, ParaVal[], OUT> outputBridge;
+        AbsAccumulator<PA, ?, OUT> outputTogether;
 
-        AbsParameterSolution(AbsParameterSolution parent, Class<?> fixedType) {
+        AbsParameterSolution(AbsParameterSolution<PA, ?> parent, Class<T> fixedType,
+                             Class<PA> annotationType) {
             this.parent = parent;
             this.fixedType = fixedType;
+            this.fixedAnnotationType = annotationType;
         }
 
         abstract int size();
@@ -239,7 +251,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
             declaredType = CartrofitContext.boxTypeOf(declaredType);
             if (fixedType.isAssignableFrom(declaredType)) {
                 if (inputBridge != null || outputBridge != null || markedAsTogetherHead) {
-                    return ((annotateNothing && fixedAnnotationType == null)
+                    return (fixedAnnotationType == null
                             || parameter.isAnnotationPresent(fixedAnnotationType))
                             && (extraCheck == null || extraCheck.test(parameter));
                 }
@@ -264,10 +276,10 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
     }
 
-    public class ParameterSolution1<T> extends AbsParameterSolution {
+    public class ParameterSolution1<PA extends Annotation, T> extends AbsParameterSolution<PA, T> {
 
-        ParameterSolution1(Class<T> fixedType) {
-            super(null, fixedType);
+        ParameterSolution1(Class<T> fixedType, Class<PA> paraAnnotationType) {
+            super(null, fixedType, paraAnnotationType);
         }
 
         @Override
@@ -275,44 +287,29 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
             return 1;
         }
 
-        public ParameterSolution1<T> annotateWith(Class<? extends Annotation> annotationType) {
-            this.fixedAnnotationType = annotationType;
-            return this;
-        }
-
-        public ParameterSolution1<T> noAnnotate() {
-            this.annotateNothing = true;
-            return this;
-        }
-
-        public ParameterSolution1<T> setInputNecessary() {
-            this.necessaryCheck = true;
-            return this;
-        }
-
-        public ParameterSolution1<T> input(Accumulator<T, IN> inputBridge) {
+        public ParameterSolution1<PA, T> input(Accumulator<PA, T, IN> inputBridge) {
             this.inputBridge = inputBridge;
             return this;
         }
 
-        public ParameterSolution1<T> output(Accumulator<T, OUT> outputBridge) {
+        public ParameterSolution1<PA, T> output(Accumulator<PA, T, OUT> outputBridge) {
             this.outputBridge = outputBridge;
             return this;
         }
 
-        public ParameterSolution1<T> forwardIndeterminate(AccumulatorIndeterminate<T, IN> forward) {
+        public ParameterSolution1<PA, T> forwardIndeterminate(AccumulatorIndeterminate<PA, T, IN> forward) {
             this.inputBridge = forward;
             this.indeterminateMode = true;
             return this;
         }
 
-        public ParameterSolution1<T> backwardIndeterminate(AccumulatorIndeterminate<T, OUT> backward) {
+        public ParameterSolution1<PA, T> backwardIndeterminate(AccumulatorIndeterminate<PA, T, OUT> backward) {
             this.outputBridge = backward;
             this.indeterminateMode = true;
             return this;
         }
 
-        public <T2> ParameterSolution2<T, T2> and(Class<T2> fromClazz) {
+        public <T2> ParameterSolution2<PA, T, T2> and(Class<T2> fromClazz) {
             if (indeterminateMode) {
                 throw new CartrofitGrammarException("Can not add other types in indeterminate mode");
             }
@@ -321,10 +318,10 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
     }
 
-    public class ParameterSolution2<T1, T2> extends AbsParameterSolution {
+    public class ParameterSolution2<PA extends Annotation, T1, T2> extends AbsParameterSolution<PA, T2> {
 
-        ParameterSolution2(ParameterSolution1<T1> solutionBase, Class<T2> type) {
-            super(solutionBase, type);
+        ParameterSolution2(ParameterSolution1<PA, T1> solutionBase, Class<T2> type) {
+            super(solutionBase, type, null);
         }
 
         @Override
@@ -332,25 +329,25 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
             return 2;
         }
 
-        public ParameterSolution2<T1, T2> inputTogether(Accumulator2<T1, T2, IN> forward) {
+        public ParameterSolution2<PA, T1, T2> inputTogether(Accumulator2<PA, T1, T2, IN> forward) {
             this.inputTogether = forward;
             return this;
         }
 
-        public ParameterSolution2<T1, T2> outputTogether(Accumulator2<T1, T2, OUT> backward) {
+        public ParameterSolution2<PA, T1, T2> outputTogether(Accumulator2<PA, T1, T2, OUT> backward) {
             this.outputTogether = backward;
             return this;
         }
 
-        public <T3> ParameterSolution3<T1, T2, T3> and(Class<T3> fromClazz) {
+        public <T3> ParameterSolution3<PA, T1, T2, T3> and(Class<T3> fromClazz) {
             return new ParameterSolution3<>(this, fromClazz);
         }
     }
 
-    public class ParameterSolution3<T1, T2, T3> extends AbsParameterSolution {
+    public class ParameterSolution3<PA extends Annotation, T1, T2, T3> extends AbsParameterSolution<PA, T3> {
 
-        ParameterSolution3(ParameterSolution2<T1, T2> solutionBase, Class<T3> type) {
-            super(solutionBase, type);
+        ParameterSolution3(ParameterSolution2<PA, T1, T2> solutionBase, Class<T3> type) {
+            super(solutionBase, type, null);
         }
 
         @Override
@@ -358,25 +355,25 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
             return 3;
         }
 
-        public ParameterSolution3<T1, T2, T3> inputTogether(Accumulator3<T1, T2, T3, IN> forward) {
+        public ParameterSolution3<PA, T1, T2, T3> inputTogether(Accumulator3<PA, T1, T2, T3, IN> forward) {
             this.inputTogether = forward;
             return this;
         }
 
-        public ParameterSolution3<T1, T2, T3> outputTogether(Accumulator3<T1, T2, T3, OUT> backward) {
+        public ParameterSolution3<PA, T1, T2, T3> outputTogether(Accumulator3<PA, T1, T2, T3, OUT> backward) {
             this.outputTogether = backward;
             return this;
         }
 
-        public <T4> ParameterSolution4<T1, T2, T3, T4> and(Class<T4> fromClazz) {
+        public <T4> ParameterSolution4<PA, T1, T2, T3, T4> and(Class<T4> fromClazz) {
             return new ParameterSolution4<>(this, fromClazz);
         }
     }
 
-    public class ParameterSolution4<T1, T2, T3, T4> extends AbsParameterSolution {
+    public class ParameterSolution4<PA extends Annotation, T1, T2, T3, T4> extends AbsParameterSolution<PA, T4> {
 
-        ParameterSolution4(ParameterSolution3<T1, T2, T3> solutionBase, Class<T4> type) {
-            super(solutionBase, type);
+        ParameterSolution4(ParameterSolution3<PA, T1, T2, T3> solutionBase, Class<T4> type) {
+            super(solutionBase, type, null);
         }
 
         @Override
@@ -384,25 +381,25 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
             return 4;
         }
 
-        public ParameterSolution4<T1, T2, T3, T4> inputTogether(Accumulator4<T1, T2, T3, T4, IN> forward) {
+        public ParameterSolution4<PA, T1, T2, T3, T4> inputTogether(Accumulator4<PA, T1, T2, T3, T4, IN> forward) {
             this.inputTogether = forward;
             return this;
         }
 
-        public ParameterSolution4<T1, T2, T3, T4> outputTogether(Accumulator4<T1, T2, T3, T4, OUT> backward) {
+        public ParameterSolution4<PA, T1, T2, T3, T4> outputTogether(Accumulator4<PA, T1, T2, T3, T4, OUT> backward) {
             this.outputTogether = backward;
             return this;
         }
 
-        public <T5> ParameterSolution5<T1, T2, T3, T4, T5> and(Class<T5> fromClazz) {
+        public <T5> ParameterSolution5<PA, T1, T2, T3, T4, T5> and(Class<T5> fromClazz) {
             return new ParameterSolution5<>(this, fromClazz);
         }
     }
 
-    public class ParameterSolution5<T1, T2, T3, T4, T5> extends AbsParameterSolution {
+    public class ParameterSolution5<PA extends Annotation, T1, T2, T3, T4, T5> extends AbsParameterSolution<PA, T5> {
 
-        ParameterSolution5(ParameterSolution4<T1, T2, T3, T4> solutionBase, Class<T5> type) {
-            super(solutionBase, type);
+        ParameterSolution5(ParameterSolution4<PA, T1, T2, T3, T4> solutionBase, Class<T5> type) {
+            super(solutionBase, type, null);
         }
 
         @Override
@@ -410,12 +407,12 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
             return 5;
         }
 
-        public ParameterSolution5<T1, T2, T3, T4, T5> inputTogether(Accumulator5<T1, T2, T3, T4, T5, IN> forward) {
+        public ParameterSolution5<PA, T1, T2, T3, T4, T5> inputTogether(Accumulator5<PA, T1, T2, T3, T4, T5, IN> forward) {
             this.inputTogether = forward;
             return this;
         }
 
-        public ParameterSolution5<T1, T2, T3, T4, T5> outputTogether(Accumulator5<T1, T2, T3, T4, T5, OUT> backward) {
+        public ParameterSolution5<PA, T1, T2, T3, T4, T5> outputTogether(Accumulator5<PA, T1, T2, T3, T4, T5, OUT> backward) {
             this.outputTogether = backward;
             return this;
         }
@@ -423,11 +420,13 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
 
     private class SolutionRecord {
         AbsParameterSolution solution;
+        Annotation annotation;
         int start;
         int length;
 
-        SolutionRecord(AbsParameterSolution solution, int start, int length) {
+        SolutionRecord(AbsParameterSolution solution, Annotation annotation, int start, int length) {
             this.solution = solution;
+            this.annotation = annotation;
             this.start = start;
             this.length = length;
         }
@@ -444,7 +443,10 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
 
         void assembleSolution(AbsParameterSolution solution, int slotStart, int slotLength) {
-            solutionRecords.add(new SolutionRecord(solution, slotStart, slotLength));
+            Annotation annotation = solution.fixedAnnotationType != null ?
+                    parameterGroup.getParameterAt(slotStart)
+                            .getAnnotation(solution.fixedAnnotationType) : null;
+            solutionRecords.add(new SolutionRecord(solution, annotation, slotStart, slotLength));
         }
 
         @SuppressWarnings("unchecked")
@@ -456,14 +458,17 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
                     for (int j = 0; j < array.length; j++) {
                         array[j] = onCreateAccessibleParameter(record.start + j, avengers);
                     }
-                    AbsAccumulator<ParaVal[], SERIALIZATION> accumulator = (AbsAccumulator<ParaVal[], SERIALIZATION>)
+                    AbsAccumulator<Annotation, ParaVal[], SERIALIZATION> accumulator =
+                            (AbsAccumulator<Annotation, ParaVal[], SERIALIZATION>)
                             (input ? record.solution.inputTogether : record.solution.outputTogether);
-                    rawInput = accumulator.advance(rawInput, array);
+                    rawInput = accumulator.advance(record.annotation, rawInput, array);
                     // TODO： warning if user does not call set
                 } else {
-                    Accumulator<Object, SERIALIZATION> accumulator = (Accumulator<Object, SERIALIZATION>)
+                    Accumulator<Annotation, Object, SERIALIZATION> accumulator
+                            = (Accumulator<Annotation, Object, SERIALIZATION>)
                             (input ? record.solution.inputBridge : record.solution.outputBridge);
-                    rawInput = accumulator.advance(rawInput, onCreateAccessibleParameter(record.start, avengers));
+                    rawInput = accumulator.advance(record.annotation, rawInput,
+                            onCreateAccessibleParameter(record.start, avengers));
                 }
             }
             return rawInput;
@@ -534,8 +539,11 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
 
     private class InputConverterImpl extends SolutionRecordKeeper<IN> implements Function<Object[], IN> {
 
-        InputConverterImpl(ParameterGroup parameterGroup) {
+        private Call call;
+
+        InputConverterImpl(ParameterGroup parameterGroup, Call call) {
             super(true, parameterGroup);
+            this.call = call;
         }
 
         @Override
@@ -557,7 +565,8 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
 
         @Override
         public IN apply(Object[] parameterInput) {
-            IN rawInput = inputProvider != null ? inputProvider.get() : null;
+            IN rawInput = inputProvider != null ? inputProvider
+                    .apply((A) call.getAnnotation(), call.getKey()) : null;
             final int count = parameterGroup.getParameterCount();
             if (count == 0) {
                 return rawInput;
@@ -579,10 +588,10 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
 
         @Override
         public Object apply(OUT value) {
-            Accumulator<Object, OUT> accumulator
-                    = (Accumulator<Object, OUT>) targetSolution.outputBridge;
+            Accumulator<Annotation, Object, OUT> accumulator
+                    = (Accumulator<Annotation, Object, OUT>) targetSolution.outputBridge;
             synchronized (this) {
-                accumulator.advance(value, this);
+                accumulator.advance(null, value, this);
                 Object result = tmpResult;
                 tmpResult = null;
                 return result;

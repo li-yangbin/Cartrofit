@@ -1,10 +1,12 @@
 package com.liyangbin.cartrofit.solution;
 
-public interface Accumulator<V, R> extends AbsAccumulator<ParaVal[], R> {
+import java.lang.annotation.Annotation;
+
+public interface Accumulator<A extends Annotation, V, R> extends AbsAccumulator<A, ParaVal[], R> {
     @Override
-    default R advance(R old, ParaVal[] para) {
-        return advance(old, (ParaVal<V>) para[0]);
+    default R advance(A annotation, R old, ParaVal[] para) {
+        return advance(annotation, old, (ParaVal<V>) para[0]);
     }
 
-    R advance(R old, ParaVal<V> para);
+    R advance(A annotation, R old, ParaVal<V> para);
 }

@@ -103,15 +103,6 @@ public abstract class Flow<T> {
 
     protected abstract void onSubscribeStopped();
 
-    public interface FlowSource<T> {
-        void startWithInjector(Injector<T> injector);
-        void finishWithInjector(Injector<T> injector);
-
-        default boolean isHot() {
-            return true;
-        }
-    }
-
     public interface ColdFlowSource<T> extends FlowSource<T> {
         @Override
         default void finishWithInjector(Injector<T> injector) {

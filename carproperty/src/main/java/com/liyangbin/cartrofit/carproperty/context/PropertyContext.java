@@ -11,7 +11,6 @@ import com.liyangbin.cartrofit.carproperty.CarPropertyAccess;
 import com.liyangbin.cartrofit.carproperty.CarPropertyContext;
 import com.liyangbin.cartrofit.carproperty.CarPropertyException;
 import com.liyangbin.cartrofit.carproperty.DefaultCarServiceAccess;
-import com.liyangbin.cartrofit.flow.Flow;
 
 import java.util.List;
 
@@ -29,31 +28,27 @@ public class PropertyContext extends CarPropertyContext<CarPropertyManager> {
         }
 
         @Override
-        public void finishWithInjector(Flow.Injector<CarPropertyValue<?>> injector) {
-            super.finishWithInjector(injector);
-
-            if (getSubscriberCount() == 0 && registered) {
-                synchronized (PropertyContext.this) {
-                    if (registered) {
-                        try {
-                            getManagerLazily().unregisterListener(this);
-                        } catch (CarNotConnectedException ignore) {
-                        }
-                        flowSourceList.remove(this);
-                        registered = false;
+        public void onInactive() {
+            synchronized (PropertyContext.this) {
+                if (registered) {
+                    try {
+                        getManagerLazily().unregisterListener(this);
+                    } catch (CarNotConnectedException ignore) {
                     }
+                    flowSourceList.remove(this);
+                    registered = false;
                 }
             }
         }
 
         @Override
         public void onChangeEvent(CarPropertyValue carPropertyValue) {
-            sendPropertyChange(carPropertyValue);
+            publishPropertyChange(carPropertyValue);
         }
 
         @Override
         public void onErrorEvent(int propertyId, int area) {
-            sendPropertyError(new CarPropertyException(propertyId, area));
+            publishError(new CarPropertyException(propertyId, area));
         }
     }
 

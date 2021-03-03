@@ -1,7 +1,9 @@
 package com.liyangbin.cartrofit;
 
+import com.liyangbin.cartrofit.annotation.MethodCategory;
 import com.liyangbin.cartrofit.annotation.ScheduleOn;
 import com.liyangbin.cartrofit.flow.Flow;
+import com.liyangbin.cartrofit.flow.FlowSource;
 
 import java.util.concurrent.Executor;
 import java.util.function.Function;
@@ -20,7 +22,7 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
         super.onInit();
         CartrofitContext context = getContext();
         inputConverter = context.findInputConverter(this);
-        if (hasCategory(CartrofitContext.CATEGORY_TRACK)) {
+        if (hasCategory(MethodCategory.CATEGORY_TRACK)) {
             if (getKey().isCallbackEntry) {
                 outputConverter = context.findCallbackOutputConverter(this);
             } else {
@@ -41,8 +43,8 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
     @Override
     public Object invoke(Object[] parameter) throws Throwable {
         INPUT input = inputConverter.apply(parameter);
-        if (hasCategory(CartrofitContext.CATEGORY_TRACK)) {
-            Flow<OUTPUT> result = doTrackInvoke(input);
+        if (hasCategory(MethodCategory.CATEGORY_TRACK)) {
+            Flow<OUTPUT> result = onTrackInvoke(input);
             if (flowSubscribeExecutor != null) {
                 result = result.subscribeOn(flowSubscribeExecutor);
             }
@@ -56,16 +58,25 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
                 return flowConverter != null ? flowConverter.apply(userFlow) : userFlow;
             }
         } else {
-            OUTPUT output = doTypedInvoke(input);
+            OUTPUT output = onTypedInvoke(input);
             return returnConverter != null ? returnConverter.apply(output) : output;
         }
     }
 
-    public Flow<OUTPUT> doTrackInvoke(INPUT input) throws Throwable {
+    public Flow<OUTPUT> onTrackInvoke(INPUT input) throws Throwable {
+        return Flow.fromSource(onCreateFlowSource(input));
+    }
+
+    public FlowSource<OUTPUT> onCreateFlowSource(INPUT input) {
         return null;
     }
 
-    public OUTPUT doTypedInvoke(INPUT input) throws Throwable {
+    public OUTPUT onTypedInvoke(INPUT input) throws Throwable {
+        return null;
+    }
+
+    @Override
+    public Assembled<INPUT, OUTPUT> asAssembled() {
         return null;
     }
 }

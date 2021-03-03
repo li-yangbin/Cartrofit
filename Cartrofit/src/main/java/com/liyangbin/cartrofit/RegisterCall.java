@@ -1,7 +1,6 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.Callback;
-import com.liyangbin.cartrofit.annotation.MethodCategory;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.FlowConsumer;
 
@@ -27,7 +26,7 @@ public class RegisterCall extends CallGroup<Call> {
     }
 
     RegisterCall(Call trackCall, Key callbackKey,
-                        HashMap<Class<?>, Key> errorKeyMap, Key completeKey) {
+                 HashMap<Class<?>, Key> errorKeyMap, Key completeKey) {
         // register call transformed from track call
         coldTrackMode = true;
         this.coldTrackKey = callbackKey;
@@ -43,6 +42,10 @@ public class RegisterCall extends CallGroup<Call> {
     @Override
     protected Call asCall(Call entry) {
         return entry;
+    }
+
+    public boolean isColdTrackMode() {
+        return coldTrackMode;
     }
 
     @Override
@@ -92,15 +95,20 @@ public class RegisterCall extends CallGroup<Call> {
             if (commandFlowList.size() > 0) {
                 throw new CartrofitGrammarException("impossible situation");
             }
+
             for (int i = 0; i < getChildCount(); i++) {
                 Call call = getChildAt(i);
                 Flow<Object[]> registeredFlow = childInvoke(call, parameter);
-                InnerObserver observer = new InnerObserver(coldTrackMode ? coldTrackKey
-                        : call.getKey(), callbackObj, registeredFlow);
                 commandFlowList.add(registeredFlow);
-
-                registeredFlow.subscribe(observer);
             }
+
+            for (int i = 0; i < getChildCount(); i++) {
+                Call call = getChildAt(i);
+                Flow<Object[]> registeredFlow = commandFlowList.get(i);
+                registeredFlow.subscribe(new InnerObserver(coldTrackMode ? coldTrackKey
+                        : call.getKey(), callbackObj, registeredFlow));
+            }
+
         }
 
         void unregister() {
@@ -117,7 +125,6 @@ public class RegisterCall extends CallGroup<Call> {
         Key callbackKey;
         Object callbackObj;
         Flow<?> upStream;
-        boolean dispatchProcessing;
 
         InnerObserver(Key callbackKey, Object callbackObj, Flow<?> upStream) {
             this.callbackKey = callbackKey;
@@ -160,20 +167,11 @@ public class RegisterCall extends CallGroup<Call> {
 
         @Override
         public void accept(Object[] parameters) {
-            if (dispatchProcessing) {
-                throw new IllegalStateException("Recursive invocation from " + callbackKey);
-            }
-            dispatchProcessing = true;
-            safeInvoke(callbackKey, callbackObj, () -> dispatchProcessing = false, parameters);
+            safeInvoke(callbackKey, callbackObj, parameters);
         }
     }
 
     private static void safeInvoke(Key key, Object obj, Object... parameters) {
-        safeInvoke(key, obj, null, parameters);
-    }
-
-    private static void safeInvoke(Key key, Object obj, Runnable finallyAction,
-                                   Object... parameters) {
         try {
             key.method.invoke(obj, parameters);
         } catch (IllegalArgumentException parameterError) {
@@ -187,10 +185,6 @@ public class RegisterCall extends CallGroup<Call> {
             }
         } catch (IllegalAccessException illegalAccessException) {
             throw new RuntimeException("Impossible", illegalAccessException);
-        } finally {
-            if (finallyAction != null) {
-                finallyAction.run();
-            }
         }
     }
 }

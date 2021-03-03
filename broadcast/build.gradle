@@ -5,15 +5,16 @@ group='com.gitee.li-yangbin'
 
 android {
     compileSdkVersion 29
+    buildToolsVersion "30.0.2"
 
     defaultConfig {
-        minSdkVersion 28
+        minSdkVersion 24
         targetSdkVersion 29
         versionCode 1
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles "consumer-rules.pro"
+        consumerProguardFiles 'consumer-rules.pro'
     }
 
     buildTypes {
@@ -22,6 +23,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
@@ -32,12 +34,13 @@ dependencies {
     implementation project(path: ':Cartrofit')
     annotationProcessor project(':processorlib')
     testAnnotationProcessor project(':processorlib')
-    implementation files('libs/android.car.jar')
+
+    compileOnly 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
+    compileOnly 'io.reactivex.rxjava2:rxjava:2.2.9'
 
     testImplementation 'junit:junit:4.+'
     androidTestImplementation 'androidx.test.ext:junit:1.1.2'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.3.0'
-
-    compileOnly 'io.reactivex.rxjava2:rxjava:2.2.9'
-    testImplementation 'io.reactivex.rxjava2:rxjava:2.2.9'
+    androidTestImplementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
+    androidTestImplementation 'io.reactivex.rxjava2:rxjava:2.2.9'
 }

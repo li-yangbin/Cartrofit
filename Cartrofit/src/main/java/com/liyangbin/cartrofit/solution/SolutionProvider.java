@@ -19,12 +19,19 @@ public final class SolutionProvider {
     private static final Function<Object[], Object> sDummyInputConverter = value -> value != null && value.length > 0 ? value[0] : null;
     private static final Function<Object, Object[]> sDummyOutputConverter = o -> new Object[]{o};
 
-    private final ArrayList<CallSolution<?>> mCallSolutionList = new ArrayList<>();
+    private final ArrayList<CallSolution<?, ?>> mCallSolutionList = new ArrayList<>();
     private final HashMap<Class<?>, ConvertSolution<?, ?, ?>> mConverterInputMap = new HashMap<>();
     private final HashMap<Class<?>, ConvertSolution<?, ?, ?>> mConverterOutputMap = new HashMap<>();
 
-    public <A extends Annotation> CallSolution<A> create(Class<A> annotationClass) {
-        return new CallSolution<>(annotationClass);
+    public <A extends Annotation, T extends Call> CallSolution<A, T> create(Class<A> annotationClass,
+                                                                            Class<T> callType) {
+        return new CallSolution<>(annotationClass, callType);
+    }
+
+    public <A extends Annotation, INPUT, OUTPUT, T extends FixedTypeCall<INPUT, OUTPUT>>
+        FixedTypeCallSolution<A, INPUT, OUTPUT, T> createWithFixedType(Class<A> annotationClass,
+                                                                       Class<T> callType) {
+        return new FixedTypeCallSolution<>(annotationClass, callType);
     }
 
     boolean isEmpty() {
@@ -40,9 +47,10 @@ public final class SolutionProvider {
     }
 
     public <INPUT> Function<Object[], INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
-        ConvertSolution<INPUT, ?, ?> builder = (ConvertSolution<INPUT, ?, ?>) mConverterInputMap.get(call.getClass());
+        ConvertSolution<INPUT, ?, Annotation> builder =
+                (ConvertSolution<INPUT, ?, Annotation>) mConverterInputMap.get(call.getClass());
         if (builder != null) {
-            return builder.checkIn(call.getBindingParameter());
+            return builder.checkIn(call.getBindingParameter(), call);
         } else {
             return (Function<Object[], INPUT>) sDummyInputConverter;
         }
@@ -68,17 +76,13 @@ public final class SolutionProvider {
 
     public Call createCall(CartrofitContext context, Key key, int category) {
         for (int i = mCallSolutionList.size() - 1; i >= 0; i--) {
-            CallSolution<?> solution = mCallSolutionList.get(i);
+            CallSolution<?, ?> solution = mCallSolutionList.get(i);
             Call call = solution.createCall(context, category, key);
             if (call != null) {
                 return call;
             }
         }
         return null;
-    }
-
-    public interface CallProvider<A extends Annotation, T extends Call> {
-        T provide(CartrofitContext context, int category, A annotation, Key key);
     }
 
     public SolutionProvider merge(SolutionProvider solutionProvider) {
@@ -103,15 +107,17 @@ public final class SolutionProvider {
         return newProvider;
     }
 
-    public class CallSolution<A extends Annotation> {
+    public class CallSolution<A extends Annotation, T extends Call> {
 
         IntPredicate predictor;
         Class<A> candidateClass;
+        Class<T> callType;
         int expectedCategory;
         CallProvider<A, ?> provider;
 
-        CallSolution(Class<A> candidateClass) {
+        CallSolution(Class<A> candidateClass, Class<T> callType) {
             this.candidateClass = candidateClass;
+            this.callType = callType;
             MethodCategory category = candidateClass.getDeclaredAnnotation(MethodCategory.class);
             if (category != null) {
                 expectedCategory = category.value();
@@ -126,27 +132,22 @@ public final class SolutionProvider {
             }
         }
 
-        public <T extends Call> void provide(CallProvider<A, T> provider) {
+        public void provide(CallProvider<A, T> provider) {
             this.provider = provider;
             mCallSolutionList.add(this);
-        }
-
-        public <INPUT, OUTPUT, T extends FixedTypeCall<INPUT, OUTPUT>> ConvertSolution<INPUT, OUTPUT, A>
-                provideAndBuildParameter(Class<T> callType, CallProvider<A, T> provider) {
-            this.provider = provider;
-            mCallSolutionList.add(this);
-            if (mConverterInputMap.containsKey(callType) || mConverterOutputMap.containsKey(callType)) {
-                throw new CartrofitGrammarException("There is a parameter solution exists already");
-            }
-            return new ConvertSolution<>(callType, SolutionProvider.this);
         }
 
         private Call createCall(CartrofitContext context, int category, Key key) {
             if (predictor.test(category)) {
                 A annotation = key.getAnnotation(candidateClass);
                 if (annotation != null) {
-                    Call call = provider.provide(context, category, annotation, key);
-                    call.addCategory(expectedCategory);
+                    Call call;
+                    if (provider instanceof CallProvider2) {
+                        call = ((CallProvider2) provider).provide(context, category, annotation, key);
+                    } else {
+                        call = provider.provide(annotation, key);
+                    }
+                    call.setCategoryAndAnnotation(expectedCategory, annotation);
                     ConvertSolution<?, ?, ?> convertSolution = mConverterInputMap.get(call.getClass());
                     if (convertSolution != null) {
                         convertSolution.checkInputParameterGrammarIfNeeded(key,
@@ -156,6 +157,23 @@ public final class SolutionProvider {
                 }
             }
             return null;
+        }
+    }
+
+    public class FixedTypeCallSolution<A extends Annotation, INPUT, OUTPUT,
+            T extends FixedTypeCall<INPUT, OUTPUT>> extends CallSolution<A, T> {
+
+        FixedTypeCallSolution(Class<A> candidateClass, Class<T> callType) {
+            super(candidateClass, callType);
+        }
+
+        public ConvertSolution<INPUT, OUTPUT, A> provideAndBuildParameter(CallProvider<A, T> provider) {
+            this.provider = provider;
+            mCallSolutionList.add(this);
+            if (mConverterInputMap.containsKey(callType) || mConverterOutputMap.containsKey(callType)) {
+                throw new CartrofitGrammarException("There is a parameter solution exists already");
+            }
+            return new ConvertSolution<>(callType, SolutionProvider.this);
         }
     }
 }
