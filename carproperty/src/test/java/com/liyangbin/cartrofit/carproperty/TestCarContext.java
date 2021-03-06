@@ -198,6 +198,21 @@ public class TestCarContext extends CarPropertyContext<Object> {
     }
 
     @Override
+    public CarPropertyAccess<Byte> getByteCarPropertyAccess() {
+        return new CarPropertyAccess<Byte>() {
+            @Override
+            public Byte get(int propertyId, int area) throws CarNotConnectedException {
+                return (Byte) typeMockMap.get(propertyId).value;
+            }
+
+            @Override
+            public void set(int propertyId, int area, Byte value) throws CarNotConnectedException {
+                typeMockMap.get(propertyId).value = value;
+            }
+        };
+    }
+
+    @Override
     public CarPropertyAccess<?> getCarPropertyAccess(Class<?> type) {
         if (type == int[].class) {
             return new CarPropertyAccess<int[]>() {

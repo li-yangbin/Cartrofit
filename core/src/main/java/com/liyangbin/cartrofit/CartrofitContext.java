@@ -84,11 +84,13 @@ public abstract class CartrofitContext {
                     }
                 });
 
-        ROOT_PROVIDER.create(Delegate.class, Call.class)
-                .provide(new CallProvider2<Delegate, Call>() {
+        ROOT_PROVIDER.create(Delegate.class, DelegateCall.class)
+                .provide(new CallProvider2<Delegate, DelegateCall>() {
                     @Override
-                    public Call provide(CartrofitContext context, int category, Delegate delegate, Key key) {
-                        return context.createDelegateCallById(key, delegate.value(), category);
+                    public DelegateCall provide(CartrofitContext context, int category,
+                                                Delegate delegate, Key key) {
+                        return new DelegateCall(context.createDelegateCallById(key,
+                                delegate.value(), category));
                     }
                 });
     }
@@ -221,17 +223,27 @@ public abstract class CartrofitContext {
         apiObj = (T) Proxy.newProxyInstance(record.clazz.getClassLoader(),
                 new Class<?>[]{record.clazz},
                 (proxy, method, args) -> {
-                    if (method.getDeclaringClass() == Object.class) {
-                        return method.invoke(record, args);
-                    }
                     if (method.isDefault()) {
                         throw new UnsupportedOperationException(
                                 "Do not declare any default method in Cartrofit interface");
                     }
+                    final ApiRecord<?> invokeRecord;
+                    Class<?> declaringClass = method.getDeclaringClass();
+                    CartrofitContext runtimeContext;
+                    if (record.clazz == declaringClass) {
+                        invokeRecord = record;
+                        runtimeContext = CartrofitContext.this;
+                    } else {
+                        invokeRecord = Cartrofit.getApi(declaringClass, true);
+                        runtimeContext = Cartrofit.contextOf(invokeRecord);
+                    }
+                    if (declaringClass == Object.class) {
+                        return method.invoke(invokeRecord, args);
+                    }
                     Call call;
-                    Key key = new Key(record, method, false);
+                    Key key = new Key(invokeRecord, method, false);
                     synchronized (CartrofitContext.this) {
-                        call = getOrCreateCall(key, MethodCategory.CATEGORY_DEFAULT, true);
+                        call = runtimeContext.getOrCreateCall(key, MethodCategory.CATEGORY_ALL, true);
                     }
                     return call.exceptionalInvoke(args);
                 });
@@ -262,7 +274,9 @@ public abstract class CartrofitContext {
             if (apiClass == record.clazz || apiClass == null) {
                 throw new CartrofitGrammarException("Can not find target Id:" + id + " from:" + record.clazz);
             }
-            return getOrCreateCallById(key, Cartrofit.getApi(apiClass), id, flag, fromDelegate);
+            ApiRecord<?> delegateTargetRecord = Cartrofit.getApi(apiClass, true);
+            CartrofitContext context = Cartrofit.contextOf(delegateTargetRecord);
+            return context.getOrCreateCallById(key, delegateTargetRecord, id, flag, fromDelegate);
         }
         Key targetKey = new Key(record, method, false);
         Call call;

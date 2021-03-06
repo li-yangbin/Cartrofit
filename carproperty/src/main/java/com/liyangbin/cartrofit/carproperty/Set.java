@@ -15,6 +15,4 @@ public @interface Set {
     int propId();
 
     int area() default CarPropertyScope.DEFAULT_AREA_ID;
-
-    CarValue value() default @CarValue(string = CarValue.EMPTY_VALUE);
 }

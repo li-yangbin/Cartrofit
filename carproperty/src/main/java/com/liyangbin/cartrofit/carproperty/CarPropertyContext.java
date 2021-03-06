@@ -9,7 +9,6 @@ import android.content.Context;
 import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitContext;
-import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.FixedTypeCall;
 import com.liyangbin.cartrofit.carproperty.context.CabinContext;
 import com.liyangbin.cartrofit.carproperty.context.HvacContext;
@@ -408,60 +407,6 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
         CONFIG, // CarPropertyConfig
     }
 
-    private static class BuildInValue {
-        int intValue;
-
-        boolean booleanValue;
-
-        long longValue;
-
-        byte byteValue;
-        byte[] byteArray;
-
-        float floatValue;
-
-        String stringValue;
-
-        static BuildInValue build(CarValue value) {
-            if (CarValue.EMPTY_VALUE.equals(value.string())) {
-                return null;
-            }
-            BuildInValue result = new BuildInValue();
-
-            result.intValue = value.Int();
-            result.booleanValue = value.Boolean();
-
-            result.byteValue = value.Byte();
-            result.byteArray = value.ByteArray();
-
-            result.floatValue = value.Float();
-            result.longValue = value.Long();
-            result.stringValue = value.string();
-
-            return result;
-        }
-
-        Object extractValue(Class<?> clazz) {
-            if (String.class == clazz) {
-                return stringValue;
-            } else if (int.class == clazz || Integer.class == clazz) {
-                return intValue;
-            } else if (boolean.class == clazz || Boolean.class == clazz) {
-                return booleanValue;
-            } else if (byte.class == clazz || Byte.class == clazz) {
-                return byteValue;
-            } else if (byte[].class == clazz) {
-                return byteArray;
-            } else if (float.class == clazz || Float.class == clazz) {
-                return floatValue;
-            } else if (long.class == clazz || Long.class == clazz) {
-                return longValue;
-            } else {
-                throw new CartrofitGrammarException("invalid type:" + clazz);
-            }
-        }
-    }
-
     private static int resolveArea(int handleArea, int scopeArea) {
         return handleArea == CarPropertyScope.DEFAULT_AREA_ID ? scopeArea : handleArea;
     }
@@ -546,30 +491,14 @@ public abstract class CarPropertyContext<CAR> extends CartrofitContext implement
     }
 
     public static class PropertySet extends PropertyAccessCall<Void, Void> {
-        Object buildInSetValue;
-        BuildInValue buildInValueUnresolved;
 
         public PropertySet(CarPropertyScope scope, Set set) {
             super(set.propId(), resolveArea(set.area(), scope.area()));
-            buildInValueUnresolved = BuildInValue.build(set.value());
-        }
-
-        public Object resolveSetValue(Object[] parameter) throws CarNotConnectedException {
-            if (buildInValueUnresolved != null) {
-                synchronized (this) {
-                    if (buildInValueUnresolved != null) {
-                        buildInSetValue = buildInValueUnresolved
-                                .extractValue(getPropertyConfig().getPropertyType());
-                        buildInValueUnresolved = null;
-                    }
-                }
-            }
-            return buildInSetValue != null ? buildInSetValue : parameter[0];
         }
 
         @Override
         public Object invoke(Object[] parameter) throws CarNotConnectedException {
-            getPropertyAccess().set(propertyId, areaId, resolveSetValue(parameter));
+            getPropertyAccess().set(propertyId, areaId, parameter[0]);
             return null;
         }
     }

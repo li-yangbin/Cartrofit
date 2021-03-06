@@ -46,6 +46,7 @@ public class Key {
 
     void setDelegateKey(Key delegateKey) {
         this.delegateKey = delegateKey;
+        this.annotations = null;
     }
 
     private static <A extends Annotation> A find(Annotation[] annotations, Class<A> expectClass) {
@@ -455,6 +456,9 @@ public class Key {
     }
 
     public <A extends Annotation> A getScope() {
+        if (record.scopeObj == null && delegateKey != null) {
+            return delegateKey.getScope();
+        }
         return (A) record.scopeObj;
     }
 

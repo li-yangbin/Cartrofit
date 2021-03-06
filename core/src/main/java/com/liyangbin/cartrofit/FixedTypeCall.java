@@ -74,9 +74,4 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
     public OUTPUT onTypedInvoke(INPUT input) throws Throwable {
         return null;
     }
-
-    @Override
-    public Assembled<INPUT, OUTPUT> asAssembled() {
-        return null;
-    }
 }

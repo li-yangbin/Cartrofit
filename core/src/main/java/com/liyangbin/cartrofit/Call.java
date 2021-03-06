@@ -100,7 +100,7 @@ public abstract class Call {
         }
     }
 
-    final boolean handleFlowCallbackException(Throwable suspect, Object callback) {
+    boolean handleFlowCallbackException(Throwable suspect, Object callback) {
         if (suspect instanceof RuntimeException) {
             return false;
         }

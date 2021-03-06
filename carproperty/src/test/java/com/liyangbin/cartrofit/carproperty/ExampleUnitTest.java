@@ -79,6 +79,8 @@ public class ExampleUnitTest {
 
     @Test
     public void stringFlowRestoreTest() {
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestTrackIntOrString(true);
+        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTimeOutMillis(1000);
         Cartrofit.from(TestCarApi.class).trackStringSignalRestore()
                 .subscribe(ExampleUnitTest::println);
         Flow.delay(2000).doOnEach(i -> {
@@ -217,6 +219,36 @@ public class ExampleUnitTest {
             e.printStackTrace();
         }
         Cartrofit.from(TestCarApi.class).unregisterStringChangeListenerAlias(listener);
+    }
+
+    @Test
+    public void delegateIfTest() {
+        int getFromDummy = Cartrofit.from(DummyApi.class).getDummyIntSignal();
+        println("getFromDummy:" + getFromDummy);
+        Cartrofit.from(DummyApi.class).setDummyIntSignal(20086);
+        getFromDummy = Cartrofit.from(DummyApi.class).getDummyIntSignal();
+        println("getFromDummy after set:" + getFromDummy);
+        Cartrofit.from(DummyApi.class).registerDummyStringChangeListenerAlias(new DummyApi.DummyListener() {
+            @Override
+            public void onChange(String value) {
+                println("dummy api onChange:" + value);
+            }
+        });
+    }
+
+    @Test
+    public void mixedIfTest() {
+        int getFromMix = Cartrofit.from(MixedApi.class).getIntSignal();
+        println("getFromMix:" + getFromMix);
+        Cartrofit.from(MixedApi.class).setDummyIntSignal(20086);
+        getFromMix = Cartrofit.from(MixedApi.class).getIntSignal();
+        println("getFromMix after dummySet:" + getFromMix);
+        Cartrofit.from(MixedApi.class).registerDummyStringChangeListenerAlias(new DummyApi.DummyListener() {
+            @Override
+            public void onChange(String value) {
+                println("dummy api onChange:" + value);
+            }
+        });
     }
 
     @AfterClass

@@ -11,7 +11,6 @@ import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.function.Function;
-import java.util.function.IntPredicate;
 
 @SuppressWarnings("unchecked")
 public final class SolutionProvider {
@@ -109,7 +108,6 @@ public final class SolutionProvider {
 
     public class CallSolution<A extends Annotation, T extends Call> {
 
-        IntPredicate predictor;
         Class<A> candidateClass;
         Class<T> callType;
         int expectedCategory;
@@ -121,11 +119,6 @@ public final class SolutionProvider {
             MethodCategory category = candidateClass.getDeclaredAnnotation(MethodCategory.class);
             if (category != null) {
                 expectedCategory = category.value();
-                if (expectedCategory == MethodCategory.CATEGORY_DEFAULT) {
-                    predictor = flag -> true;
-                } else {
-                    predictor = flag -> (flag & expectedCategory) != 0;
-                }
             } else {
                 throw new CartrofitGrammarException("Must declare Category attribute on annotation:"
                         + candidateClass);
@@ -138,7 +131,7 @@ public final class SolutionProvider {
         }
 
         private Call createCall(CartrofitContext context, int category, Key key) {
-            if (predictor.test(category)) {
+            if ((category & expectedCategory) != 0) {
                 A annotation = key.getAnnotation(candidateClass);
                 if (annotation != null) {
                     Call call;

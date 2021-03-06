@@ -21,9 +21,9 @@ public class ApiRecord<T> {
     final Annotation scopeObj;
     final Class<? extends Annotation> scopeType;
 
-    ApiRecord(Annotation scopeObj, Class<T> clazz) {
+    ApiRecord(Annotation scopeObj, Class<? extends Annotation> scopeType, Class<T> clazz) {
         this.scopeObj = scopeObj;
-        this.scopeType = scopeObj.annotationType();
+        this.scopeType = scopeType;
         this.clazz = clazz;
 
         if (clazz.isAnnotationPresent(GenerateId.class)) {

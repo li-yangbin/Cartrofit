@@ -1,5 +1,5 @@
 include ':carproperty'
 include ':processorlib'
-include ':Cartrofit'
+include ':core'
 include ':hvacDemo'
 include ':broadcast'

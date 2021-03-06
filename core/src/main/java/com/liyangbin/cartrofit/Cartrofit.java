@@ -1,6 +1,8 @@
 package com.liyangbin.cartrofit;
 
+import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.WrappedData;
+import com.liyangbin.cartrofit.solution.SolutionProvider;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.ParameterizedType;
@@ -23,8 +25,13 @@ public final class Cartrofit {
     static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
     public static final Object SKIP = new Object();
 
+    static {
+        CONTEXT_FACTORY_CACHE.put(Delegate.class,
+                new ContextFactory<>(Delegate.class, DelegateContext::new));
+    }
+
     public static <T> T from(Class<T> apiClass) {
-        final ApiRecord<T> apiRecord = getApi(apiClass);
+        final ApiRecord<T> apiRecord = getApi(apiClass, true);
         return contextOf(apiRecord).from(apiRecord);
     }
 
@@ -33,7 +40,7 @@ public final class Cartrofit {
     }
 
     @SuppressWarnings("unchecked")
-    private static <T extends CartrofitContext> T contextOf(ApiRecord<?> apiRecord) {
+    static <T extends CartrofitContext> T contextOf(ApiRecord<?> apiRecord) {
         ContextFactory<?> factory = CONTEXT_FACTORY_CACHE.get(apiRecord.scopeType);
         CartrofitContext context = factory != null ? factory.get(apiRecord.scopeObj) : null;
         return (T) Objects.requireNonNull(context,
@@ -90,11 +97,11 @@ public final class Cartrofit {
         }
 
         CartrofitContext get(Annotation keySrc) {
-            if (!keyType.equals(keySrc.annotationType())) {
-                return null;
-            }
             if (normalSingleton != null) {
                 return normalSingleton.get();
+            }
+            if (!keyType.equals(keySrc.annotationType())) {
+                return null;
             }
             Object key = keyMapper.apply((A) keySrc);
             Singleton mappedProvider = mappedSingleton.get(key);
@@ -106,7 +113,28 @@ public final class Cartrofit {
         }
     }
 
+    private static class DelegateContext extends CartrofitContext {
+
+        @Override
+        public SolutionProvider onProvideCallSolution() {
+            return new SolutionProvider();
+        }
+
+        @Override
+        public Call onCreateCall(Key key, int category) {
+            if (!key.isAnnotationPresent(Delegate.class)) {
+                throw new CartrofitGrammarException("Must specify type annotation on "
+                        + key.record.clazz);
+            }
+            return super.onCreateCall(key, category);
+        }
+    }
+
     static <T> ApiRecord<T> getApi(Class<T> apiClass) {
+        return getApi(apiClass, false);
+    }
+
+    static <T> ApiRecord<T> getApi(Class<T> apiClass, boolean allowEmpty) {
         synchronized (CartrofitContext.class) {
             @SuppressWarnings("unchecked")
             ApiRecord<T> singletonRecord = (ApiRecord<T>) API_CACHE.get(apiClass);
@@ -116,15 +144,21 @@ public final class Cartrofit {
                     Annotation[] annotations = loopedClass.getDeclaredAnnotations();
                     for (Annotation annotation : annotations) {
                         if (CONTEXT_FACTORY_CACHE.containsKey(annotation.annotationType())) {
-                            API_CACHE.put(apiClass, singletonRecord = new ApiRecord<>(annotation, apiClass));
+                            API_CACHE.put(apiClass, singletonRecord = new ApiRecord<>(annotation,
+                                    annotation.annotationType(), apiClass));
                             break anchor;
                         }
                     }
                     loopedClass = loopedClass.getEnclosingClass();
                 } while (loopedClass != null);
             }
-            return Objects.requireNonNull(singletonRecord,
-                    "Failed to find valid context annotation from:" + apiClass);
+            if (allowEmpty && singletonRecord == null) {
+                singletonRecord = new ApiRecord<>(null, Delegate.class, apiClass);
+            }
+            if (singletonRecord == null) {
+                throw new CartrofitGrammarException("Failed to find valid context annotation from:" + apiClass);
+            }
+            return singletonRecord;
         }
     }
 
