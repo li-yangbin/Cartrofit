@@ -15,9 +15,21 @@ public class TestCarContext extends CarPropertyContext<Object> {
     public static final HashMap<Integer, Combo> typeMockMap = new HashMap<>();
     private boolean testTrackIntOrString;
     private boolean testException;
+    private Thread dispatcher;
 
     public TestCarContext() {
         super(new DummyAccess());
+    }
+
+    @Override
+    public void onGlobalRegister(boolean register) throws CarNotConnectedException {
+        if (register) {
+            dispatcher.start();
+            System.out.println("test dispatcher start");
+        } else {
+            dispatcher.interrupt();
+            System.out.println("test dispatcher interrupt");
+        }
     }
 
     private static class DummyAccess implements CarServiceAccess<Object> {
@@ -38,6 +50,10 @@ public class TestCarContext extends CarPropertyContext<Object> {
 
         @Override
         public void addOnCarAvailabilityListener(CarAvailabilityListener listener) {
+        }
+
+        @Override
+        public void removeOnCarAvailabilityListener(CarAvailabilityListener listener) {
         }
     }
 
@@ -62,10 +78,6 @@ public class TestCarContext extends CarPropertyContext<Object> {
             result.add(CarPropertyConfig.newBuilder(entry.getValue().clazz, entry.getKey(), 0).build());
         }
         return result;
-    }
-
-    @Override
-    public void onRegister(PropertyFlowSource source) throws CarNotConnectedException {
     }
 
     @Override
@@ -101,7 +113,7 @@ public class TestCarContext extends CarPropertyContext<Object> {
     }
 
     {
-        Thread tester = new Thread(new Runnable() {
+        dispatcher = new Thread(new Runnable() {
             @Override
             public void run() {
                 Random random = new Random();
@@ -112,6 +124,7 @@ public class TestCarContext extends CarPropertyContext<Object> {
                         Thread.sleep(sleep);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
+                        break;
                     }
                     int key = testTrackIntOrString ? 0 : 2;
                     synchronized (typeMockMap) {
@@ -131,7 +144,6 @@ public class TestCarContext extends CarPropertyContext<Object> {
                 }
             }
         }, "test_thread");
-        tester.start();
     }
 
     static Object generateRandomValue(Random random, Class<?> clazz) {

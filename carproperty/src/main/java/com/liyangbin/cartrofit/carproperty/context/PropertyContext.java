@@ -18,32 +18,17 @@ public class PropertyContext extends CarPropertyContext<CarPropertyManager> {
 
     public PropertyContext(Context context) {
         super(new DefaultCarServiceAccess<>(context, Car.PROPERTY_SERVICE));
-        registerOnceFlowSource = false;
     }
 
     class PropRegisteredSource extends PropertyFlowSource implements CarPropertyManager.CarPropertyEventListener {
 
-        public PropRegisteredSource(int propertyId, int area) {
+        PropRegisteredSource(int propertyId, int area) {
             super(propertyId, area);
         }
 
         @Override
-        public void onInactive() {
-            synchronized (PropertyContext.this) {
-                if (registered) {
-                    try {
-                        getManagerLazily().unregisterListener(this);
-                    } catch (CarNotConnectedException ignore) {
-                    }
-                    flowSourceList.remove(this);
-                    registered = false;
-                }
-            }
-        }
-
-        @Override
         public void onChangeEvent(CarPropertyValue carPropertyValue) {
-            publishPropertyChange(carPropertyValue);
+            publishUnchecked(carPropertyValue);
         }
 
         @Override
@@ -63,9 +48,18 @@ public class PropertyContext extends CarPropertyContext<CarPropertyManager> {
     }
 
     @Override
-    public void onRegister(PropertyFlowSource source) throws CarNotConnectedException {
+    public void onGlobalRegister(boolean register) throws CarNotConnectedException {
+        // ignore
+    }
+
+    @Override
+    public void onRegister(boolean register, CarFlowSource source) throws CarNotConnectedException {
         PropRegisteredSource registeredSource = (PropRegisteredSource) source;
-        getManagerLazily().registerListener(registeredSource, registeredSource.propertyId, 0f);
+        if (register) {
+            getManagerLazily().registerListener(registeredSource, registeredSource.propertyId, 0f);
+        } else {
+            getManagerLazily().unregisterListener(registeredSource);
+        }
     }
 
     @Override

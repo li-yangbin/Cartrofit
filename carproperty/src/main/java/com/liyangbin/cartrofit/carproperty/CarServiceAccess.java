@@ -7,4 +7,5 @@ public interface CarServiceAccess<CAR_MANAGER> {
     CAR_MANAGER get() throws CarNotConnectedException;
     boolean isAvailable();
     void addOnCarAvailabilityListener(CarAvailabilityListener listener);
+    void removeOnCarAvailabilityListener(CarAvailabilityListener listener);
 }

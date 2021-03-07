@@ -26,8 +26,12 @@ public class VendorExtensionContext extends CarPropertyContext<CarVendorExtensio
     }
 
     @Override
-    public void onRegister(PropertyFlowSource source) throws CarNotConnectedException {
-        getManagerLazily().registerCallback(this);
+    public void onGlobalRegister(boolean register) throws CarNotConnectedException {
+        if (register) {
+            getManagerLazily().registerCallback(this);
+        } else {
+            getManagerLazily().unregisterCallback(this);
+        }
     }
 
     @Override

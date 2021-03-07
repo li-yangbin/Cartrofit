@@ -20,30 +20,34 @@ public class FlowPublisher<T> {
 
     FlowPublisher(Flow<T> upStream) {
         this.upStream = upStream;
-        if (upStream.isHot()) {
-            start();
-        } else {
-            startWhenConnected = true;
-        }
     }
 
     public interface InitialDataProvider<T> {
         T get() throws Throwable;
     }
 
-    public void setDispatchStickyDataEnable(boolean dispatchStickyDataEnable,
-                                            InitialDataProvider<T> initialDataProvider) {
+    public FlowPublisher<T> setDispatchStickyDataEnable(boolean dispatchStickyDataEnable,
+                                                        InitialDataProvider<T> initialDataProvider) {
         this.dispatchStickyDataEnable = dispatchStickyDataEnable;
         this.initialDataProvider = initialDataProvider;
+        return this;
     }
 
-    private void start() {
+    public FlowPublisher<T> start() {
         if (!publishStarted) {
             publishStarted = true;
             startWhenConnected = false;
 
             upStream.subscribe(new PublishConsumer());
         }
+        return this;
+    }
+
+    public FlowPublisher<T> startIfConnected() {
+        if (!publishStarted) {
+            startWhenConnected = true;
+        }
+        return this;
     }
 
     public void stop() {

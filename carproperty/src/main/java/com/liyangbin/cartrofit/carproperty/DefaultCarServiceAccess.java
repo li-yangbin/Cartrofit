@@ -56,6 +56,11 @@ public class DefaultCarServiceAccess<CAR> implements CarServiceAccess<CAR> {
         }
     }
 
+    @Override
+    public void removeOnCarAvailabilityListener(CarAvailabilityListener listener) {
+        sAvailabilityListener.remove(listener);
+    }
+
     public static void ensureConnect(Context context) {
         if (!sConnected && !sConnecting) {
             sConnecting = true;
@@ -64,8 +69,10 @@ public class DefaultCarServiceAccess<CAR> implements CarServiceAccess<CAR> {
                 public void onServiceConnected(ComponentName name, IBinder service) {
                     sConnected = true;
                     sConnecting = false;
-                    for (int i = 0; i < sAvailabilityListener.size(); i++) {
-                        sAvailabilityListener.get(i).onCarAvailable();
+                    ArrayList<CarAvailabilityListener> copyListeners =
+                            (ArrayList<CarAvailabilityListener>) sAvailabilityListener.clone();
+                    for (int i = 0; i < copyListeners.size(); i++) {
+                        copyListeners.get(i).onCarAvailable();
                     }
                 }
 
@@ -73,8 +80,10 @@ public class DefaultCarServiceAccess<CAR> implements CarServiceAccess<CAR> {
                 public void onServiceDisconnected(ComponentName name) {
                     sConnected = sConnecting = false;
                     sCar = null;
-                    for (int i = 0; i < sAvailabilityListener.size(); i++) {
-                        sAvailabilityListener.get(i).onCarUnavailable();
+                    ArrayList<CarAvailabilityListener> copyListeners =
+                            (ArrayList<CarAvailabilityListener>) sAvailabilityListener.clone();
+                    for (int i = 0; i < copyListeners.size(); i++) {
+                        copyListeners.get(i).onCarUnavailable();
                     }
                 }
             });

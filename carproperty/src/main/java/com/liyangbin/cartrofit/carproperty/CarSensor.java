@@ -8,10 +8,5 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 @Target(TYPE)
 @Retention(RUNTIME)
-public @interface CarPropertyScope {
-    int DEFAULT_AREA_ID = 0;
-
-    String value();
-
-    int area() default DEFAULT_AREA_ID;
+public @interface CarSensor {
 }
