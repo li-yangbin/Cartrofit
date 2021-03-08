@@ -30,6 +30,11 @@ public class DefaultCarServiceAccess<CAR> implements CarServiceAccess<CAR> {
     }
 
     @Override
+    public String getKey() {
+        return managerKey;
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public CAR get() throws CarNotConnectedException {
         if (sCar == null || !sConnected) {

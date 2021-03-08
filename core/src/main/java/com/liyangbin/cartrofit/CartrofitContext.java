@@ -14,15 +14,13 @@ import com.liyangbin.cartrofit.support.SupportUtil;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-@SuppressWarnings("unchecked")
-public abstract class CartrofitContext {
+public abstract class CartrofitContext<CONTEXT extends Annotation> {
 
     private static final Router ID_ROUTER = new Router();
     private static final SolutionProvider ROOT_PROVIDER = new SolutionProvider();
@@ -33,7 +31,7 @@ public abstract class CartrofitContext {
         ROOT_PROVIDER.create(Register.class, RegisterCall.class)
                 .provide(new CallProvider2<Register, RegisterCall>() {
                     @Override
-                    public RegisterCall provide(CartrofitContext context, int category, Register annotation, Key key) {
+                    public RegisterCall provide(CartrofitContext<?> context, int category, Register annotation, Key key) {
                         Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
                         if (callbackParameter == null && key.isImplicitCallbackParameterPresent()) {
                             callbackParameter = key.getParameterAt(0);
@@ -55,7 +53,7 @@ public abstract class CartrofitContext {
         ROOT_PROVIDER.create(Unregister.class, UnregisterCall.class)
                 .provide(new CallProvider2<Unregister, UnregisterCall>() {
                     @Override
-                    public UnregisterCall provide(CartrofitContext context, int category, Unregister unregister, Key key) {
+                    public UnregisterCall provide(CartrofitContext<?> context, int category, Unregister unregister, Key key) {
                         int count = key.getParameterCount();
                         if (count != 1) {
                             throw new CartrofitGrammarException("Unregister must provide a single" +
@@ -87,7 +85,7 @@ public abstract class CartrofitContext {
         ROOT_PROVIDER.create(Delegate.class, DelegateCall.class)
                 .provide(new CallProvider2<Delegate, DelegateCall>() {
                     @Override
-                    public DelegateCall provide(CartrofitContext context, int category,
+                    public DelegateCall provide(CartrofitContext<?> context, int category,
                                                 Delegate delegate, Key key) {
                         return new DelegateCall(context.createDelegateCallById(key,
                                 delegate.value(), category));
@@ -182,18 +180,15 @@ public abstract class CartrofitContext {
         }
     }
 
+    private ContextFactory mProvideFactory;
+    private ContextFactory mUserSpecifyFactory;
     private final SolutionProvider mSolutionProvider;
-    private final HashMap<ApiRecord<?>, Object> mApiCache = new HashMap<>();
     private final HashMap<Key, Call> mCallCache = new HashMap<>();
     private ArrayList<ExceptionHandler<?>> mExceptionHandlers;
     private boolean mCatchExceptionByDefault = true;
 
     public CartrofitContext() {
-        final SolutionProvider solutionProvider = onProvideCallSolution();
-        if (solutionProvider == null) {
-            throw new CartrofitGrammarException("Sub-class must return a valid solution provider");
-        }
-        mSolutionProvider = ROOT_PROVIDER.merge(solutionProvider);
+        mSolutionProvider = ROOT_PROVIDER.merge(onProvideCallSolution());
     }
 
     public void addExceptionHandler(ExceptionHandler<?> handler) {
@@ -207,61 +202,36 @@ public abstract class CartrofitContext {
         mCatchExceptionByDefault = catchExceptionByDefault;
     }
 
-    public void onApiCreated(Annotation annotation, Class<?> apiType) {
+    public boolean onApiCreate(CONTEXT annotation, Class<?> apiType) {
+        return true;
     }
 
-    public <T> T from(Class<T> api) {
-        return from(Cartrofit.getApi(api));
-    }
-
-    synchronized <T> T from(ApiRecord<T> record) {
-        T apiObj = (T) mApiCache.get(record);
-        if (apiObj != null) {
-            return apiObj;
+    void attachRunningFactory(ContextFactory contextFactory) {
+        if (mProvideFactory != null && mProvideFactory != contextFactory) {
+            throw new IllegalStateException("Different contextFactory attach on same context obj," +
+                    " that's impossible");
         }
-        onApiCreated(record.scopeObj, record.clazz);
-        apiObj = (T) Proxy.newProxyInstance(record.clazz.getClassLoader(),
-                new Class<?>[]{record.clazz},
-                (proxy, method, args) -> {
-                    if (method.isDefault()) {
-                        throw new UnsupportedOperationException(
-                                "Do not declare any default method in Cartrofit interface");
-                    }
-                    final ApiRecord<?> invokeRecord;
-                    Class<?> declaringClass = method.getDeclaringClass();
-                    CartrofitContext runtimeContext;
-                    if (record.clazz == declaringClass) {
-                        invokeRecord = record;
-                        runtimeContext = CartrofitContext.this;
-                    } else {
-                        invokeRecord = Cartrofit.getApi(declaringClass, true);
-                        runtimeContext = Cartrofit.contextOf(invokeRecord);
-                    }
-                    if (declaringClass == Object.class) {
-                        return method.invoke(invokeRecord, args);
-                    }
-                    Call call;
-                    Key key = new Key(invokeRecord, method, false);
-                    synchronized (CartrofitContext.this) {
-                        call = runtimeContext.getOrCreateCall(key, MethodCategory.CATEGORY_ALL, true);
-                    }
-                    return call.exceptionalInvoke(args);
-                });
-        mApiCache.put(record, apiObj);
-        return apiObj;
+        mProvideFactory = contextFactory;
+    }
+
+    public final <T> T from(Class<T> api) {
+        if (mUserSpecifyFactory == null) {
+            mUserSpecifyFactory = new ContextFactory(Cartrofit.DEFAULT_FACTORY, toString());
+            mUserSpecifyFactory.add(this);
+        }
+        return mUserSpecifyFactory.from(api);
     }
 
     public Call getOrCreateCall(Key key, int category, boolean fromCache) {
-        Call call;
-        if (fromCache) {
-            call = mCallCache.get(key);
-            if (call == null) {
-                call = onCreateCall(key, category);
-                mCallCache.put(key, call);
-                call.dispatchInit(call.getParameterContext());
-            }
-        } else {
+        Call call = fromCache ? mCallCache.get(key) : null;
+        if (call == null) {
             call = onCreateCall(key, category);
+            if (call == null) {
+                throw new CartrofitGrammarException(key + " can not be parsed by " + this);
+            }
+            if (fromCache) {
+                mCallCache.put(key, call);
+            }
             call.dispatchInit(call.getParameterContext());
         }
         return call;
@@ -274,8 +244,8 @@ public abstract class CartrofitContext {
             if (apiClass == record.clazz || apiClass == null) {
                 throw new CartrofitGrammarException("Can not find target Id:" + id + " from:" + record.clazz);
             }
-            ApiRecord<?> delegateTargetRecord = Cartrofit.getApi(apiClass, true);
-            CartrofitContext context = Cartrofit.contextOf(delegateTargetRecord);
+            ApiRecord<?> delegateTargetRecord = ContextFactory.getApi(apiClass);
+            CartrofitContext<?> context = mProvideFactory.findContext(delegateTargetRecord);
             return context.getOrCreateCallById(key, delegateTargetRecord, id, flag, fromDelegate);
         }
         Key targetKey = new Key(record, method, false);

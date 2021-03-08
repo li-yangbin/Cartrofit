@@ -15,7 +15,6 @@ public class ApiRecord<T> {
     private HashMap<Integer, Method> selfDependency = new HashMap<>();
     private HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
     private HashMap<Class<?>, ArrayList<Key>> childrenKeyCache = new HashMap<>();
-    private List<Class<? extends ExceptionHandler>> exceptionHandlers;
 
     final Class<T> clazz;
     final Annotation scopeObj;

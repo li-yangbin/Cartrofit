@@ -1,8 +1,7 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.annotation.Delegate;
 import com.liyangbin.cartrofit.annotation.WrappedData;
-import com.liyangbin.cartrofit.solution.SolutionProvider;
+import com.liyangbin.cartrofit.support.SupportUtil;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.ParameterizedType;
@@ -10,156 +9,31 @@ import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Objects;
-import java.util.function.Function;
-import java.util.function.Supplier;
 
 public final class Cartrofit {
 
     private Cartrofit() {
     }
 
-    private static final HashMap<Class<?>, ApiRecord<?>> API_CACHE = new HashMap<>();
-    private static final HashMap<Class<? extends Annotation>, ContextFactory<?>>
-            CONTEXT_FACTORY_CACHE = new HashMap<>();
+    static final ContextFactory DEFAULT_FACTORY = new ContextFactory("Cartrofit-default");
     static final HashMap<Class<?>, FlowConverter<?>> FLOW_CONVERTER_MAP = new HashMap<>();
     static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
     public static final Object SKIP = new Object();
 
-    static {
-        CONTEXT_FACTORY_CACHE.put(Delegate.class,
-                new ContextFactory<>(Delegate.class, DelegateContext::new));
-    }
-
     public static <T> T from(Class<T> apiClass) {
-        final ApiRecord<T> apiRecord = getApi(apiClass, true);
-        return contextOf(apiRecord).from(apiRecord);
+        return DEFAULT_FACTORY.from(apiClass);
     }
 
-    public static <T extends CartrofitContext> T contextOf(Class<?> apiClass) {
-        return contextOf(getApi(apiClass));
+    public static <T extends CartrofitContext<?>> T defaultContextOf(Class<?> apiClass) {
+        return (T) DEFAULT_FACTORY.findContext(ContextFactory.getApi(apiClass));
     }
 
-    @SuppressWarnings("unchecked")
-    static <T extends CartrofitContext> T contextOf(ApiRecord<?> apiRecord) {
-        ContextFactory<?> factory = CONTEXT_FACTORY_CACHE.get(apiRecord.scopeType);
-        CartrofitContext context = factory != null ? factory.get(apiRecord.scopeObj) : null;
-        return (T) Objects.requireNonNull(context,
-                "Can not find context provider for:" + apiRecord.clazz);
+    public static <A extends Annotation> void register(CartrofitContext<A> context) {
+        DEFAULT_FACTORY.add(context);
     }
 
-    private static class Singleton {
-        private Supplier<? extends CartrofitContext> initProvider;
-        private CartrofitContext instance;
-
-        Singleton(Supplier<? extends CartrofitContext> initProvider) {
-            this.initProvider = initProvider;
-        }
-
-        CartrofitContext get() {
-            if (instance == null) {
-                synchronized (this) {
-                    if (instance == null) {
-                        instance = Objects.requireNonNull(initProvider.get());
-                        initProvider = null;
-                    }
-                }
-            }
-            return instance;
-        }
-    }
-
-    public static <A extends Annotation> void registerAsSingleton(Class<A> keyType,
-                                                                  Supplier<CartrofitContext> provider) {
-        CONTEXT_FACTORY_CACHE.put(keyType, new ContextFactory<>(keyType, provider));
-    }
-
-    public static <A extends Annotation> ContextFactory<A> createSingletonFactory(Class<A> keyType,
-                                                                                  Function<A, ?> keyMapper) {
-        ContextFactory<A> factory = new ContextFactory<>(keyType, keyMapper);
-        CONTEXT_FACTORY_CACHE.put(keyType, factory);
-        return factory;
-    }
-
-    public static final class ContextFactory<A extends Annotation> {
-        private Function<A, ?> keyMapper;
-        private Class<A> keyType;
-        private Singleton normalSingleton;
-        private HashMap<Object, Singleton> mappedSingleton = new HashMap<>();
-
-        ContextFactory(Class<A> keyType, Supplier<CartrofitContext> provider) {
-            this.keyType = Objects.requireNonNull(keyType);
-            this.normalSingleton = new Singleton(provider);
-        }
-
-        ContextFactory(Class<A> keyType, Function<A, ?> keyMapper) {
-            this.keyType = Objects.requireNonNull(keyType);
-            this.keyMapper = Objects.requireNonNull(keyMapper);
-        }
-
-        CartrofitContext get(Annotation keySrc) {
-            if (normalSingleton != null) {
-                return normalSingleton.get();
-            }
-            if (!keyType.equals(keySrc.annotationType())) {
-                return null;
-            }
-            Object key = keyMapper.apply((A) keySrc);
-            Singleton mappedProvider = mappedSingleton.get(key);
-            return mappedProvider != null ? mappedProvider.get() : null;
-        }
-
-        public void register(Object key, Supplier<? extends CartrofitContext> provider) {
-            mappedSingleton.put(key, new Singleton(provider));
-        }
-    }
-
-    private static class DelegateContext extends CartrofitContext {
-
-        @Override
-        public SolutionProvider onProvideCallSolution() {
-            return new SolutionProvider();
-        }
-
-        @Override
-        public Call onCreateCall(Key key, int category) {
-            if (!key.isAnnotationPresent(Delegate.class)) {
-                throw new CartrofitGrammarException("Must specify type annotation on "
-                        + key.record.clazz);
-            }
-            return super.onCreateCall(key, category);
-        }
-    }
-
-    static <T> ApiRecord<T> getApi(Class<T> apiClass) {
-        return getApi(apiClass, false);
-    }
-
-    static <T> ApiRecord<T> getApi(Class<T> apiClass, boolean allowEmpty) {
-        synchronized (CartrofitContext.class) {
-            @SuppressWarnings("unchecked")
-            ApiRecord<T> singletonRecord = (ApiRecord<T>) API_CACHE.get(apiClass);
-            if (singletonRecord == null) {
-                Class<?> loopedClass = apiClass;
-                anchor: do {
-                    Annotation[] annotations = loopedClass.getDeclaredAnnotations();
-                    for (Annotation annotation : annotations) {
-                        if (CONTEXT_FACTORY_CACHE.containsKey(annotation.annotationType())) {
-                            API_CACHE.put(apiClass, singletonRecord = new ApiRecord<>(annotation,
-                                    annotation.annotationType(), apiClass));
-                            break anchor;
-                        }
-                    }
-                    loopedClass = loopedClass.getEnclosingClass();
-                } while (loopedClass != null);
-            }
-            if (allowEmpty && singletonRecord == null) {
-                singletonRecord = new ApiRecord<>(null, Delegate.class, apiClass);
-            }
-            if (singletonRecord == null) {
-                throw new CartrofitGrammarException("Failed to find valid context annotation from:" + apiClass);
-            }
-            return singletonRecord;
-        }
+    public static <A extends Annotation> void registerLazily(ContextFactory.ContextProvider<A> provider) {
+        DEFAULT_FACTORY.addLazily(provider);
     }
 
     public static FlowConverter<?> findFlowConverter(Class<?> target) {
@@ -182,43 +56,9 @@ public final class Cartrofit {
         return null;
     }
 
-    private static Class<?> lookUp(Class<?> clazz, Class<?> lookForTarget) {
-        if (clazz == lookForTarget) {
-            throw new CartrofitGrammarException("Invalid parameter:" + clazz);
-        }
-        if (!lookForTarget.isAssignableFrom(clazz)) {
-            return null;
-        }
-        Class<?>[] ifClazzArray = clazz.getInterfaces();
-        for (Class<?> ifClazz : ifClazzArray){
-            if (ifClazz == lookForTarget) {
-                return clazz;
-            } else if (lookForTarget.isAssignableFrom(ifClazz)) {
-                Class<?>[] ifParents = ifClazz.getInterfaces();
-                for (Class<?> subIfClazz : ifParents){
-                    if (subIfClazz == lookForTarget) {
-                        return ifClazz;
-                    }
-                }
-                for (Class<?> subIfClazz : ifParents){
-                    Class<?> extendsBy = lookUp(subIfClazz, lookForTarget);
-                    if (extendsBy != null) {
-                        return extendsBy;
-                    }
-                }
-            }
-        }
-        Class<?> superClazz = clazz.getSuperclass();
-        if (superClazz != null && superClazz != Object.class) {
-            return lookUp(superClazz, lookForTarget);
-        } else {
-            return null;
-        }
-    }
-
     private static Class<?> findFlowConverterTarget(FlowConverter<?> converter) {
         Objects.requireNonNull(converter);
-        Class<?> implementsBy = lookUp(converter.getClass(), FlowConverter.class);
+        Class<?> implementsBy = ContextFactory.findImplement(converter.getClass(), FlowConverter.class);
         if (implementsBy == null) {
             throw new CartrofitGrammarException("invalid input converter:" + converter.getClass());
         }

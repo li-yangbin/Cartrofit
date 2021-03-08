@@ -39,6 +39,11 @@ public class TestCarContext extends CarPropertyContext<Object> {
         }
 
         @Override
+        public String getKey() {
+            return "test";
+        }
+
+        @Override
         public Object get() throws CarNotConnectedException {
             return null;
         }

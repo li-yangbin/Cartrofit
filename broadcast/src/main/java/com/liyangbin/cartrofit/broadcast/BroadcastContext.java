@@ -11,6 +11,8 @@ import android.os.Handler;
 import android.os.Parcelable;
 import android.os.UserHandle;
 
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
 import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitContext;
@@ -28,18 +30,16 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
-
-public class BroadcastContext extends CartrofitContext {
+public class BroadcastContext extends CartrofitContext<Broadcast> {
     private final Context mContext;
     private final boolean mIsLocalBroadcast;
     private final HashMap<Call, BroadcastFlowSource> mCachedBroadcastSource = new HashMap<>();
 
     public static void registerAsDefault(Context context) {
-        Cartrofit.registerAsSingleton(Broadcast.class, () -> new BroadcastContext(context, false));
+        Cartrofit.register(new BroadcastContext(context, false));
         try {
             Class.forName("androidx.localbroadcastmanager.content.LocalBroadcastManager");
-            Cartrofit.registerAsSingleton(LocalBroadcast.class, () -> new BroadcastContext(context, true));
+            Cartrofit.register(new BroadcastContext(context, true));
         } catch (ClassNotFoundException ignore) {
             // add dependency 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0' to your gradle file
         }
@@ -48,6 +48,11 @@ public class BroadcastContext extends CartrofitContext {
     public BroadcastContext(Context context, boolean isLocal) {
         this.mContext = context;
         this.mIsLocalBroadcast = isLocal;
+    }
+
+    @Override
+    public boolean onApiCreate(Broadcast annotation, Class<?> apiType) {
+        return annotation.isLocal() == mIsLocalBroadcast;
     }
 
     @Override

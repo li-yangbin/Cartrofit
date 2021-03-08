@@ -1,6 +1,5 @@
 package com.liyangbin.cartrofit.carproperty;
 
-import android.car.Car;
 import android.car.CarNotConnectedException;
 import android.car.hardware.CarPropertyConfig;
 import android.car.hardware.CarPropertyValue;
@@ -23,7 +22,6 @@ import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
 
 class PropKey {
     int propertyId;
@@ -50,16 +48,13 @@ class PropKey {
 
     @Override
     public String toString() {
-        return "prop:" + propertyId + " hex:0x" + Integer.toHexString(propertyId)
-                + " & area:" + area + " hex:0x" + Integer.toHexString(area);
+        return CarPropertyContext.prop2Str(propertyId, area);
     }
 }
 
 public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, PropKey, CarPropertyValue<?>> {
 
     private static final SolutionProvider CAR_PROPERTY_SOLUTION = new SolutionProvider();
-    private static final Cartrofit.ContextFactory<CarPropertyScope> SCOPE_FACTORY =
-            Cartrofit.createSingletonFactory(CarPropertyScope.class, CarPropertyScope::value);
 
     static {
         CAR_PROPERTY_SOLUTION.create(Get.class, PropertyGet.class)
@@ -91,10 +86,6 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Pr
                 }).buildAndCommit();
     }
 
-    public static void registerScopeProvider(String scope, Supplier<CarAbstractContext> provider) {
-        SCOPE_FACTORY.register(scope, provider);
-    }
-
     public static String prop2Str(int property, int area) {
         return "prop:" + property + " hex:0x" + Integer.toHexString(property)
                 + " & area:" + area + " hex:0x" + Integer.toHexString(area);
@@ -107,16 +98,11 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Pr
     public static void registerAsDefault(Context context) {
         DefaultCarServiceAccess.ensureConnect(context);
 
-        CarPropertyContext.registerScopeProvider(Car.HVAC_SERVICE,
-                () -> new HvacContext(context));
-        CarPropertyContext.registerScopeProvider(Car.VENDOR_EXTENSION_SERVICE,
-                () -> new VendorExtensionContext(context));
-        CarPropertyContext.registerScopeProvider(Car.PROPERTY_SERVICE,
-                () -> new PropertyContext(context));
-        CarPropertyContext.registerScopeProvider(Car.CABIN_SERVICE,
-                () -> new CabinContext(context));
-        CarPropertyContext.registerScopeProvider(Car.SENSOR_SERVICE,
-                () -> new CarSensorContext(context));
+        Cartrofit.register(new HvacContext(context));
+        Cartrofit.register(new VendorExtensionContext(context));
+        Cartrofit.register(new PropertyContext(context));
+        Cartrofit.register(new CabinContext(context));
+        Cartrofit.register(new CarSensorContext(context));
     }
 
     private long debounceTimeMillis = DEBOUNCE_TIME_MS;

@@ -34,7 +34,7 @@ public class ExampleUnitTest {
 
     @BeforeClass
     public static void onStart() {
-        CarPropertyContext.registerScopeProvider("test", TestCarContext::new);
+        Cartrofit.register(new TestCarContext());
     }
 
     @Test
@@ -79,8 +79,8 @@ public class ExampleUnitTest {
 
     @Test
     public void stringFlowRestoreTest() {
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestTrackIntOrString(true);
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTimeOutMillis(1000);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTestTrackIntOrString(true);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTimeOutMillis(1000);
         Cartrofit.from(TestCarApi.class).trackStringSignalRestore()
                 .subscribe(ExampleUnitTest::println);
         Flow.delay(2000).doOnEach(i -> {
@@ -124,7 +124,7 @@ public class ExampleUnitTest {
 
     @Test
     public void timeoutTest() {
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTimeOutMillis(3000);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTimeOutMillis(3000);
         Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
             @Override
             public void onChange(int value) {
@@ -136,8 +136,8 @@ public class ExampleUnitTest {
 
     @Test
     public void debounceTest() {
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setDebounceMillis(3000);
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestTrackIntOrString(true);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setDebounceMillis(3000);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTestTrackIntOrString(true);
         Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
             @Override
             public void onChange(int value) {
@@ -149,7 +149,7 @@ public class ExampleUnitTest {
 
     @Test
     public void exceptionTest() {
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestException(true);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTestException(true);
         try {
             Cartrofit.from(TestCarApi.class).setIntSignalIfThrow(10086);
         } catch (CarNotConnectedException e) {
@@ -159,8 +159,8 @@ public class ExampleUnitTest {
 
     @Test
     public void callbackExceptionWithoutCaughtTest() {
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestException(true);
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestTrackIntOrString(true);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTestException(true);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTestTrackIntOrString(true);
         Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
             @Override
             public void onChange(int value) {
@@ -171,8 +171,8 @@ public class ExampleUnitTest {
 
     @Test
     public void callbackExceptionTest() {
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestException(true);
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestTrackIntOrString(true);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTestException(true);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTestTrackIntOrString(true);
         Cartrofit.from(TestCarApi.class).registerIntErrorChangeListener(new TestCarApi.OnErrorChangeListener() {
             @Override
             public void onChange(int value) {
@@ -188,7 +188,7 @@ public class ExampleUnitTest {
 
     @Test
     public void unregisterTest() {
-        Cartrofit.<TestCarContext>contextOf(TestCarApi.class).setTestTrackIntOrString(true);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTestTrackIntOrString(true);
         TestCarApi.OnChangeListener listener;
         Cartrofit.from(TestCarApi.class).registerIntChangeListener(listener = new TestCarApi.OnChangeListener() {
             @Override
@@ -244,6 +244,27 @@ public class ExampleUnitTest {
         getFromMix = Cartrofit.from(MixedApi.class).getIntSignal();
         println("getFromMix after dummySet:" + getFromMix);
         Cartrofit.from(MixedApi.class).registerDummyStringChangeListenerAlias(new DummyApi.DummyListener() {
+            @Override
+            public void onChange(String value) {
+                println("dummy api onChange:" + value);
+            }
+        });
+    }
+
+    @Test
+    public void userContextTest() {
+        TestCarContext tempContext = new TestCarContext() {
+            @Override
+            public String toString() {
+                return "created by user";
+            }
+        };
+        int getFromMix = tempContext.from(MixedApi.class).getIntSignal();
+        println("getFromMix:" + getFromMix);
+        tempContext.from(MixedApi.class).setDummyIntSignal(20086);
+        getFromMix = tempContext.from(MixedApi.class).getIntSignal();
+        println("getFromMix after dummySet:" + getFromMix);
+        tempContext.from(MixedApi.class).registerDummyStringChangeListenerAlias(new DummyApi.DummyListener() {
             @Override
             public void onChange(String value) {
                 println("dummy api onChange:" + value);

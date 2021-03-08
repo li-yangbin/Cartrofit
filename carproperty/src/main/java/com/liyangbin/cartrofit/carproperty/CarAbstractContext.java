@@ -10,12 +10,12 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Objects;
 
-public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> extends CartrofitContext {
+public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> extends CartrofitContext<CarPropertyScope> {
 
-    private HashMap<SOURCE_KEY, CarFlowSource> cachedFlowSource = new HashMap<>();
-    private boolean cachedDirty = true;
+    private final HashMap<SOURCE_KEY, CarFlowSource> cachedFlowSource = new HashMap<>();
+    private boolean cacheDirty = true;
     private ArrayList<CarFlowSource> copyAfterDirtyFlowSourceList;
-    private CarServiceAccess<CAR> serviceAccess;
+    private final CarServiceAccess<CAR> serviceAccess;
     private CAR manager;
     private boolean globalAvailabilityRegistered;
     private boolean globalRegistered;
@@ -44,6 +44,11 @@ public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> exte
         this.serviceAccess = Objects.requireNonNull(serviceAccess);
     }
 
+    @Override
+    public boolean onApiCreate(CarPropertyScope annotation, Class<?> apiType) {
+        return annotation.value().equals(serviceAccess.getKey());
+    }
+
     public CAR getManagerLazily() throws CarNotConnectedException {
         if (manager != null) {
             return manager;
@@ -61,15 +66,15 @@ public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> exte
         if (source == null) {
             source = onCreateFlowSource(sourceKey);
             cachedFlowSource.put(sourceKey, source);
-            cachedDirty = true;
+            cacheDirty = true;
         }
         return source;
     }
 
     public synchronized final <T extends CarFlowSource> Collection<T> getAllFlowSourceInQuick() {
-        if (cachedDirty) {
+        if (cacheDirty) {
             copyAfterDirtyFlowSourceList = new ArrayList<>(cachedFlowSource.values());
-            cachedDirty = false;
+            cacheDirty = false;
         }
         return (Collection<T>) copyAfterDirtyFlowSourceList;
     }
@@ -118,7 +123,7 @@ public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> exte
         public void onInactive() {
             synchronized (CarAbstractContext.this) {
                 cachedFlowSource.remove(sourceKey);
-                cachedDirty = true;
+                cacheDirty = true;
                 boolean doGlobalUnregister = cachedFlowSource.size() == 0;
                 if (globalAvailabilityRegistered && doGlobalUnregister) {
                     serviceAccess.removeOnCarAvailabilityListener(globalAvailabilityListener);
