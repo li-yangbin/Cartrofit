@@ -88,7 +88,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
                     if (!occupy[j] && solution.isInterestedToStart(group.getParameterAt(j))) {
                         span++;
                         for (int k = j + 1; k < paraCount; k++) {
-                            if (occupy[k] || !solution.isInterestedWithoutAnnotation(group.getParameterAt(k))) {
+                            if (occupy[k] || !solution.isInterestedWithChainIndex(group.getParameterAt(k), 0)) {
                                 break;
                             }
                             span++;
@@ -99,23 +99,23 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
                     }
                 }
             } else {
-                final int solutionSize = solution.size();
-                anchor: for (int j = 0; j <= paraCount - solutionSize; j++) {
-                    for (int k = j; k < j + solutionSize; k++) {
+                final int s = solution.size();
+                anchor: for (int j = 0; j <= paraCount - s; j++) {
+                    for (int k = j; k < j + s; k++) {
                         if (occupy[k]) {
                             continue anchor;
                         }
                     }
                     if (solution.isInterestedToStart(group.getParameterAt(j))) {
-                        for (int k = j + 1; k < j + solutionSize; k++) {
-                            if (!solution.isInterestedWithoutAnnotation(group.getParameterAt(k))) {
+                        for (int k = j + s - 1, z = 0; k >= j + 1; k--, z++) {
+                            if (!solution.isInterestedWithChainIndex(group.getParameterAt(k), z)) {
                                 continue anchor;
                             }
                         }
 
-                        resultReceiver.assembleSolution(solution, j, solutionSize);
-                        occupyExpected -= solutionSize;
-                        Arrays.fill(occupy, j, j + solutionSize, true);
+                        resultReceiver.assembleSolution(solution, j, s);
+                        occupyExpected -= s;
+                        Arrays.fill(occupy, j, j + s, true);
                     }
                 }
             }
@@ -162,23 +162,6 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         return null;
     }
 
-    void checkInputParameterGrammarIfNeeded(Key checkTarget, ParameterGroup group) {
-        if (!checkTarget.isCallbackEntry) {
-            for (int i = 0; i < forwardSolutions.size(); i++) {
-                AbsParameterSolution solution = forwardSolutions.get(i);
-                if (solution.necessaryCheck && (solution.inputTogether != null || solution.inputBridge != null)) {
-                    for (int j = 0; j < group.getParameterCount(); j++) {
-                        if (solution.isInterestedToStart(group.getParameterAt(j))) {
-                            return;
-                        }
-                    }
-                    throw new CartrofitGrammarException("Grammar check failed:" + solution
-                            + " can not be resolved from:" + checkTarget);
-                }
-            }
-        }
-    }
-
     public ConvertSolution<IN, OUT, A> provideBasic(BiFunction<A, Key, IN> inputProvider) {
         this.inputProvider = inputProvider;
         return ConvertSolution.this;
@@ -212,7 +195,7 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
     }
 
     abstract class AbsParameterSolution<PA extends Annotation, T> {
-        AbsParameterSolution<PA, ?> parent;
+        AbsParameterSolution<PA, ?> previous;
         Class<T> fixedType;
         boolean typeIndeterminate;
 
@@ -221,7 +204,6 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
 
         boolean markedAsTogetherHead;
         boolean indeterminateMode;
-        boolean necessaryCheck;
 
         AbsAccumulator<PA, ParaVal[], IN> inputBridge;
         AbsAccumulator<PA, ?, IN> inputTogether;
@@ -229,9 +211,9 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         AbsAccumulator<PA, ParaVal[], OUT> outputBridge;
         AbsAccumulator<PA, ?, OUT> outputTogether;
 
-        AbsParameterSolution(AbsParameterSolution<PA, ?> parent, Class<T> fixedType,
+        AbsParameterSolution(AbsParameterSolution<PA, ?> previous, Class<T> fixedType,
                              Class<PA> annotationType) {
-            this.parent = parent;
+            this.previous = previous;
             this.fixedType = fixedType;
             this.fixedAnnotationType = annotationType;
         }
@@ -247,6 +229,9 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
         }
 
         boolean isInterestedToStart(Parameter parameter) {
+            if (previous != null) {
+                return previous.isInterestedToStart(parameter);
+            }
             Class<?> declaredType = parameter.getType();
             declaredType = CartrofitContext.boxTypeOf(declaredType);
             if (fixedType.isAssignableFrom(declaredType)) {
@@ -259,20 +244,42 @@ public class ConvertSolution<IN, OUT, A extends Annotation> {
             return false;
         }
 
-        boolean isInterestedWithoutAnnotation(Parameter parameter) {
-            return fixedType == parameter.getType() && parameter.hasNoAnnotation();
+        boolean isInterestedWithChainIndex(Parameter parameter, int index) {
+            if (!parameter.hasNoAnnotation()) {
+                return false;
+            }
+            int current = 0;
+            AbsParameterSolution<PA, ?> target = this;
+            while (current != index && target != null) {
+                target = target.previous;
+                current++;
+            }
+            if (current == index && target != null) {
+                Class<?> declaredType = parameter.getType();
+                declaredType = CartrofitContext.boxTypeOf(declaredType);
+                return target.fixedType.isAssignableFrom(declaredType);
+            }
+            return false;
         }
 
         public final ConvertSolution<IN, OUT, A> build() {
-            if (parent == null && fixedAnnotationType == null) {
+            if (previous == null && fixedAnnotationType == null) {
                 typeIndeterminate = fixedType == Object.class;
             }
             commitSolution(this);
-            return parent != null ? parent.build() : ConvertSolution.this;
+            return previous != null ? previous.build() : ConvertSolution.this;
         }
 
         public final void buildAndCommit() {
             build().commitParameter();
+        }
+
+        @Override
+        public String toString() {
+            return "AbsParameterSolution{" +
+                    "fixedType=" + fixedType +
+                    ", fixedAnnotationType=" + fixedAnnotationType +
+                    '}';
         }
     }
 

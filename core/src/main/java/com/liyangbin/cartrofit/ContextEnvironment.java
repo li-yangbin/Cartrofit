@@ -13,26 +13,25 @@ import java.util.HashMap;
 import java.util.Objects;
 
 @SuppressWarnings("unchecked")
-public final class ContextFactory {
+public final class ContextEnvironment {
 
     private static final HashMap<Class<?>, ApiRecord<?>> API_CACHE = new HashMap<>();
 
     private final HashMap<Class<? extends Annotation>, ArrayList<CartrofitContext<?>>> cachedContextMap = new HashMap<>();
-    private final HashMap<Class<? extends Annotation>, Singleton> cachedContextProviderMap = new HashMap<>();
     private final HashMap<ApiRecord<?>, LoadedApi> apiCache = new HashMap<>();
-    private final ContextFactory parentFactory;
+    private final ContextEnvironment parentEnvironment;
     private final String where;
 
-    public ContextFactory() {
-        this(Cartrofit.DEFAULT_FACTORY, "user-create");
+    public ContextEnvironment() {
+        this(Cartrofit.DEFAULT_ENVIRONMENT, "user-create");
     }
 
-    ContextFactory(String where) {
+    ContextEnvironment(String where) {
         this(null, where);
     }
 
-    ContextFactory(ContextFactory parentFactory, String where) {
-        this.parentFactory = parentFactory;
+    ContextEnvironment(ContextEnvironment parentEnvironment, String where) {
+        this.parentEnvironment = parentEnvironment;
         this.where = where;
         add(EmptyContext.class, new DelegateContext());
     }
@@ -42,7 +41,7 @@ public final class ContextFactory {
     }
 
     static <T> ApiRecord<T> getApi(Class<T> apiClass, boolean allowEmpty) {
-        synchronized (ContextFactory.class) {
+        synchronized (ContextEnvironment.class) {
             ApiRecord<T> singletonRecord = (ApiRecord<T>) API_CACHE.get(apiClass);
             if (singletonRecord != null) {
                 return singletonRecord;
@@ -127,7 +126,7 @@ public final class ContextFactory {
         throw new CartrofitGrammarException("Invalid contextObj " + contextObj);
     }
 
-    @Context(singleton = true)
+    @Context
     private @interface EmptyContext {
     }
 
@@ -163,25 +162,8 @@ public final class ContextFactory {
         if (contextArrayList == null) {
             contextArrayList = new ArrayList<>();
             cachedContextMap.put(annotationType, contextArrayList);
-        } else if (context.singleton() && contextArrayList.size() > 1) {
-            throw new CartrofitGrammarException("Can not add multiple context for singleton type "
-                    + annotationType);
         }
         contextArrayList.add(contextObj);
-    }
-
-    public <A extends Annotation> void addLazily(ContextProvider<A> provider) {
-        Class<? extends Annotation> annotationType = findAnnotationFromContextProvider(provider);
-        Context context = annotationType.getDeclaredAnnotation(Context.class);
-        if (context == null) {
-            throw new CartrofitGrammarException("Can not find Context identifier on type "
-                    + annotationType);
-        }
-        if (!context.singleton()) {
-            throw new CartrofitGrammarException("Can not add multiple Context provider by type "
-                    + annotationType);
-        }
-        cachedContextProviderMap.put(annotationType, new Singleton(provider));
     }
 
     private static class Singleton {
@@ -236,16 +218,7 @@ public final class ContextFactory {
                 return api;
             }
         }
-        Singleton contextProvider = cachedContextProviderMap.get(record.scopeType);
-        if (contextProvider != null) {
-            CartrofitContext<Annotation> context = (CartrofitContext<Annotation>) contextProvider.get();
-            api = createApi(context, record);
-            if (api != null) {
-                apiCache.put(record, api);
-                return api;
-            }
-        }
-        api = parentFactory != null ? parentFactory.getOrLoadApi(record, false) : null;
+        api = parentEnvironment != null ? parentEnvironment.getOrLoadApi(record, false) : null;
         if (api != null) {
             apiCache.put(record, api);
         } else if (throwIfNotFound) {
@@ -260,7 +233,6 @@ public final class ContextFactory {
             return null;
         }
         LoadedApi api = new LoadedApi();
-        context.attachRunningFactory(this);
         api.runtimeContext = context;
         api.apiObj = Proxy.newProxyInstance(record.clazz.getClassLoader(),
                 new Class<?>[]{record.clazz},
@@ -284,11 +256,12 @@ public final class ContextFactory {
                     }
                     Call call;
                     Key key = new Key(invokeRecord, method, false);
-                    synchronized (ContextFactory.this) {
+                    synchronized (ContextEnvironment.this) {
                         call = runtimeContext.getOrCreateCall(key, MethodCategory.CATEGORY_ALL, true);
                     }
                     return call.exceptionalInvoke(args);
                 });
+        context.attachEnvironment(this, record.scopeObj, record.clazz);
         return api;
     }
 
@@ -322,7 +295,7 @@ public final class ContextFactory {
 
         @Override
         public String toString() {
-            return "DelegateContext in " + ContextFactory.this;
+            return "DelegateContext in " + ContextEnvironment.this;
         }
     }
 }

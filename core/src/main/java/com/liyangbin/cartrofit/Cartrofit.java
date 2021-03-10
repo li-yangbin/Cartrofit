@@ -1,7 +1,6 @@
 package com.liyangbin.cartrofit;
 
 import com.liyangbin.cartrofit.annotation.WrappedData;
-import com.liyangbin.cartrofit.support.SupportUtil;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.ParameterizedType;
@@ -15,25 +14,21 @@ public final class Cartrofit {
     private Cartrofit() {
     }
 
-    static final ContextFactory DEFAULT_FACTORY = new ContextFactory("Cartrofit-default");
+    static final ContextEnvironment DEFAULT_ENVIRONMENT = new ContextEnvironment("Cartrofit-default");
     static final HashMap<Class<?>, FlowConverter<?>> FLOW_CONVERTER_MAP = new HashMap<>();
     static final HashMap<Class<?>, Class<?>> WRAPPER_CLASS_MAP = new HashMap<>();
     public static final Object SKIP = new Object();
 
     public static <T> T from(Class<T> apiClass) {
-        return DEFAULT_FACTORY.from(apiClass);
+        return DEFAULT_ENVIRONMENT.from(apiClass);
     }
 
     public static <T extends CartrofitContext<?>> T defaultContextOf(Class<?> apiClass) {
-        return (T) DEFAULT_FACTORY.findContext(ContextFactory.getApi(apiClass));
+        return (T) DEFAULT_ENVIRONMENT.findContext(ContextEnvironment.getApi(apiClass));
     }
 
     public static <A extends Annotation> void register(CartrofitContext<A> context) {
-        DEFAULT_FACTORY.add(context);
-    }
-
-    public static <A extends Annotation> void registerLazily(ContextFactory.ContextProvider<A> provider) {
-        DEFAULT_FACTORY.addLazily(provider);
+        DEFAULT_ENVIRONMENT.add(context);
     }
 
     public static FlowConverter<?> findFlowConverter(Class<?> target) {
@@ -58,7 +53,7 @@ public final class Cartrofit {
 
     private static Class<?> findFlowConverterTarget(FlowConverter<?> converter) {
         Objects.requireNonNull(converter);
-        Class<?> implementsBy = ContextFactory.findImplement(converter.getClass(), FlowConverter.class);
+        Class<?> implementsBy = ContextEnvironment.findImplement(converter.getClass(), FlowConverter.class);
         if (implementsBy == null) {
             throw new CartrofitGrammarException("invalid input converter:" + converter.getClass());
         }

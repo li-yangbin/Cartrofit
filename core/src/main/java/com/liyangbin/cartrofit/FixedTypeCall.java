@@ -20,7 +20,7 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
     @Override
     public void onInit() {
         super.onInit();
-        CartrofitContext context = getContext();
+        CartrofitContext<?> context = getContext();
         inputConverter = context.findInputConverter(this);
         if (hasCategory(MethodCategory.CATEGORY_TRACK)) {
             if (getKey().isCallbackEntry) {

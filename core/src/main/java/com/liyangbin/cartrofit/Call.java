@@ -56,7 +56,7 @@ public abstract class Call {
         return key;
     }
 
-    public CartrofitContext getContext() {
+    public CartrofitContext<?> getContext() {
         return context;
     }
 

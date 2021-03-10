@@ -216,7 +216,7 @@ public class BroadcastContext extends CartrofitContext<Broadcast> {
         }
 
         static SolutionProvider receiveSolution() {
-            return sSendProvider;
+            return sReceiveProvider;
         }
     }
 

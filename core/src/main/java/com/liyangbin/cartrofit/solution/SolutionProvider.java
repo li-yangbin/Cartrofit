@@ -141,11 +141,6 @@ public final class SolutionProvider {
                         call = provider.provide(annotation, key);
                     }
                     call.setCategoryAndAnnotation(expectedCategory, annotation);
-                    ConvertSolution<?, ?, ?> convertSolution = mConverterInputMap.get(call.getClass());
-                    if (convertSolution != null) {
-                        convertSolution.checkInputParameterGrammarIfNeeded(key,
-                                call.getBindingParameter());
-                    }
                     return call;
                 }
             }

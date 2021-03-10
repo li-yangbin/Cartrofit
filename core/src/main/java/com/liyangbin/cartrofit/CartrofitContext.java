@@ -180,8 +180,8 @@ public abstract class CartrofitContext<CONTEXT extends Annotation> {
         }
     }
 
-    private ContextFactory mProvideFactory;
-    private ContextFactory mUserSpecifyFactory;
+    private ContextEnvironment mRunningEnvironment;
+    private ContextEnvironment mUserCreateEnvironment;
     private final SolutionProvider mSolutionProvider;
     private final HashMap<Key, Call> mCallCache = new HashMap<>();
     private ArrayList<ExceptionHandler<?>> mExceptionHandlers;
@@ -206,20 +206,26 @@ public abstract class CartrofitContext<CONTEXT extends Annotation> {
         return true;
     }
 
-    void attachRunningFactory(ContextFactory contextFactory) {
-        if (mProvideFactory != null && mProvideFactory != contextFactory) {
-            throw new IllegalStateException("Different contextFactory attach on same context obj," +
+    public void onLazilyAccessed(CONTEXT annotation, Class<?> apiType) {
+    }
+
+    void attachEnvironment(ContextEnvironment environment, CONTEXT annotation, Class<?> apiType) {
+        if (mRunningEnvironment != null && mRunningEnvironment != environment) {
+            throw new IllegalStateException("Different environment attach on same context obj," +
                     " that's impossible");
         }
-        mProvideFactory = contextFactory;
+        if (mRunningEnvironment == null) {
+            mRunningEnvironment = environment;
+            onLazilyAccessed(annotation, apiType);
+        }
     }
 
     public final <T> T from(Class<T> api) {
-        if (mUserSpecifyFactory == null) {
-            mUserSpecifyFactory = new ContextFactory(Cartrofit.DEFAULT_FACTORY, toString());
-            mUserSpecifyFactory.add(this);
+        if (mUserCreateEnvironment == null) {
+            mUserCreateEnvironment = new ContextEnvironment(Cartrofit.DEFAULT_ENVIRONMENT, toString());
+            mUserCreateEnvironment.add(this);
         }
-        return mUserSpecifyFactory.from(api);
+        return mUserCreateEnvironment.from(api);
     }
 
     public Call getOrCreateCall(Key key, int category, boolean fromCache) {
@@ -244,8 +250,8 @@ public abstract class CartrofitContext<CONTEXT extends Annotation> {
             if (apiClass == record.clazz || apiClass == null) {
                 throw new CartrofitGrammarException("Can not find target Id:" + id + " from:" + record.clazz);
             }
-            ApiRecord<?> delegateTargetRecord = ContextFactory.getApi(apiClass);
-            CartrofitContext<?> context = mProvideFactory.findContext(delegateTargetRecord);
+            ApiRecord<?> delegateTargetRecord = ContextEnvironment.getApi(apiClass);
+            CartrofitContext<?> context = mRunningEnvironment.findContext(delegateTargetRecord);
             return context.getOrCreateCallById(key, delegateTargetRecord, id, flag, fromDelegate);
         }
         Key targetKey = new Key(record, method, false);

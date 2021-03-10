@@ -9,6 +9,6 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Target(PARAMETER)
 @Retention(RUNTIME)
 public @interface ExtraPair {
-    byte defNumber() default 0;
+    int defNumber() default 0;
     boolean defBool() default false;
 }
