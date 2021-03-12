@@ -107,6 +107,19 @@ public class ExampleUnitTest {
     }
 
     @Test
+    public void registerIntChangeWithStickyTest() {
+        TestCarContext testCarContext = new TestCarContext();
+        testCarContext.setStickySupport(true);
+        testCarContext.setTestTrackIntOrString(true);
+        testCarContext.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
+            @Override
+            public void onChange(int value) {
+                println("callback received:" + value);
+            }
+        });
+    }
+
+    @Test
     public void registerChangeAliasTest() {
         Cartrofit.from(TestCarApi.class).registerStringChangeListenerAlias(new TestCarApi.OnChangeListenerAlias() {
             @Override
@@ -118,6 +131,16 @@ public class ExampleUnitTest {
             public void onError(Throwable error) {
                 println("error:" + error);
                 error.printStackTrace();
+            }
+        });
+    }
+
+    @Test
+    public void registerInvalidChangeAliasTest() {
+        Cartrofit.from(TestCarApi.class).registerInvalidStringChangeListenerAlias(new TestCarApi.InvalidOnChangeListener() {
+            @Override
+            public void onChange() {
+                println("invalid callback alias received");
             }
         });
     }

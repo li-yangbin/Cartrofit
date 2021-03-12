@@ -16,7 +16,5 @@ public @interface Track {
 
     int area() default CarPropertyScope.DEFAULT_AREA_ID;
 
-    boolean sticky() default true;
-
-    boolean restoreIfTimeout() default true;
+    boolean restoreIfTimeout() default false;
 }

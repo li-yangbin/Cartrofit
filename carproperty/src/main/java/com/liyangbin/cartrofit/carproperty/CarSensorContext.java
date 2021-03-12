@@ -8,6 +8,7 @@ import android.car.hardware.CarSensorManager;
 import android.content.Context;
 
 import com.liyangbin.cartrofit.Call;
+import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.FixedTypeCall;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.solution.Accumulator;
@@ -17,34 +18,35 @@ import com.liyangbin.cartrofit.solution.SolutionProvider;
 import java.lang.annotation.Annotation;
 import java.util.Objects;
 
-class SensorRegisterKey {
-    int type;
-    int rate;
-
-    SensorRegisterKey(int type, int rate) {
-        this.type = type;
-        this.rate = rate;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        SensorRegisterKey that = (SensorRegisterKey) o;
-        return type == that.type &&
-                rate == that.rate;
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(type, rate);
-    }
-}
-
-public class CarSensorContext extends CarAbstractContext<CarSensorManager, SensorRegisterKey, CarSensorEvent> {
+public class CarSensorContext extends CarAbstractContext<CarSensorManager,
+        CarSensorContext.SensorRegisterKey, CarSensorEvent> {
 
     public CarSensorContext(Context context) {
         super(new DefaultCarServiceAccess<>(context, Car.SENSOR_SERVICE));
+    }
+
+    public static class SensorRegisterKey {
+        int type;
+        int rate;
+
+        SensorRegisterKey(int type, int rate) {
+            this.type = type;
+            this.rate = rate;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            SensorRegisterKey that = (SensorRegisterKey) o;
+            return type == that.type &&
+                    rate == that.rate;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(type, rate);
+        }
     }
 
     @Override
@@ -128,7 +130,7 @@ public class CarSensorContext extends CarAbstractContext<CarSensorManager, Senso
             if (readAvailability) {
                 return getManagerLazily().isSensorSupported(type);
             } else if (readConfig) {
-                return getManagerLazily().getLatestSensorEvent(type);
+                return getManagerLazily().getSensorConfig(type);
             } else {
                 return getManagerLazily().getLatestSensorEvent(type);
             }
@@ -140,6 +142,14 @@ public class CarSensorContext extends CarAbstractContext<CarSensorManager, Senso
 
         private SensorTrackCall(int type, int rate) {
             registerKey = new SensorRegisterKey(type, rate);
+        }
+
+        @Override
+        public void onInit() {
+            super.onInit();
+            if (getKey().isCallbackEntry && getKey().getParameterCount() == 0) {
+                throw new CartrofitGrammarException("Must declare one parameter " + getKey());
+            }
         }
 
         @Override
@@ -158,6 +168,11 @@ public class CarSensorContext extends CarAbstractContext<CarSensorManager, Senso
         @Override
         public void onSensorChanged(CarSensorEvent carSensorEvent) {
             publish(carSensorEvent);
+        }
+
+        @Override
+        public CarSensorEvent loadInitData() throws CarNotConnectedException {
+            return getManagerLazily().getLatestSensorEvent(sourceKey.type);
         }
     }
 }

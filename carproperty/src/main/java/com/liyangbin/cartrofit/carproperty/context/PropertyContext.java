@@ -22,8 +22,8 @@ public class PropertyContext extends CarPropertyContext<CarPropertyManager> {
 
     class PropRegisteredSource extends PropertyFlowSource implements CarPropertyManager.CarPropertyEventListener {
 
-        PropRegisteredSource(int propertyId, int area) {
-            super(propertyId, area);
+        PropRegisteredSource(PropKey propKey) {
+            super(propKey);
         }
 
         @Override
@@ -43,8 +43,8 @@ public class PropertyContext extends CarPropertyContext<CarPropertyManager> {
     }
 
     @Override
-    public PropertyFlowSource onCreatePropertyFlowSource(int propertyId, int area) {
-        return new PropRegisteredSource(propertyId, area);
+    public PropertyFlowSource onCreateFlowSource(PropKey propKey) {
+        return new PropRegisteredSource(propKey);
     }
 
     @Override

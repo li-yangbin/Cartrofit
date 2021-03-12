@@ -40,7 +40,7 @@ public interface TestCarApi {
     @Track(propId = 2)
     Flow<String> trackStringSignal();
 
-    @Track(propId = 2)
+    @Track(propId = 2, restoreIfTimeout = true)
     Flow<String> trackStringSignalRestore();
 
     @Get(propId = 3)
@@ -76,6 +76,9 @@ public interface TestCarApi {
     @Track(propId = 2)
     void registerStringChangeListenerAlias(/*@Callback */OnChangeListenerAlias listener);
 
+    @Track(propId = 2)
+    void registerInvalidStringChangeListenerAlias(/*@Callback */InvalidOnChangeListener listener);
+
     @Unregister(TestCarApiId.registerStringChangeListenerAlias)
     void unregisterStringChangeListenerAlias(/*@Callback */OnChangeListenerAlias listener);
 
@@ -84,8 +87,14 @@ public interface TestCarApi {
 
     interface OnChangeListener {
 
-        @Track(propId = 0, sticky = false)
+        @Track(propId = 0)
         void onChange(int value);
+    }
+
+    interface InvalidOnChangeListener {
+
+        @Track(propId = 0)
+        void onChange();
     }
 
     interface OnChangeListenerAlias {

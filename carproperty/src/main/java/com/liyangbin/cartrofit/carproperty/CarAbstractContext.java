@@ -2,7 +2,9 @@ package com.liyangbin.cartrofit.carproperty;
 
 import android.car.CarNotConnectedException;
 
+import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.CartrofitContext;
+import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.flow.LifeAwareHotFlowSource;
 
 import java.util.ArrayList;
@@ -19,13 +21,24 @@ public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> exte
     private CAR manager;
     private boolean globalAvailabilityRegistered;
     private boolean globalRegistered;
+    private boolean stickySupport;
     private final CarAvailabilityListener globalAvailabilityListener = new CarAvailabilityListener() {
         @Override
         public void onCarAvailable() {
-            serviceAccess.removeOnCarAvailabilityListener(this);
             synchronized (CarAbstractContext.this) {
+                globalAvailabilityRegistered = false;
+                serviceAccess.removeOnCarAvailabilityListener(this);
                 try {
-                    onRegister(true, null);
+                    onGlobalRegister(true);
+                    globalRegistered = true;
+                    for (CarFlowSource flowSource : cachedFlowSource.values()) {
+                        if (flowSource.isActive()) {
+                            onRegister(true, flowSource);
+                            if (stickySupport) {
+                                flowSource.invalidateStickyDataForced();
+                            }
+                        }
+                    }
                 } catch (CarNotConnectedException connectedException) {
                     throw new RuntimeException("impossible", connectedException);
                 }
@@ -49,6 +62,14 @@ public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> exte
         return annotation.value().equals(serviceAccess.getKey());
     }
 
+    public boolean isStickySupport() {
+        return stickySupport;
+    }
+
+    public void setStickySupport(boolean stickySupport) {
+        this.stickySupport = stickySupport;
+    }
+
     public CAR getManagerLazily() throws CarNotConnectedException {
         if (manager != null) {
             return manager;
@@ -61,11 +82,10 @@ public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> exte
         }
     }
 
-    public synchronized final CarFlowSource getOrCreateFlowSource(SOURCE_KEY sourceKey) {
+    public synchronized CarFlowSource getOrCreateFlowSource(SOURCE_KEY sourceKey) {
         CarFlowSource source = cachedFlowSource.get(sourceKey);
         if (source == null) {
-            source = onCreateFlowSource(sourceKey);
-            cachedFlowSource.put(sourceKey, source);
+            cachedFlowSource.put(sourceKey, source = onCreateFlowSource(sourceKey));
             cacheDirty = true;
         }
         return source;
@@ -86,16 +106,31 @@ public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> exte
 
     public abstract void onGlobalRegister(boolean register) throws CarNotConnectedException;
 
-    public synchronized boolean hasFlowSourceAlive() {
-        return cachedFlowSource.size() > 0;
-    }
-
     public abstract class CarFlowSource extends LifeAwareHotFlowSource<SOURCE_DATA_TYPE> {
 
         public SOURCE_KEY sourceKey;
+        private SOURCE_DATA_TYPE stickyData;
 
         public CarFlowSource(SOURCE_KEY sourceKey) {
             this.sourceKey = sourceKey;
+        }
+
+        @Override
+        public void startWithInjector(Flow.Injector<SOURCE_DATA_TYPE> injector) {
+            super.startWithInjector(injector);
+            if (stickySupport) {
+                SOURCE_DATA_TYPE stickyData = getStickyData(true);
+                if (stickyData != null) {
+                    injector.send(stickyData);
+                }
+            }
+        }
+
+        void invalidateStickyDataForced() {
+            SOURCE_DATA_TYPE stickyData = getStickyData(false);
+            if (stickyData != null) {
+                publish(stickyData);
+            }
         }
 
         @Override
@@ -112,9 +147,9 @@ public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> exte
                         throw new RuntimeException("impossible situation", error);
                     }
                 } else if (!globalAvailabilityRegistered) {
+                    globalAvailabilityRegistered = true;
                     serviceAccess.addOnCarAvailabilityListener(globalAvailabilityListener);
                     serviceAccess.tryConnect();
-                    globalAvailabilityRegistered = true;
                 }
             }
         }
@@ -141,6 +176,36 @@ public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> exte
                     }
                 }
             }
+        }
+
+        @Override
+        public void publish(SOURCE_DATA_TYPE value) {
+            if (stickySupport) {
+                synchronized (this) {
+                    stickyData = value;
+                }
+            }
+            super.publish(value);
+        }
+
+        public SOURCE_DATA_TYPE getStickyData(boolean useCache) {
+            synchronized (this) {
+                if (useCache && stickyData != null) {
+                    return stickyData;
+                }
+                if (!serviceAccess.isAvailable()) {
+                    return null;
+                }
+                try {
+                    return stickyData = loadInitData();
+                } catch (CarNotConnectedException issue) {
+                    throw new RuntimeException("impossible", issue);
+                }
+            }
+        }
+
+        public SOURCE_DATA_TYPE loadInitData() throws CarNotConnectedException {
+            throw new IllegalStateException("Sub-class should implement this method in sticky context");
         }
     }
 }

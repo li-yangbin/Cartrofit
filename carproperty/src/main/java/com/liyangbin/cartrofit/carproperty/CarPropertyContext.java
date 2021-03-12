@@ -8,13 +8,15 @@ import android.content.Context;
 import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitContext;
+import com.liyangbin.cartrofit.CartrofitGrammarException;
 import com.liyangbin.cartrofit.FixedTypeCall;
+import com.liyangbin.cartrofit.Key;
+import com.liyangbin.cartrofit.Parameter;
 import com.liyangbin.cartrofit.carproperty.context.CabinContext;
 import com.liyangbin.cartrofit.carproperty.context.HvacContext;
 import com.liyangbin.cartrofit.carproperty.context.PropertyContext;
 import com.liyangbin.cartrofit.carproperty.context.VendorExtensionContext;
 import com.liyangbin.cartrofit.flow.Flow;
-import com.liyangbin.cartrofit.flow.FlowPublisher;
 import com.liyangbin.cartrofit.solution.SolutionProvider;
 
 import java.util.List;
@@ -23,36 +25,39 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.TimeoutException;
 
-class PropKey {
-    int propertyId;
-    int area;
+public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, CarPropertyContext.PropKey, CarPropertyValue<?>> {
 
-    PropKey(int propertyId, int area) {
-        this.propertyId = propertyId;
-        this.area = area;
+    public static class PropKey {
+        int propertyId;
+        int area;
+        Class<?> preferType;
+
+        PropKey(int propertyId, int area, Class<?> preferType) {
+            this.propertyId = propertyId;
+            this.area = area;
+            this.preferType = preferType;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            PropKey propKey = (PropKey) o;
+            return propertyId == propKey.propertyId &&
+                    area == propKey.area && preferType == propKey.preferType;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(propertyId, area, preferType);
+        }
+
+        @Override
+        public String toString() {
+            return (preferType != null ? preferType.getSimpleName() : null)
+                    + " " + CarPropertyContext.prop2Str(propertyId, area);
+        }
     }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        PropKey propKey = (PropKey) o;
-        return propertyId == propKey.propertyId &&
-                area == propKey.area;
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(propertyId, area);
-    }
-
-    @Override
-    public String toString() {
-        return CarPropertyContext.prop2Str(propertyId, area);
-    }
-}
-
-public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, PropKey, CarPropertyValue<?>> {
 
     private static final SolutionProvider CAR_PROPERTY_SOLUTION = new SolutionProvider();
 
@@ -172,12 +177,6 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Pr
             this.area = propKey.area;
         }
 
-        public PropertyFlowSource(int propertyId, int area) {
-            super(new PropKey(propertyId, area));
-            this.propertyId = propertyId;
-            this.area = area;
-        }
-
         public boolean match(int propertyId, int area) {
             return this.propertyId == propertyId && (this.area == area || (this.area & area) != 0);
         }
@@ -210,6 +209,17 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Pr
                 }
                 sTimeoutTracker.schedule(timeoutTask = new TimeoutTask(), timeoutMillis);
             }
+        }
+
+        @Override
+        public CarPropertyValue<?> loadInitData() throws CarNotConnectedException {
+            if (sourceKey.preferType == void.class
+                    || sourceKey.preferType == CarPropertyValue.class) {
+                return null;
+            }
+            Object value = getCarPropertyAccess(sourceKey.preferType)
+                    .get(sourceKey.propertyId, sourceKey.area);
+            return new CarPropertyValue<>(sourceKey.propertyId, sourceKey.area, value);
         }
 
         private class TimeoutTask extends TimerTask {
@@ -257,6 +267,11 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Pr
         }
     }
 
+    @Override
+    public PropertyFlowSource getOrCreateFlowSource(PropKey propKey) {
+        return (PropertyFlowSource) super.getOrCreateFlowSource(propKey);
+    }
+
     // ================ CarXXXXManager Abstract Interface ================
 
     public abstract List<CarPropertyConfig> onLoadConfig() throws CarNotConnectedException;
@@ -264,13 +279,8 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Pr
     public abstract boolean isPropertyAvailable(int propertyId, int area) throws CarNotConnectedException;
 
     @Override
-    public final CarFlowSource onCreateFlowSource(PropKey propKey) {
-        PropertyFlowSource flowSource = onCreatePropertyFlowSource(propKey.propertyId, propKey.area);
-        return flowSource != null ? flowSource : new PropertyFlowSource(propKey);
-    }
-
-    public PropertyFlowSource onCreatePropertyFlowSource(int propertyId, int area) {
-        return null;
+    public CarFlowSource onCreateFlowSource(PropKey propKey) {
+        return new PropertyFlowSource(propKey);
     }
 
     public CarPropertyAccess<?> getCarPropertyAccess(Class<?> type) {
@@ -356,8 +366,12 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Pr
             }
             synchronized (this) {
                 return carPropertyTypeAccess = (CarPropertyAccess<Object>) getContext()
-                        .getCarPropertyAccess(getPropertyConfig().getPropertyType());
+                        .getCarPropertyAccess(getUserPreferType());
             }
+        }
+
+        public Class<?> getUserPreferType() throws CarNotConnectedException {
+            return getPropertyConfig().getPropertyType();
         }
 
         @Override
@@ -379,6 +393,14 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Pr
 
         public PropertyGet(CarPropertyScope scope, Get get) {
             super(get.propId(), resolveArea(get.area(), scope.area()));
+        }
+
+        @Override
+        public Class<?> getUserPreferType() throws CarNotConnectedException {
+            if (getType == CarType.VALUE) {
+                return getKey().getReturnType();
+            }
+            return super.getUserPreferType();
         }
 
         @Override
@@ -412,44 +434,76 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Pr
         }
 
         @Override
+        public void onInit() {
+            super.onInit();
+            if (getKey().getParameterCount() != 1) {
+                throw new CartrofitGrammarException("Property Set can accept only one parameter " + getKey());
+            }
+        }
+
+        @Override
         public Object invoke(Object[] parameter) throws CarNotConnectedException {
             getPropertyAccess().set(propertyId, areaId, parameter[0]);
             return null;
+        }
+
+        @Override
+        public Class<?> getUserPreferType() throws CarNotConnectedException {
+            return getKey().getParameterAt(0).getType();
         }
     }
 
     public static class PropertyTrack extends PropertyAccessCall<Void, CarPropertyValue<?>> {
 
-        boolean isSticky;
-        boolean restoreDataWhenTimeout;
-        FlowPublisher<CarPropertyValue<?>> carValuePublisher;
+        private boolean restoreDataWhenTimeout;
+        private PropKey propKey;
 
         public PropertyTrack(CarPropertyScope scope, Track track) {
             super(track.propId(), resolveArea(track.area(), scope.area()));
-            this.isSticky = track.sticky();
             this.restoreDataWhenTimeout = track.restoreIfTimeout();
         }
 
-        public CarPropertyValue<Object> onLoadDefaultData() throws CarNotConnectedException {
-            return new CarPropertyValue<>(propertyId,
-                    areaId, getPropertyAccess().get(propertyId, areaId));
-        }
-
-        public FlowPublisher<CarPropertyValue<?>> getPropertyPublisher() {
-            return Flow.fromSource(getContext().getOrCreateFlowSource(new PropKey(propertyId, areaId)))
-                    .publish()
-                    .startIfConnected()
-                    .setDispatchStickyDataEnable(isSticky, this::onLoadDefaultData);
+        @Override
+        public void onInit() {
+            super.onInit();
+            if (getKey().isCallbackEntry && getKey().getParameterCount() == 0) {
+                throw new CartrofitGrammarException("Must declare one parameter " + getKey());
+            }
+            propKey = new PropKey(propertyId, areaId, getUserPreferType());
         }
 
         @Override
         public Flow<CarPropertyValue<?>> onTrackInvoke(Void none) {
-            return getPropertyPublisher().share().catchException(TimeoutException.class, e -> {
-                e.printStackTrace();
-                if (restoreDataWhenTimeout && carValuePublisher != null) {
-                    carValuePublisher.injectData(carValuePublisher.getData());
+            CarPropertyContext<?>.PropertyFlowSource flowSource = getContext()
+                    .getOrCreateFlowSource(propKey);
+            return Flow.fromSource(flowSource)
+                    .catchException(TimeoutException.class, e -> {
+                        e.printStackTrace();
+                        if (restoreDataWhenTimeout) {
+                            CarPropertyValue<?> stickyData = flowSource.getStickyData(true);
+                            if (stickyData != null) {
+                                flowSource.publish(stickyData);
+                            }
+                        }
+                    });
+        }
+
+        @Override
+        public Class<?> getUserPreferType() {
+            Key key = getKey();
+            if (key.isCallbackEntry) {
+                for (int i = 0; i < key.getParameterCount(); i++) {
+                    Parameter parameter = key.getParameterAt(i);
+                    if (parameter.hasNoAnnotation()) {
+                        return parameter.getType();
+                    }
                 }
-            });
+                return void.class;
+            }
+            if (key.isAnnotationPresent(Availability.class)) {
+                return void.class;
+            }
+            return key.getReturnAsParameter().getType();
         }
     }
 }
