@@ -11,8 +11,6 @@ import android.os.Handler;
 import android.os.Parcelable;
 import android.os.UserHandle;
 
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
-
 import com.liyangbin.cartrofit.Call;
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.CartrofitContext;
@@ -29,11 +27,15 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Objects;
+
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 public class BroadcastContext extends CartrofitContext<Broadcast> {
     private final Context mContext;
     private final boolean mIsLocalBroadcast;
     private final HashMap<Call, BroadcastFlowSource> mCachedBroadcastSource = new HashMap<>();
+    private final HashMap<RegisterRequest, BroadcastFlowSource> mCachedBroadcastSourceByRequest = new HashMap<>();
 
     public static void registerAsDefault(Context context) {
         Cartrofit.register(new BroadcastContext(context, false));
@@ -69,32 +71,42 @@ public class BroadcastContext extends CartrofitContext<Broadcast> {
     }
 
     private BroadcastFlowSource getOrCreateFlowSource(Call call, RegisterRequest registerRequest) {
-        if (!call.getKey().isCallbackEntry) {
-            return new BroadcastFlowSource(registerRequest);
+        if (call.getKey().isCallbackEntry) {
+            RegisterCall registerCall = (RegisterCall) call.getParent();
+            if (!registerCall.isColdTrackMode()) {
+                BroadcastFlowSource flowSource = mCachedBroadcastSource.get(registerCall);
+                if (flowSource == null) {
+                    flowSource = new BroadcastFlowSource(registerRequest);
+                    flowSource.setRegisterCallFrom(registerCall);
+                    mCachedBroadcastSource.put(registerCall, flowSource);
+                } else {
+                    if (!flowSource.isActive() && !flowSource.mergeUnchecked(registerRequest)) {
+                        throw new IllegalArgumentException("Can not present duplicate broadcast action in"
+                                + " each Callback " + call.getKey());
+                    }
+                }
+                return flowSource;
+            }
         }
-        RegisterCall registerCall = (RegisterCall) call.getParent();
-        if (registerCall.isColdTrackMode()) {
-            return new BroadcastFlowSource(registerRequest);
-        }
-        BroadcastFlowSource flowSource = mCachedBroadcastSource.get(registerCall);
+        BroadcastFlowSource flowSource = mCachedBroadcastSourceByRequest.get(registerRequest);
         if (flowSource == null) {
             flowSource = new BroadcastFlowSource(registerRequest);
-            mCachedBroadcastSource.put(registerCall, flowSource);
-        } else {
-            if (!flowSource.mergeUnchecked(registerRequest)) {
-                throw new IllegalArgumentException("Can not present duplicate broadcast action in"
-                        + " each Callback " + call.getKey());
-            }
+            mCachedBroadcastSourceByRequest.put(registerRequest, flowSource);
         }
         return flowSource;
     }
 
     private class BroadcastFlowSource extends LifeAwareHotFlowSource<ReceiveResponse> {
         ArrayList<RegisterRequest> mergedRequest = new ArrayList<>();
+        RegisterCall registerCallFrom;
         InnerBroadcastReceiver innerBroadcastReceiver = new InnerBroadcastReceiver();
 
         BroadcastFlowSource(RegisterRequest registerRequest) {
             mergedRequest.add(registerRequest);
+        }
+
+        void setRegisterCallFrom(RegisterCall registerCallFrom) {
+            this.registerCallFrom = registerCallFrom;
         }
 
         boolean mergeUnchecked(RegisterRequest registerRequest) {
@@ -132,6 +144,9 @@ public class BroadcastContext extends CartrofitContext<Broadcast> {
                 LocalBroadcastManager.getInstance(mContext).unregisterReceiver(innerBroadcastReceiver);
             } else {
                 mContext.unregisterReceiver(innerBroadcastReceiver);
+            }
+            if (registerCallFrom != null) {
+                mCachedBroadcastSource.remove(registerCallFrom);
             }
         }
 
@@ -582,6 +597,7 @@ public class BroadcastContext extends CartrofitContext<Broadcast> {
 
     private static class RegisterRequest {
         String action;
+        ArrayList<String> othersForCheck = new ArrayList<>();
         IntentFilter intentFilter = new IntentFilter();
         String broadcastPermission;
         Handler scheduledHandler;
@@ -595,23 +611,48 @@ public class BroadcastContext extends CartrofitContext<Broadcast> {
             intentFilter.setPriority(receive.priority());
             for (String category : receive.category()) {
                 intentFilter.addCategory(category);
+                othersForCheck.add(category);
             }
             for (String dataScheme : receive.dataScheme()) {
                 intentFilter.addDataScheme(dataScheme);
+                othersForCheck.add(dataScheme);
             }
             for (String dataMimeType : receive.dataMimeType()) {
                 try {
                     intentFilter.addDataType(dataMimeType);
+                    othersForCheck.add(dataMimeType);
                 } catch (IntentFilter.MalformedMimeTypeException mimeFormatError) {
                     throw new IllegalArgumentException(mimeFormatError);
                 }
             }
             broadcastPermission = fromAnnotation(receive.broadcastPermission());
+            if (broadcastPermission != null) {
+                othersForCheck.add(broadcastPermission);
+            }
         }
 
         RegisterRequest withHandler(Handler handler) {
             scheduledHandler = handler;
             return this;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            RegisterRequest that = (RegisterRequest) o;
+            if (!action.equals(that.action)) {
+                return false;
+            }
+            if (!othersForCheck.equals(that.othersForCheck)) {
+                return false;
+            }
+            return Objects.equals(scheduledHandler, that.scheduledHandler);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(action, othersForCheck, scheduledHandler);
         }
     }
 
