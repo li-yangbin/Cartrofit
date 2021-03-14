@@ -270,7 +270,7 @@ Broadcast注解支持普通广播与本地广播，使用本地广播需要将
 ```
 除了设置Action之外，Send语法同时支持设置例如packageName, className等属性[查看代码](https://gitee.com/li-yangbin/cartrofit/blob/master/broadcast/src/main/java/com/liyangbin/cartrofit/broadcast/Send.java)
 
-### 2.Receive
+### 2. Receive
 使用Receive注解来监听广播，代码如下所示
 ```java
     @Broadcast
