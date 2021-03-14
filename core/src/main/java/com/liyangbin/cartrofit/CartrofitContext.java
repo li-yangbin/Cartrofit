@@ -65,7 +65,7 @@ public abstract class CartrofitContext<CONTEXT extends Annotation> {
                         if (registerKey.getParameterCount() == 1) {
                             if (key.getParameterAt(0).getType() != registerKey.getParameterAt(0).getType()) {
                                 throw new CartrofitGrammarException("Unregister must provide a single " +
-                                        "one Callback parameter under the same Callback type as well as key:" + key + " does");
+                                        "one Callback parameter under the same Callback type as well as " + key + " does");
                             }
                         } else {
                             for (int i = 0; i < registerKey.getParameterCount(); i++) {
@@ -73,7 +73,7 @@ public abstract class CartrofitContext<CONTEXT extends Annotation> {
                                 if (parameter.isAnnotationPresent(Callback.class)) {
                                     if (key.getParameterAt(0).getType() != parameter.getType()) {
                                         throw new CartrofitGrammarException("Unregister must provide a single " +
-                                                "one Callback parameter under the same Callback type as well as key:" + key + " does");
+                                                "one Callback parameter under the same Callback type as well as " + key + " does");
                                     }
                                 }
                             }

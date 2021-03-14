@@ -1,9 +1,13 @@
 package com.liyangbin.cartrofit.carproperty;
 
 import android.car.CarNotConnectedException;
+import android.car.hardware.CarPropertyValue;
 
 import com.liyangbin.cartrofit.Cartrofit;
+import com.liyangbin.cartrofit.Key;
 import com.liyangbin.cartrofit.flow.Flow;
+import com.liyangbin.cartrofit.solution.CallProvider;
+import com.liyangbin.cartrofit.solution.SolutionProvider;
 
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -91,6 +95,7 @@ public class ExampleUnitTest {
 
     @Test
     public void rxFlowConvertTest() {
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTestTrackIntOrString(true);
         Cartrofit.from(TestCarApi.class).trackIntReactive().subscribe(i -> {
             println("each:" + i);
         });
@@ -274,6 +279,19 @@ public class ExampleUnitTest {
         });
     }
 
+    private static class MyCustomizedTrackCall extends CarPropertyContext.PropertyTrack {
+
+        public MyCustomizedTrackCall(Track track) {
+            super(track);
+        }
+
+        @Override
+        public Flow<CarPropertyValue<?>> onTrackInvoke(Void none) {
+            println("customized track invoke");
+            return super.onTrackInvoke(none);
+        }
+    }
+
     @Test
     public void userContextTest() {
         TestCarContext tempContext = new TestCarContext() {
@@ -281,18 +299,28 @@ public class ExampleUnitTest {
             public String toString() {
                 return "created by user";
             }
+
+            @Override
+            public SolutionProvider onProvideCallSolution() {
+                SolutionProvider solutionProvider = super.onProvideCallSolution();
+                solutionProvider.create(Track.class, MyCustomizedTrackCall.class)
+                        .provide((annotation, key) -> new MyCustomizedTrackCall(annotation));
+                return solutionProvider;
+            }
         };
-        int getFromMix = tempContext.from(MixedApi.class).getIntSignal();
+        MixedApi api = tempContext.from(MixedApi.class);
+        int getFromMix = api.getIntSignal();
         println("getFromMix:" + getFromMix);
-        tempContext.from(MixedApi.class).setDummyIntSignal(20086);
-        getFromMix = tempContext.from(MixedApi.class).getIntSignal();
+        api.setDummyIntSignal(20086);
+        getFromMix = api.getIntSignal();
         println("getFromMix after dummySet:" + getFromMix);
-        tempContext.from(MixedApi.class).registerDummyStringChangeListenerAlias(new DummyApi.DummyListener() {
+        api.registerDummyStringChangeListenerAlias(new DummyApi.DummyListener() {
             @Override
             public void onChange(String value) {
                 println("dummy api onChange:" + value);
             }
         });
+        println("context from mixed api " + Cartrofit.getContext(tempContext.from(TestCarApi.class)));
     }
 
     @AfterClass

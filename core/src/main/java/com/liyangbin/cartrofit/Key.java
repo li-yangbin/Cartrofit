@@ -94,7 +94,7 @@ public class Key {
             Class<?> userTargetType;
             WrappedData dataAnnotation = declaredReturnType.getAnnotation(WrappedData.class);
             if (dataAnnotation != null) {
-                userTargetType = dataAnnotation.type();
+                userTargetType = dataAnnotation.value();
             } else {
                 userTargetType = Cartrofit.WRAPPER_CLASS_MAP.get(declaredReturnType);
             }

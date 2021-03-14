@@ -59,38 +59,6 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
         }
     }
 
-    private static final SolutionProvider CAR_PROPERTY_SOLUTION = new SolutionProvider();
-
-    static {
-        CAR_PROPERTY_SOLUTION.create(Get.class, PropertyGet.class)
-                .provide((get, key) -> new PropertyGet(key.getScope(), get));
-
-        CAR_PROPERTY_SOLUTION.create(Set.class, PropertySet.class)
-                .provide((set, key) -> new PropertySet(key.getScope(), set));
-
-        CAR_PROPERTY_SOLUTION.createWithFixedType(Track.class, PropertyTrack.class)
-                .provideAndBuildParameter((track, key) -> new PropertyTrack(key.getScope(), track))
-                .takeAny()
-                .output((a, old, para) -> {
-                    if (para.getParameter().getType().equals(CarPropertyValue.class)) {
-                        para.set(old);
-                    } else {
-                        para.set(old.getValue());
-                    }
-                    return old;
-                }).build()
-                .takeWithAnnotation(boolean.class, Availability.class)
-                .output((a, old, para) -> {
-                    para.set(old.getStatus() == CarPropertyValue.STATUS_AVAILABLE);
-                    return old;
-                }).build()
-                .takeWithAnnotation(int.class, Availability.class)
-                .output((a, old, para) -> {
-                    para.set(old.getStatus());
-                    return old;
-                }).buildAndCommit();
-    }
-
     public static String prop2Str(int property, int area) {
         return "prop:" + property + " hex:0x" + Integer.toHexString(property)
                 + " & area:" + area + " hex:0x" + Integer.toHexString(area);
@@ -112,6 +80,7 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
 
     private long debounceTimeMillis = DEBOUNCE_TIME_MS;
     private long timeoutMillis = TIMEOUT_MS;
+    private int defaultArea = CarPropertyScope.DEFAULT_AREA_ID;
     private List<CarPropertyConfig> carPropertyConfigs;
 
     public CarPropertyContext(CarServiceAccess<CAR> serviceAccess) {
@@ -122,13 +91,50 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
         this.debounceTimeMillis = debounceTimeMillis;
     }
 
+    public int getDefaultArea() {
+        return defaultArea;
+    }
+
+    public void setDefaultArea(int defaultArea) {
+        this.defaultArea = defaultArea;
+    }
+
     public void setTimeOutMillis(long timeoutMillis) {
         this.timeoutMillis = timeoutMillis;
     }
 
     @Override
     public SolutionProvider onProvideCallSolution() {
-        return CAR_PROPERTY_SOLUTION;
+        SolutionProvider solutionProvider = new SolutionProvider();
+
+        solutionProvider.create(Get.class, PropertyGet.class)
+                .provide((get, key) -> new PropertyGet(get));
+
+        solutionProvider.create(Set.class, PropertySet.class)
+                .provide((set, key) -> new PropertySet(set));
+
+        solutionProvider.createWithFixedType(Track.class, PropertyTrack.class)
+                .provideAndBuildParameter((track, key) -> new PropertyTrack(track))
+                .takeAny()
+                .output((a, old, para) -> {
+                    if (para.getParameter().getType().equals(CarPropertyValue.class)) {
+                        para.set(old);
+                    } else {
+                        para.set(old.getValue());
+                    }
+                    return old;
+                }).build()
+                .takeWithAnnotation(boolean.class, Availability.class)
+                .output((a, old, para) -> {
+                    para.set(old.getStatus() == CarPropertyValue.STATUS_AVAILABLE);
+                    return old;
+                }).build()
+                .takeWithAnnotation(int.class, Availability.class)
+                .output((a, old, para) -> {
+                    para.set(old.getStatus());
+                    return old;
+                }).buildAndCommit();
+        return solutionProvider;
     }
 
     @Override
@@ -332,11 +338,7 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
         CONFIG, // CarPropertyConfig
     }
 
-    private static int resolveArea(int handleArea, int scopeArea) {
-        return handleArea == CarPropertyScope.DEFAULT_AREA_ID ? scopeArea : handleArea;
-    }
-
-    public static abstract class PropertyAccessCall<IN, OUT> extends FixedTypeCall<IN, OUT> {
+    public abstract static class PropertyAccessCall<IN, OUT> extends FixedTypeCall<IN, OUT> {
         CarPropertyAccess<Object> carPropertyTypeAccess;
 
         CarPropertyConfig<?> propertyConfig;
@@ -346,6 +348,14 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
         public PropertyAccessCall(int propertyId, int areaId) {
             this.propertyId = propertyId;
             this.areaId = areaId;
+        }
+
+        @Override
+        public void onInit() {
+            super.onInit();
+            if (areaId == CarPropertyScope.DEFAULT_AREA_ID) {
+                areaId = getContext().defaultArea;
+            }
         }
 
         public CarPropertyConfig<?> getPropertyConfig() throws CarNotConnectedException {
@@ -391,8 +401,12 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
     public static class PropertyGet extends PropertyAccessCall<Void, Void> {
         CarType getType = CarType.VALUE;
 
-        public PropertyGet(CarPropertyScope scope, Get get) {
-            super(get.propId(), resolveArea(get.area(), scope.area()));
+        public PropertyGet(Get get) {
+            this(get.propId(), get.area());
+        }
+
+        public PropertyGet(int propertyId, int areaId) {
+            super(propertyId, areaId);
         }
 
         @Override
@@ -429,8 +443,12 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
 
     public static class PropertySet extends PropertyAccessCall<Void, Void> {
 
-        public PropertySet(CarPropertyScope scope, Set set) {
-            super(set.propId(), resolveArea(set.area(), scope.area()));
+        public PropertySet(Set set) {
+            this(set.propId(), set.area());
+        }
+
+        public PropertySet(int propertyId, int areaId) {
+            super(propertyId, areaId);
         }
 
         @Override
@@ -455,12 +473,16 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
 
     public static class PropertyTrack extends PropertyAccessCall<Void, CarPropertyValue<?>> {
 
-        private boolean restoreDataWhenTimeout;
+        public boolean restoreDataWhenTimeout;
         private PropKey propKey;
 
-        public PropertyTrack(CarPropertyScope scope, Track track) {
-            super(track.propId(), resolveArea(track.area(), scope.area()));
+        public PropertyTrack(Track track) {
+            this(track.propId(), track.area());
             this.restoreDataWhenTimeout = track.restoreIfTimeout();
+        }
+
+        public PropertyTrack(int propertyId, int areaId) {
+            super(propertyId, areaId);
         }
 
         @Override
@@ -474,8 +496,8 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
 
         @Override
         public Flow<CarPropertyValue<?>> onTrackInvoke(Void none) {
-            CarPropertyContext<?>.PropertyFlowSource flowSource = getContext()
-                    .getOrCreateFlowSource(propKey);
+            CarPropertyContext<?>.PropertyFlowSource flowSource =
+                    getContext().getOrCreateFlowSource(propKey);
             return Flow.fromSource(flowSource)
                     .catchException(TimeoutException.class, e -> {
                         e.printStackTrace();

@@ -88,7 +88,7 @@ class ObservableConverterField implements FlowConverter<ObservableField<?>> {
     }
 }
 
-@WrappedData(type = int.class)
+@WrappedData(int.class)
 class ObservableConverterInt implements FlowConverter<ObservableInt> {
 
     @Override
@@ -132,7 +132,7 @@ class ObservableConverterInt implements FlowConverter<ObservableInt> {
     }
 }
 
-@WrappedData(type = byte.class)
+@WrappedData(byte.class)
 class ObservableConverterByte implements FlowConverter<ObservableByte> {
 
     @Override
@@ -176,7 +176,7 @@ class ObservableConverterByte implements FlowConverter<ObservableByte> {
     }
 }
 
-@WrappedData(type = boolean.class)
+@WrappedData(boolean.class)
 class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
 
     @Override
@@ -220,7 +220,7 @@ class ObservableConverterBoolean implements FlowConverter<ObservableBoolean> {
     }
 }
 
-@WrappedData(type = float.class)
+@WrappedData(float.class)
 class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
 
     @Override
@@ -264,7 +264,7 @@ class ObservableConverterFloat implements FlowConverter<ObservableFloat> {
     }
 }
 
-@WrappedData(type = long.class)
+@WrappedData(long.class)
 class ObservableConverterLong implements FlowConverter<ObservableLong> {
 
     @Override

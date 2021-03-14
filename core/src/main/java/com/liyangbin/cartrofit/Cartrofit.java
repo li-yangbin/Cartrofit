@@ -27,6 +27,15 @@ public final class Cartrofit {
         return (T) DEFAULT_ENVIRONMENT.findContext(ContextEnvironment.getApi(apiClass));
     }
 
+    public static <T extends CartrofitContext<?>> T getContext(Object apiObj) {
+        try {
+            ContextEnvironment.IProxyExt proxyExt = (ContextEnvironment.IProxyExt) apiObj;
+            return (T) proxyExt.getContext();
+        } catch (ClassCastException castError) {
+            throw new IllegalArgumentException("Can not resolve context from api object:" + apiObj);
+        }
+    }
+
     public static <A extends Annotation> void register(CartrofitContext<A> context) {
         DEFAULT_ENVIRONMENT.add(context);
     }
@@ -67,10 +76,11 @@ public final class Cartrofit {
                 if (parameterizedType.getRawType() == FlowConverter.class) {
                     Type[] converterDeclaredType = parameterizedType.getActualTypeArguments();
                     WrappedData wrappedData = implementsBy.getDeclaredAnnotation(WrappedData.class);
+                    Class<?> resultType = getClassFromType(converterDeclaredType[0]);
                     if (wrappedData != null) {
-                        WRAPPER_CLASS_MAP.put(implementsBy, wrappedData.type());
+                        WRAPPER_CLASS_MAP.put(resultType, wrappedData.value());
                     }
-                    return getClassFromType(converterDeclaredType[0]);
+                    return resultType;
                 }
             }
         }

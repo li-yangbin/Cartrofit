@@ -9,6 +9,7 @@ import android.content.Context;
 
 import com.liyangbin.cartrofit.carproperty.CarPropertyAccess;
 import com.liyangbin.cartrofit.carproperty.CarPropertyContext;
+import com.liyangbin.cartrofit.carproperty.CarServiceAccess;
 import com.liyangbin.cartrofit.carproperty.DefaultCarServiceAccess;
 
 import java.util.List;
@@ -17,7 +18,11 @@ public class HvacContext extends CarPropertyContext<CarHvacManager>
         implements CarHvacManager.CarHvacEventCallback {
 
     public HvacContext(Context context) {
-        super(new DefaultCarServiceAccess<>(context, Car.HVAC_SERVICE));
+        this(new DefaultCarServiceAccess<>(context, Car.HVAC_SERVICE));
+    }
+
+    public HvacContext(CarServiceAccess<CarHvacManager> access) {
+        super(access);
     }
 
     @Override

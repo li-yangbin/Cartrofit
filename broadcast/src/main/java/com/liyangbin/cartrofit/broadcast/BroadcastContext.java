@@ -59,15 +59,8 @@ public class BroadcastContext extends CartrofitContext<Broadcast> {
 
     @Override
     public SolutionProvider onProvideCallSolution() {
-        return onProvideSendSolution().merge(onProvideReceiveSolution());
-    }
-
-    public SolutionProvider onProvideSendSolution() {
-        return BroadcastSolutionProvider.sendSolution();
-    }
-
-    public SolutionProvider onProvideReceiveSolution() {
-        return BroadcastSolutionProvider.receiveSolution();
+        return BroadcastSolutionProvider.sendSolution()
+                .merge(BroadcastSolutionProvider.receiveSolution());
     }
 
     private BroadcastFlowSource getOrCreateFlowSource(Call call, RegisterRequest registerRequest) {
@@ -511,12 +504,12 @@ public class BroadcastContext extends CartrofitContext<Broadcast> {
         }
     }
 
-    private static class SendRequest {
-        Intent intent;
-        String receiverPermission;
-        boolean ordered;
-        boolean synced;
-        UserHandle userHandle;
+    public static class SendRequest {
+        public Intent intent;
+        public String receiverPermission;
+        public boolean ordered;
+        public boolean synced;
+        public UserHandle userHandle;
 
         SendRequest(Send send) {
             intent = new Intent();
@@ -560,7 +553,7 @@ public class BroadcastContext extends CartrofitContext<Broadcast> {
         }
     }
 
-    private static class SendCall extends FixedTypeCall<SendRequest, Void> {
+    public static class SendCall extends FixedTypeCall<SendRequest, Void> {
 
         @SuppressLint("MissingPermission")
         @Override
@@ -595,12 +588,12 @@ public class BroadcastContext extends CartrofitContext<Broadcast> {
         }
     }
 
-    private static class RegisterRequest {
-        String action;
+    public static class RegisterRequest {
+        public String action;
         ArrayList<String> othersForCheck = new ArrayList<>();
-        IntentFilter intentFilter = new IntentFilter();
-        String broadcastPermission;
-        Handler scheduledHandler;
+        public IntentFilter intentFilter = new IntentFilter();
+        public String broadcastPermission;
+        public Handler scheduledHandler;
 
         RegisterRequest(Receive receive) {
             action = receive.action();
@@ -656,10 +649,10 @@ public class BroadcastContext extends CartrofitContext<Broadcast> {
         }
     }
 
-    private static class ReceiveResponse {
-        Intent intent;
-        Context context;
-        BroadcastReceiver receiver;
+    public static class ReceiveResponse {
+        public Intent intent;
+        public Context context;
+        public BroadcastReceiver receiver;
 
         ReceiveResponse(Context context, Intent intent, BroadcastReceiver receiver) {
             this.context = context;
@@ -671,7 +664,7 @@ public class BroadcastContext extends CartrofitContext<Broadcast> {
     private static class ReceiveCall extends FixedTypeCall<RegisterRequest, ReceiveResponse> {
 
         @Override
-        public Flow<ReceiveResponse> onTrackInvoke(RegisterRequest registerRequest) throws Throwable {
+        public Flow<ReceiveResponse> onTrackInvoke(RegisterRequest registerRequest) {
             BroadcastFlowSource flowSource = getContext().getOrCreateFlowSource(this, registerRequest);
             return Flow.fromSource(flowSource).takeWhile(receiveResponse -> registerRequest.action
                     .equals(receiveResponse.intent.getAction()));

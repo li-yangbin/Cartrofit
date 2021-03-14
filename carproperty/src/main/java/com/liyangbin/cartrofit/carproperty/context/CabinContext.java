@@ -9,6 +9,7 @@ import android.content.Context;
 
 import com.liyangbin.cartrofit.carproperty.CarPropertyAccess;
 import com.liyangbin.cartrofit.carproperty.CarPropertyContext;
+import com.liyangbin.cartrofit.carproperty.CarServiceAccess;
 import com.liyangbin.cartrofit.carproperty.DefaultCarServiceAccess;
 
 import java.util.List;
@@ -17,7 +18,11 @@ public class CabinContext extends CarPropertyContext<CarCabinManager> implements
         CarCabinManager.CarCabinEventCallback {
 
     public CabinContext(Context context) {
-        super(new DefaultCarServiceAccess<>(context, Car.CABIN_SERVICE));
+        this(new DefaultCarServiceAccess<>(context, Car.CABIN_SERVICE));
+    }
+
+    public CabinContext(CarServiceAccess<CarCabinManager> access) {
+        super(access);
     }
 
     @Override

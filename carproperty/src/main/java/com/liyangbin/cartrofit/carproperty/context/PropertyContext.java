@@ -10,6 +10,7 @@ import android.content.Context;
 import com.liyangbin.cartrofit.carproperty.CarPropertyAccess;
 import com.liyangbin.cartrofit.carproperty.CarPropertyContext;
 import com.liyangbin.cartrofit.carproperty.CarPropertyException;
+import com.liyangbin.cartrofit.carproperty.CarServiceAccess;
 import com.liyangbin.cartrofit.carproperty.DefaultCarServiceAccess;
 
 import java.util.List;
@@ -17,7 +18,11 @@ import java.util.List;
 public class PropertyContext extends CarPropertyContext<CarPropertyManager> {
 
     public PropertyContext(Context context) {
-        super(new DefaultCarServiceAccess<>(context, Car.PROPERTY_SERVICE));
+        this(new DefaultCarServiceAccess<>(context, Car.PROPERTY_SERVICE));
+    }
+
+    public PropertyContext(CarServiceAccess<CarPropertyManager> access) {
+        super(access);
     }
 
     class PropRegisteredSource extends PropertyFlowSource implements CarPropertyManager.CarPropertyEventListener {

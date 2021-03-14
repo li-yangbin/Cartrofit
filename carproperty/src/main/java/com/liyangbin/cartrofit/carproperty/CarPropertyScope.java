@@ -15,6 +15,4 @@ public @interface CarPropertyScope {
     int DEFAULT_AREA_ID = 0;
 
     String value();
-
-    int area() default DEFAULT_AREA_ID;
 }

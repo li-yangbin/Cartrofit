@@ -9,6 +9,7 @@ import android.content.Context;
 
 import com.liyangbin.cartrofit.carproperty.CarPropertyAccess;
 import com.liyangbin.cartrofit.carproperty.CarPropertyContext;
+import com.liyangbin.cartrofit.carproperty.CarServiceAccess;
 import com.liyangbin.cartrofit.carproperty.DefaultCarServiceAccess;
 
 import java.util.List;
@@ -17,7 +18,11 @@ public class VendorExtensionContext extends CarPropertyContext<CarVendorExtensio
         implements CarVendorExtensionManager.CarVendorExtensionCallback {
 
     public VendorExtensionContext(Context context) {
-        super(new DefaultCarServiceAccess<>(context, Car.VENDOR_EXTENSION_SERVICE));
+        this(new DefaultCarServiceAccess<>(context, Car.VENDOR_EXTENSION_SERVICE));
+    }
+
+    public VendorExtensionContext(CarServiceAccess<CarVendorExtensionManager> access) {
+        super(access);
     }
 
     @Override

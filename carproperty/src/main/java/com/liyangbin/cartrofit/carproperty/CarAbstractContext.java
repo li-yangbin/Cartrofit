@@ -57,6 +57,10 @@ public abstract class CarAbstractContext<CAR, SOURCE_KEY, SOURCE_DATA_TYPE> exte
         this.serviceAccess = Objects.requireNonNull(serviceAccess);
     }
 
+    public CarServiceAccess<CAR> getCarAccess() {
+        return this.serviceAccess;
+    }
+
     @Override
     public boolean onApiCreate(CarPropertyScope annotation, Class<?> apiType) {
         return annotation.value().equals(serviceAccess.getKey());

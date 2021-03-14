@@ -5,12 +5,13 @@ import com.liyangbin.cartrofit.annotation.MethodCategory;
 import com.liyangbin.cartrofit.solution.SolutionProvider;
 
 import java.lang.annotation.Annotation;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Objects;
 
 @SuppressWarnings("unchecked")
 public final class ContextEnvironment {
@@ -127,24 +128,8 @@ public final class ContextEnvironment {
     }
 
     @Context
-    private @interface EmptyContext {
-    }
-
-    private static Class<? extends Annotation> findAnnotationFromContextProvider(ContextProvider<?> provider) {
-        Class<?> implementBy = findImplement(provider.getClass(), ContextProvider.class);
-        Type[] genericIfTypes = implementBy.getGenericInterfaces();
-        for (Type type : genericIfTypes) {
-            if (type instanceof ParameterizedType) {
-                ParameterizedType parameterizedType = (ParameterizedType) type;
-                if (parameterizedType.getRawType() == ContextProvider.class) {
-                    try {
-                        return (Class<? extends Annotation>) parameterizedType.getActualTypeArguments()[0];
-                    } catch (ClassCastException ignore) {
-                    }
-                }
-            }
-        }
-        throw new CartrofitGrammarException("Invalid provider " + provider);
+    @Retention(RetentionPolicy.RUNTIME)
+    public @interface EmptyContext {
     }
 
     public <A extends Annotation> void add(CartrofitContext<A> contextObj) {
@@ -164,31 +149,6 @@ public final class ContextEnvironment {
             cachedContextMap.put(annotationType, contextArrayList);
         }
         contextArrayList.add(contextObj);
-    }
-
-    private static class Singleton {
-        private ContextProvider<?> initProvider;
-        private CartrofitContext<?> instance;
-
-        Singleton(ContextProvider<?> initProvider) {
-            this.initProvider = initProvider;
-        }
-
-        CartrofitContext<?> get() {
-            if (instance == null) {
-                synchronized (this) {
-                    if (instance == null) {
-                        instance = Objects.requireNonNull(initProvider.provide());
-                        initProvider = null;
-                    }
-                }
-            }
-            return instance;
-        }
-    }
-
-    public interface ContextProvider<A extends Annotation> {
-        CartrofitContext<A> provide();
     }
 
     public synchronized <T> T from(Class<T> apiClass) {
@@ -235,7 +195,7 @@ public final class ContextEnvironment {
         LoadedApi api = new LoadedApi();
         api.runtimeContext = context;
         api.apiObj = Proxy.newProxyInstance(record.clazz.getClassLoader(),
-                new Class<?>[]{record.clazz},
+                new Class<?>[]{record.clazz, IProxyExt.class},
                 (proxy, method, args) -> {
                     if (method.isDefault()) {
                         throw new UnsupportedOperationException(
@@ -244,9 +204,11 @@ public final class ContextEnvironment {
                     final ApiRecord<?> invokeRecord;
                     Class<?> declaringClass = method.getDeclaringClass();
                     CartrofitContext<?> runtimeContext;
-                    if (record.clazz == declaringClass) {
+                    if (declaringClass == record.clazz) {
                         invokeRecord = record;
                         runtimeContext = context;
+                    } else if (declaringClass == IProxyExt.class) {
+                        return context;
                     } else {
                         invokeRecord = getApi(declaringClass, true);
                         runtimeContext = getOrLoadApi(invokeRecord).runtimeContext;
@@ -297,5 +259,9 @@ public final class ContextEnvironment {
         public String toString() {
             return "DelegateContext in " + ContextEnvironment.this;
         }
+    }
+
+    interface IProxyExt {
+        CartrofitContext<?> getContext();
     }
 }

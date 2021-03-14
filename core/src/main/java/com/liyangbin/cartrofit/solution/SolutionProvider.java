@@ -10,6 +10,7 @@ import com.liyangbin.cartrofit.annotation.MethodCategory;
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Function;
 
 @SuppressWarnings("unchecked")
@@ -46,8 +47,17 @@ public final class SolutionProvider {
     }
 
     public <INPUT> Function<Object[], INPUT> findInputConverter(FixedTypeCall<INPUT, ?> call) {
+        final Class<?> userCallType = call.getClass();
         ConvertSolution<INPUT, ?, Annotation> builder =
                 (ConvertSolution<INPUT, ?, Annotation>) mConverterInputMap.get(call.getClass());
+        if (builder == null) {
+            for (Map.Entry<Class<?>, ConvertSolution<?, ?, ?>> entry : mConverterInputMap.entrySet()) {
+                if (entry.getKey().isAssignableFrom(userCallType)) {
+                    builder = (ConvertSolution<INPUT, ?, Annotation>) entry.getValue();
+                    break;
+                }
+            }
+        }
         if (builder != null) {
             return builder.checkIn(call.getBindingParameter(), call);
         } else {
@@ -56,7 +66,16 @@ public final class SolutionProvider {
     }
 
     public <OUTPUT> Function<OUTPUT, ?> findReturnOutputConverter(FixedTypeCall<?, OUTPUT> call) {
-        ConvertSolution<?, OUTPUT, ?> builder = (ConvertSolution<?, OUTPUT, ?>) mConverterOutputMap.get(call.getClass());
+        final Class<?> userCallType = call.getClass();
+        ConvertSolution<?, OUTPUT, ?> builder = (ConvertSolution<?, OUTPUT, ?>) mConverterOutputMap.get(userCallType);
+        if (builder == null) {
+            for (Map.Entry<Class<?>, ConvertSolution<?, ?, ?>> entry : mConverterOutputMap.entrySet()) {
+                if (entry.getKey().isAssignableFrom(userCallType)) {
+                    builder = (ConvertSolution<?, OUTPUT, ?>) entry.getValue();
+                    break;
+                }
+            }
+        }
         if (builder != null) {
             return builder.checkOutReturn(call.getKey());
         } else {
@@ -65,7 +84,16 @@ public final class SolutionProvider {
     }
 
     public <OUTPUT> Function<OUTPUT, Object[]> findCallbackOutputConverter(FixedTypeCall<?, OUTPUT> call) {
-        ConvertSolution<?, OUTPUT, ?> builder = (ConvertSolution<?, OUTPUT, ?>) mConverterOutputMap.get(call.getClass());
+        final Class<?> userCallType = call.getClass();
+        ConvertSolution<?, OUTPUT, ?> builder = (ConvertSolution<?, OUTPUT, ?>) mConverterOutputMap.get(userCallType);
+        if (builder == null) {
+            for (Map.Entry<Class<?>, ConvertSolution<?, ?, ?>> entry : mConverterOutputMap.entrySet()) {
+                if (entry.getKey().isAssignableFrom(userCallType)) {
+                    builder = (ConvertSolution<?, OUTPUT, ?>) entry.getValue();
+                    break;
+                }
+            }
+        }
         if (builder != null) {
             return builder.checkOutCallback(call.getKey().getImplicitParameterGroup());
         } else {
@@ -127,7 +155,7 @@ public final class SolutionProvider {
 
         public void provide(CallProvider<A, T> provider) {
             this.provider = provider;
-            mCallSolutionList.add(this);
+            saveCallSolution(this);
         }
 
         private Call createCall(CartrofitContext context, int category, Key key) {
@@ -148,6 +176,16 @@ public final class SolutionProvider {
         }
     }
 
+    private void saveCallSolution(CallSolution<?, ?> callSolution) {
+        for (int i = 0; i < mCallSolutionList.size(); i++) {
+            if (mCallSolutionList.get(i).candidateClass == callSolution.candidateClass) {
+                mCallSolutionList.set(i, callSolution);
+                return;
+            }
+        }
+        mCallSolutionList.add(callSolution);
+    }
+
     public class FixedTypeCallSolution<A extends Annotation, INPUT, OUTPUT,
             T extends FixedTypeCall<INPUT, OUTPUT>> extends CallSolution<A, T> {
 
@@ -157,7 +195,7 @@ public final class SolutionProvider {
 
         public ConvertSolution<INPUT, OUTPUT, A> provideAndBuildParameter(CallProvider<A, T> provider) {
             this.provider = provider;
-            mCallSolutionList.add(this);
+            saveCallSolution(this);
             if (mConverterInputMap.containsKey(callType) || mConverterOutputMap.containsKey(callType)) {
                 throw new CartrofitGrammarException("There is a parameter solution exists already");
             }

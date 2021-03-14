@@ -22,7 +22,11 @@ public class CarSensorContext extends CarAbstractContext<CarSensorManager,
         CarSensorContext.SensorRegisterKey, CarSensorEvent> {
 
     public CarSensorContext(Context context) {
-        super(new DefaultCarServiceAccess<>(context, Car.SENSOR_SERVICE));
+        this(new DefaultCarServiceAccess<>(context, Car.SENSOR_SERVICE));
+    }
+
+    public CarSensorContext(CarServiceAccess<CarSensorManager> access) {
+        super(access);
     }
 
     public static class SensorRegisterKey {
@@ -106,12 +110,12 @@ public class CarSensorContext extends CarAbstractContext<CarSensorManager,
         return solutionProvider;
     }
 
-    private class SensorGetCall extends Call {
+    public static class SensorGetCall extends Call {
         int type;
         boolean readConfig;
         boolean readAvailability;
 
-        private SensorGetCall(int type) {
+        public SensorGetCall(int type) {
             this.type = type;
         }
 
@@ -126,21 +130,26 @@ public class CarSensorContext extends CarAbstractContext<CarSensorManager,
         }
 
         @Override
+        public CarSensorContext getContext() {
+            return (CarSensorContext) super.getContext();
+        }
+
+        @Override
         public Object invoke(Object[] parameter) throws Throwable {
             if (readAvailability) {
-                return getManagerLazily().isSensorSupported(type);
+                return getContext().getManagerLazily().isSensorSupported(type);
             } else if (readConfig) {
-                return getManagerLazily().getSensorConfig(type);
+                return getContext().getManagerLazily().getSensorConfig(type);
             } else {
-                return getManagerLazily().getLatestSensorEvent(type);
+                return getContext().getManagerLazily().getLatestSensorEvent(type);
             }
         }
     }
 
-    private class SensorTrackCall extends FixedTypeCall<Void, CarSensorEvent> {
+    public static class SensorTrackCall extends FixedTypeCall<Void, CarSensorEvent> {
         SensorRegisterKey registerKey;
 
-        private SensorTrackCall(int type, int rate) {
+        public SensorTrackCall(int type, int rate) {
             registerKey = new SensorRegisterKey(type, rate);
         }
 
@@ -153,8 +162,13 @@ public class CarSensorContext extends CarAbstractContext<CarSensorManager,
         }
 
         @Override
+        public CarSensorContext getContext() {
+            return (CarSensorContext) super.getContext();
+        }
+
+        @Override
         public Flow<CarSensorEvent> onTrackInvoke(Void aVoid) {
-            return Flow.fromSource(getOrCreateFlowSource(registerKey));
+            return Flow.fromSource(getContext().getOrCreateFlowSource(registerKey));
         }
     }
 
