@@ -31,7 +31,6 @@ import androidx.annotation.IntDef;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.databinding.ObservableBoolean;
 import androidx.lifecycle.LifecycleObserver;
-import androidx.lifecycle.LifecycleOwner;
 
 import com.android.car.hvac.api.HvacPanelApi;
 import com.android.car.hvac.HvacController;

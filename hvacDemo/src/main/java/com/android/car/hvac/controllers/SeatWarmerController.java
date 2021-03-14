@@ -15,14 +15,14 @@
  */
 package com.android.car.hvac.controllers;
 
-import androidx.lifecycle.Lifecycle;
-import androidx.lifecycle.LifecycleObserver;
-import androidx.lifecycle.OnLifecycleEvent;
-
 import com.android.car.hvac.HvacController;
 import com.android.car.hvac.api.SeatWarmerApi;
 import com.android.car.hvac.ui.SeatWarmerButton;
 import com.liyangbin.cartrofit.Cartrofit;
+
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleObserver;
+import androidx.lifecycle.OnLifecycleEvent;
 
 /**
  * A controller to handle changes in the heated seat levels.
@@ -43,8 +43,8 @@ public class SeatWarmerController implements LifecycleObserver, SeatWarmerApi.On
         mHvacController = hvacController;
 //        mHvacController.registerCallback(mCallback);
 
-        SeatWarmerApi.WarmInfo info = new SeatWarmerApi.WarmInfo();
-        mSeatWarmerApi.getSeatWarmLevel(info);
+        mDriverSeatButton.setHeatLevel(mSeatWarmerApi.getDriverSeatWarmerLevel());
+        mPassengerSeatButton.setHeatLevel(mSeatWarmerApi.getPassengerSeatWarmerLevel());
 
         mPassengerSeatButton.setSeatWarmerClickListener(mPassengerSeatListener);
         mDriverSeatButton.setSeatWarmerClickListener(mDriverSeatListener);

@@ -37,24 +37,39 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.databinding.DataBindingUtil;
-
 import com.android.car.hvac.controllers.HvacPanelController;
 import com.android.car.hvac.databinding.HvacPanelBinding;
 import com.android.car.hvac.ui.TemperatureBarOverlay;
 import com.liyangbin.cartrofit.Cartrofit;
-import com.liyangbin.cartrofit.Command;
-import com.liyangbin.cartrofit.Interceptor;
+import com.liyangbin.cartrofit.broadcast.Extra;
+import com.liyangbin.cartrofit.broadcast.Receive;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.databinding.DataBindingUtil;
+
+interface OnOffListener {
+    @Receive(action = Intent.ACTION_SCREEN_OFF)
+    void onScreenOff();
+
+    @Receive(action = Intent.ACTION_SCREEN_ON)
+    void onScreenOn();
+}
+
+interface TimeChangeListener {
+    @Receive(action = Intent.ACTION_TIME_TICK)
+    void onTimeTick();
+
+    @Receive(action = Intent.ACTION_TIMEZONE_CHANGED)
+    void onTimeZoneChange(@Extra(key = "time-zone") String zoneId);
+}
 
 /**
  * Creates a sliding panel for HVAC controls and adds it to the window manager above SystemUI.
  */
-public class HvacUiService extends AppCompatActivity {
+public class HvacUiService extends AppCompatActivity implements OnOffListener, TimeChangeListener {
     public static final String CAR_INTENT_ACTION_TOGGLE_HVAC_CONTROLS =
             "android.car.intent.action.TOGGLE_HVAC_CONTROLS";
     private static final String TAG = "HvacUiService";
@@ -91,6 +106,26 @@ public class HvacUiService extends AppCompatActivity {
     private TemperatureBarOverlay mPassengerTemperatureBarCollapsed;
     private FrameLayout mContent;
     private HvacPanelBinding mBinding;
+
+    @Override
+    public void onScreenOff() {
+        Log.i(TAG, "onScreenOff");
+    }
+
+    @Override
+    public void onScreenOn() {
+        Log.i(TAG, "onScreenOn");
+    }
+
+    @Override
+    public void onTimeTick() {
+        Log.i(TAG, "on time tick in register grammar");
+    }
+
+    @Override
+    public void onTimeZoneChange(String zoneId) {
+        Log.i(TAG, "onTimeZoneChange in register grammar zoneId:" + zoneId);
+    }
 
     @Override
     public void onCreate(Bundle icicle) {
@@ -130,6 +165,24 @@ public class HvacUiService extends AppCompatActivity {
         // Register receiver such that any user with climate control permission can call it.
         registerReceiver(mBroadcastReceiver, filter,
                 Car.PERMISSION_CONTROL_CAR_CLIMATE, null);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+
+        Log.i(TAG, "onStart");
+        Cartrofit.from(TimeTickerApi.class).registerScreenOffListener(this);
+        Cartrofit.from(TimeTickerApi.class).registerTimeChangeListener(this);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+
+        Log.i(TAG, "onStop");
+        Cartrofit.from(TimeTickerApi.class).unregisterScreenOffListener(this);
+        Cartrofit.from(TimeTickerApi.class).unregisterTimeChangeListener(this);
     }
 
     private WindowManagerSelf mSelfWm = new WindowManagerSelf();

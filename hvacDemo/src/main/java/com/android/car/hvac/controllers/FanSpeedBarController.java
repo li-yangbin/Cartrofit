@@ -15,19 +15,14 @@
  */
 package com.android.car.hvac.controllers;
 
-import android.car.Car;
-import android.car.hardware.hvac.CarHvacManager;
 import android.util.Log;
 
-import androidx.lifecycle.LifecycleObserver;
-
-import com.android.car.hvac.api.FanSpeedApi;
-import com.android.car.hvac.api.HvacPanelApi;
 import com.android.car.hvac.HvacController;
+import com.android.car.hvac.api.FanSpeedApi;
 import com.android.car.hvac.ui.FanSpeedBar;
 import com.liyangbin.cartrofit.Cartrofit;
-import com.liyangbin.cartrofit.annotation.Scope;
-import com.liyangbin.cartrofit.annotation.Track;
+
+import androidx.lifecycle.LifecycleObserver;
 
 /**
  * Controller for the fan speed bar to adjust fan speed.
@@ -83,12 +78,12 @@ public class FanSpeedBarController implements LifecycleObserver {
             = new FanSpeedBar.FanSpeedButtonClickListener() {
         @Override
         public void onMaxButtonClicked() {
-            mFanSpeedApi.setFanSpeedToMax();
+            mFanSpeedApi.setFanSpeed(FanSpeedApi.MAX_FAN_SPEED);
         }
 
         @Override
         public void onOffButtonClicked() {
-            mFanSpeedApi.setFanSpeedToMin();
+            mFanSpeedApi.setFanSpeed(FanSpeedApi.MIN_FAN_SPEED);
         }
 
         @Override
@@ -100,10 +95,8 @@ public class FanSpeedBarController implements LifecycleObserver {
         }
     };
 
-    @Scope(Car.HVAC_SERVICE)
     public interface OnFanSpeedChangeCallback {
 
-        @Track(id = CarHvacManager.ID_ZONED_FAN_SPEED_SETPOINT, area = HvacPanelApi.SEAT_ALL)
         void onFanSpeedChange(int speed);
     }
 }

@@ -15,29 +15,31 @@
  */
 package com.android.car.hvac.controllers;
 
-import androidx.lifecycle.Lifecycle;
-import androidx.lifecycle.LifecycleObserver;
-import androidx.lifecycle.OnLifecycleEvent;
+import android.util.Log;
 
 import com.android.car.hvac.HvacController;
 import com.android.car.hvac.api.TemperatureApi;
 import com.android.car.hvac.ui.TemperatureBarOverlay;
 import com.liyangbin.cartrofit.Cartrofit;
 
-import io.reactivex.disposables.Disposable;
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleObserver;
+import androidx.lifecycle.OnLifecycleEvent;
+import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.functions.Consumer;
 
 /**
  * A controller that handles temperature updates for the driver and passenger.
  */
 public class TemperatureController implements LifecycleObserver {
+    private static final String TAG = "TemperatureController";
     private final TemperatureBarOverlay mDriverTempBarExpanded;
     private final TemperatureBarOverlay mPassengerTempBarExpanded;
     private final TemperatureBarOverlay mDriverTempBarCollapsed;
     private final TemperatureBarOverlay mPassengerTempBarCollapsed;
 //    private final HvacController mHvacController;
     private final TemperatureApi mApi = Cartrofit.from(TemperatureApi.class);
-    private Disposable mDisposable;
+    private CompositeDisposable mDisposable = new CompositeDisposable();
 
     //TODO: builder pattern for clarity
     public TemperatureController(TemperatureBarOverlay passengerTemperatureBarExpanded,
@@ -60,8 +62,8 @@ public class TemperatureController implements LifecycleObserver {
         mDriverTempBarExpanded.setAvailable(isDriverTempControlAvailable);
         mDriverTempBarCollapsed.setAvailable(isDriverTempControlAvailable);
         if (isDriverTempControlAvailable) {
-            mDriverTempBarExpanded.setTemperature(mApi.getDriverTemperature());
-            mDriverTempBarCollapsed.setTemperature(mApi.getDriverTemperature());
+            mDriverTempBarExpanded.setTemperature((int) mApi.getDriverTemperature());
+            mDriverTempBarCollapsed.setTemperature((int) mApi.getDriverTemperature());
         }
 
         final boolean isPassengerTempControlAvailable =
@@ -69,20 +71,27 @@ public class TemperatureController implements LifecycleObserver {
         mPassengerTempBarExpanded.setAvailable(isPassengerTempControlAvailable);
         mPassengerTempBarCollapsed.setAvailable(isPassengerTempControlAvailable);
         if (isPassengerTempControlAvailable) {
-            mPassengerTempBarExpanded.setTemperature(mApi.getPassengerTemperature());
-            mPassengerTempBarCollapsed.setTemperature(mApi.getPassengerTemperature());
+            mPassengerTempBarExpanded.setTemperature((int) mApi.getPassengerTemperature());
+            mPassengerTempBarCollapsed.setTemperature((int) mApi.getPassengerTemperature());
         }
 
-        mDisposable = mApi.trackTempChange().subscribe(new Consumer<TemperatureApi.TempInfo>() {
+        mDisposable.add(mApi.trackDriverTemperature().subscribe(new Consumer<Float>() {
             @Override
-            public void accept(TemperatureApi.TempInfo tempInfo) throws Exception {
-                mDriverTempBarCollapsed.setTemperature(tempInfo.driverTemp);
-                mDriverTempBarExpanded.setTemperature(tempInfo.driverTemp);
-
-                mPassengerTempBarExpanded.setTemperature(tempInfo.passengerTemp);
-                mPassengerTempBarCollapsed.setTemperature(tempInfo.passengerTemp);
+            public void accept(Float temperature) throws Exception {
+                Log.i(TAG, "drive temp change " + temperature);
+                mDriverTempBarCollapsed.setTemperature(temperature.intValue());
+                mDriverTempBarExpanded.setTemperature(temperature.intValue());
             }
-        });
+        }));
+
+        mDisposable.add(mApi.trackPassengerTemperature().subscribe(new Consumer<Float>() {
+            @Override
+            public void accept(Float temperature) throws Exception {
+                Log.i(TAG, "passenger temp change " + temperature);
+                mPassengerTempBarExpanded.setTemperature(temperature.intValue());
+                mPassengerTempBarCollapsed.setTemperature(temperature.intValue());
+            }
+        }));
     }
 
     @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)

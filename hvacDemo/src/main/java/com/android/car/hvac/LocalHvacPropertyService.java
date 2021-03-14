@@ -36,6 +36,8 @@ import android.os.RemoteException;
 import android.util.Pair;
 import android.util.SparseArray;
 
+import com.android.car.hvac.ui.SeatWarmerButton;
+
 /**
  * A local {@link ICarProperty} that is used to mock up data for HVAC.
  */
@@ -196,17 +198,19 @@ public class LocalHvacPropertyService {
                 .addAreaConfig(PASSENGER_ZONE_ID, 0f, 100f).build());
 
         mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_SEAT_TEMP,
-                DRIVER_ZONE_ID), DEFAULT_DRIVER_TEMP);
-        mPropertyList.add(CarPropertyConfig.newBuilder(Float.class,
+                DRIVER_ZONE_ID), SeatWarmerButton.HEAT_OFF);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Integer.class,
                 CarHvacManager.ID_ZONED_SEAT_TEMP,
                 VehicleAreaType.VEHICLE_AREA_TYPE_SEAT)
-                .addAreaConfig(DRIVER_ZONE_ID, 0f, 100f).build());
+                .addAreaConfig(DRIVER_ZONE_ID, SeatWarmerButton.HEAT_OFF,
+                        SeatWarmerButton.HEAT_LEVEL_THREE).build());
 
         mProperties.put(new Pair<>(CarHvacManager.ID_ZONED_SEAT_TEMP,
-                PASSENGER_ZONE_ID), DEFAULT_PASSENGER_TEMP);
-        mPropertyList.add(CarPropertyConfig.newBuilder(Float.class,
+                PASSENGER_ZONE_ID), SeatWarmerButton.HEAT_OFF);
+        mPropertyList.add(CarPropertyConfig.newBuilder(Integer.class,
                 CarHvacManager.ID_ZONED_SEAT_TEMP,
                 VehicleAreaType.VEHICLE_AREA_TYPE_SEAT)
-                .addAreaConfig(PASSENGER_ZONE_ID, 0f, 100f).build());
+                .addAreaConfig(PASSENGER_ZONE_ID, SeatWarmerButton.HEAT_OFF,
+                        SeatWarmerButton.HEAT_LEVEL_THREE).build());
     }
 }

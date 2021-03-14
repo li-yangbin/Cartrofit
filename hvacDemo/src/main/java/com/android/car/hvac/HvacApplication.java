@@ -1,68 +1,30 @@
 package com.android.car.hvac;
 
 import android.app.Application;
-import android.os.AsyncTask;
-import android.os.Handler;
-import android.util.Log;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 
-import com.liyangbin.cartrofit.ApiBuilder;
-import com.liyangbin.cartrofit.ApiCallback;
 import com.liyangbin.cartrofit.Cartrofit;
-import com.liyangbin.cartrofit.Command;
-import com.liyangbin.cartrofit.CommandType;
-import com.liyangbin.cartrofit.Constraint;
-import com.liyangbin.cartrofit.Interceptor;
+import com.liyangbin.cartrofit.broadcast.BroadcastContext;
+import com.liyangbin.cartrofit.carproperty.context.HvacContext;
 
 public class HvacApplication extends Application {
+    private static final String TAG = "HvacApplication";
+
     @Override
     public void onCreate() {
         super.onCreate();
 
-        Cartrofit.builder()
-                .addDataSource(new HvacDataSource(this))
-                .addInterceptor(new CartrofitLogger())
-                .addApiCallback(new ApiCallback() {
-                    @Override
-                    public void onApiCreate(Class<?> apiClass, ApiBuilder builder) {
-                        builder.intercept(new SetCommandDispatcher())
-                                .apply(Constraint.of(CommandType.SET));
+        Cartrofit.register(new HvacContext(new MockHvacAccess(this)));
+        Cartrofit.register(new BroadcastContext(this, false));
+        registerReceiver(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
 
-                        builder.intercept(new ReceiveCommandDispatcher())
-                                .apply(Constraint.of(CommandType.RECEIVE));
-                    }
-                })
-                .buildAsDefault();
+            }
+        }, new IntentFilter(Intent.ACTION_TIME_TICK));
     }
 
-    private static class CartrofitLogger implements Interceptor {
-        @Override
-        public Object process(Command command, Object parameter) {
-            Log.i("cartrofit", "execute->" + command + " parameter:" + parameter);
-            return command.invoke(parameter);
-        }
-    }
-
-    private static class SetCommandDispatcher implements Interceptor {
-        @Override
-        public Object process(Command command, Object parameter) {
-            AsyncTask.execute(() -> {
-                Log.i("cartrofit", "Async execute->" + command + " parameter:" + parameter);
-                command.invoke(parameter);
-            });
-            return null;
-        }
-    }
-
-    private static class ReceiveCommandDispatcher implements Interceptor {
-        Handler mUiHandler = new Handler();
-
-        @Override
-        public Object process(Command command, Object parameter) {
-            mUiHandler.post(() -> {
-                Log.i("cartrofit", "Ui thread receive->" + command + " parameter:" + parameter);
-                command.invoke(parameter);
-            });
-            return null;
-        }
-    }
 }

@@ -18,12 +18,12 @@ package com.android.car.hvac.controllers;
 import android.car.hardware.hvac.CarHvacManager;
 import android.util.SparseIntArray;
 
-import androidx.lifecycle.LifecycleObserver;
-
 import com.android.car.hvac.HvacController;
 import com.android.car.hvac.api.FanDirectionApi;
 import com.android.car.hvac.ui.FanDirectionButtons;
 import com.liyangbin.cartrofit.Cartrofit;
+
+import androidx.lifecycle.LifecycleObserver;
 
 /**
  * A controller to handle changes in the fan direction. Also maps fan directions specified
