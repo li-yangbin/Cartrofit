@@ -32,7 +32,8 @@ dependencies {
     implementation project(path: ':core')
     annotationProcessor project(':processorlib')
     testAnnotationProcessor project(':processorlib')
-    implementation files('libs/android.car.jar')
+    compileOnly files('libs/android.car.jar')
+    testImplementation files('libs/android.car.jar')
 
     testImplementation 'junit:junit:4.+'
     androidTestImplementation 'androidx.test.ext:junit:1.1.2'

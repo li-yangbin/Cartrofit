@@ -54,7 +54,7 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
 
         @Override
         public String toString() {
-            return (preferType != null ? preferType.getSimpleName() : null)
+            return "type:" + (preferType != null ? preferType.getSimpleName() : null)
                     + " " + CarPropertyContext.prop2Str(propertyId, area);
         }
     }
