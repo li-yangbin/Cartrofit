@@ -19,6 +19,7 @@ import android.animation.Animator;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
+import android.car.CarNotConnectedException;
 import android.content.res.Resources;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
@@ -286,7 +287,13 @@ public class HvacPanelController implements LifecycleObserver {
         setAutoMode(mHvacApi.getAutoModeState());
 
         mHvacPowerSwitch.setIsOn(mHvacApi.getHvacPowerState());
-        mHvacPowerSwitch.setToggleListener(isOn -> mHvacApi.setHvacPowerState(isOn));
+        mHvacPowerSwitch.setToggleListener(isOn -> {
+            try {
+                mHvacApi.setHvacPowerState(isOn);
+            } catch (CarNotConnectedException e) {
+                e.printStackTrace();
+            }
+        });
 
 //        mHvacController.registerCallback(mToggleButtonCallbacks);
 //        mToggleButtonCallbacks.onHvacPowerChange(mHvacController.getHvacPowerState());
