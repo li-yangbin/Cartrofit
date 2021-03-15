@@ -39,7 +39,7 @@ processorLib 框架部分功能所依赖的注解处理器, 同样应该作为�
     annotationProcessor 'com.gitee.li-yangbin.cartrofit:processorlib:latest-version'
 ```
 
-hvacDemo 由原生android-automotive的空调App修改而来, 做测试和demo展示的作用, 仅供参考
+hvacDemo 由原生Android Automotive的空调App修改而来, 做测试和demo展示的作用, 仅供参考
 
 CarProperty接口声明方式
 =====================
@@ -56,7 +56,7 @@ CarProperty接口声明方式
 ```java
     Cartrofit.register(new HvacContext(this));
 ```
-其中HvacContext是框架自带的实现，支持Android-automotive空调访问调用，App需要结合自身情况考虑做扩展实现
+其中HvacContext是框架自带的实现，支持Android Automotive空调访问调用，App需要结合自身情况考虑做扩展实现
 
 然后在使用的地方使用java动态代理来获取接口实现，如下所示
 ```java
@@ -340,7 +340,7 @@ Broadcast注解支持普通广播与本地广播，使用本地广播需要将
         void unregisterTimeChangeListener(TimeChangeListener listener);
     }
 ```
-App需要将processorLib在
+其中TimeTickerApiId.registerTimeChangeListener是生成ID，App需要将processorLib在
 build.gradle中导入，并且在对应的业务接口开头声明GenerateId注解，然后手动触发一次build方可生成，
 当这个TimeTickerApi之中所有的TimeChangeListener都被解注册之后，框架会为其解注册内部的广播接收器(BroadcastReceiver)
 ，所以App需要根据特定情况来解注册来防止内存泄露
