@@ -7,6 +7,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
 public abstract class Call {
     private Key key;
@@ -16,7 +17,7 @@ public abstract class Call {
     private ParameterContext parameterContext;
 
     private CallGroup<?> parentCall;
-    private CartrofitContext context;
+    private CartrofitContext<?> context;
     private List<String> tokenList;
 
     void dispatchInit(ParameterContext parameterContext) {
@@ -42,7 +43,7 @@ public abstract class Call {
         return new ParameterContext(getKey());
     }
 
-    void attach(Key key, CartrofitContext context, ArrayList<ExceptionHandler<?>> exceptionHandlers) {
+    void attach(Key key, CartrofitContext<?> context, ArrayList<ExceptionHandler<?>> exceptionHandlers) {
         this.key = key;
         this.context = context;
         this.exceptionHandlers = exceptionHandlers;
@@ -135,5 +136,12 @@ public abstract class Call {
 
     public final int getId() {
         return key.getId();
+    }
+
+    Function<?, Object[]> getCallbackMapper() {
+        return null;
+    }
+
+    void onSuperCallbackReturn(Object obj, Object rawOutput) throws Throwable {
     }
 }

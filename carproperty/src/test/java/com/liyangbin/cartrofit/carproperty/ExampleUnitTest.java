@@ -323,6 +323,36 @@ public class ExampleUnitTest {
         println("context from mixed api " + Cartrofit.getContext(tempContext.from(TestCarApi.class)));
     }
 
+    @Test
+    public void userContextAndReturnResultTest() {
+        TestCarContext tempContext = new TestCarContext() {
+            @Override
+            public String toString() {
+                return "created by userContextAndReturnResultTest";
+            }
+
+            @Override
+            public SolutionProvider onProvideCallSolution() {
+                SolutionProvider solutionProvider = super.onProvideCallSolution();
+                solutionProvider.create(Track.class, MyCustomizedTrackCall.class)
+                        .provide((annotation, key) -> new MyCustomizedTrackCall(annotation) {
+                            @Override
+                            public void onCallbackReturn(Object obj, CarPropertyValue<?> rawOutput) throws Throwable {
+                                println("onCallbackReturn obj " + obj + " output " + rawOutput);
+                            }
+                        });
+                return solutionProvider;
+            }
+        };
+        tempContext.from(DummyApi.class).registerDummyStringChangeWithResultListenerAlias(new DummyApi.DummyListenerWithResult() {
+            @Override
+            public String onChange(String value) {
+                println("dummy api onChange:" + value);
+                return "result:" + value;
+            }
+        });
+    }
+
     @AfterClass
     public static void onFinish() {
         try {

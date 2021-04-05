@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 
 public class RegisterCall extends CallGroup<Call> {
 
@@ -85,7 +86,7 @@ public class RegisterCall extends CallGroup<Call> {
 
     private class RegisterCallbackWrapper {
         Object callbackObj;
-        ArrayList<Flow<Object[]>> commandFlowList = new ArrayList<>();
+        ArrayList<Flow<Object>> commandFlowList = new ArrayList<>();
 
         RegisterCallbackWrapper(Object callbackObj) {
             this.callbackObj = callbackObj;
@@ -98,38 +99,44 @@ public class RegisterCall extends CallGroup<Call> {
 
             for (int i = 0; i < getChildCount(); i++) {
                 Call call = getChildAt(i);
-                Flow<Object[]> registeredFlow = childInvoke(call, parameter);
+                Flow<Object> registeredFlow = childInvoke(call, parameter);
                 commandFlowList.add(registeredFlow);
             }
 
             for (int i = 0; i < getChildCount(); i++) {
                 Call call = getChildAt(i);
-                Flow<Object[]> registeredFlow = commandFlowList.get(i);
-                registeredFlow.subscribe(new InnerObserver(coldTrackMode ? coldTrackKey
-                        : call.getKey(), callbackObj, registeredFlow));
+                Flow<Object> registeredFlow = commandFlowList.get(i);
+                registeredFlow.subscribe(new InnerObserver(call,
+                        coldTrackMode ? coldTrackKey : call.getKey(),
+                        callbackObj, registeredFlow));
             }
 
         }
 
         void unregister() {
             for (int i = 0; i < commandFlowList.size(); i++) {
-                Flow<Object[]> registeredFlow = commandFlowList.get(i);
+                Flow<Object> registeredFlow = commandFlowList.get(i);
                 registeredFlow.stopSubscribe();
             }
             commandFlowList.clear();
         }
     }
 
-    private class InnerObserver implements FlowConsumer<Object[]> {
+    private class InnerObserver implements FlowConsumer<Object> {
 
+        Call trackCall;
         Key callbackKey;
         Object callbackObj;
         Flow<?> upStream;
+        final boolean shouldCallReturnBack;
 
-        InnerObserver(Key callbackKey, Object callbackObj, Flow<?> upStream) {
+        InnerObserver(Call trackCall, Key callbackKey, Object callbackObj,
+                      Flow<?> upStream) {
+            this.trackCall = trackCall;
             this.callbackKey = callbackKey;
             this.callbackObj = callbackObj;
             this.upStream = upStream;
+            this.shouldCallReturnBack = callbackKey.getReturnType() != void.class;
         }
 
         @Override
@@ -166,14 +173,25 @@ public class RegisterCall extends CallGroup<Call> {
         }
 
         @Override
-        public void accept(Object[] parameters) {
-            safeInvoke(callbackKey, callbackObj, parameters);
+        public void accept(Object rawOutput) {
+            @SuppressWarnings("unchecked")
+            Function<Object, Object[]> entryMapper =
+                    (Function<Object, Object[]>) trackCall.getCallbackMapper();
+            Object returnedValue = safeInvoke(callbackKey, callbackObj,
+                    entryMapper != null ? entryMapper.apply(rawOutput) : rawOutput);
+            if (shouldCallReturnBack) {
+                try {
+                    trackCall.onSuperCallbackReturn(returnedValue, rawOutput);
+                } catch (Throwable throwable) {
+                    onError(throwable);
+                }
+            }
         }
     }
 
-    private static void safeInvoke(Key key, Object obj, Object... parameters) {
+    private static Object safeInvoke(Key key, Object obj, Object... parameters) {
         try {
-            key.method.invoke(obj, parameters);
+            return key.method.invoke(obj, parameters);
         } catch (IllegalArgumentException parameterError) {
             throw new RuntimeException("Parameter type mismatch. Expected:" + key.method
                     + " Actual:" + Arrays.toString(parameters));

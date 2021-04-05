@@ -15,9 +15,21 @@ public interface DummyApi {
     @Delegate(TestCarApiId.registerStringChangeListenerAlias)
     void registerDummyStringChangeListenerAlias(/*@Callback */DummyListener listener);
 
+    @Delegate(TestCarApiId.registerStringChangeListenerAlias)
+    void registerDummyStringChangeWithResultListenerAlias(/*@Callback */DummyListenerWithResult listener);
+
     interface DummyListener {
         @Callback
         void onChange(String value);
+
+        @OnError
+        default void onError(Throwable throwable) {
+        }
+    }
+
+    interface DummyListenerWithResult {
+        @Callback
+        String onChange(String value);
 
         @OnError
         default void onError(Throwable throwable) {

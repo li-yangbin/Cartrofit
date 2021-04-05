@@ -52,7 +52,7 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
                 result = result.consumeOn(flowConsumeExecutor);
             }
             if (getKey().isCallbackEntry) {
-                return result.map(outputConverter);
+                return result/*.map(outputConverter)*/;
             } else {
                 Flow<?> userFlow = returnConverter != null ? result.map(returnConverter) : result;
                 return flowConverter != null ? flowConverter.apply(userFlow) : userFlow;
@@ -61,6 +61,18 @@ public class FixedTypeCall<INPUT, OUTPUT> extends Call {
             OUTPUT output = onTypedInvoke(input);
             return returnConverter != null ? returnConverter.apply(output) : output;
         }
+    }
+
+    Function<OUTPUT, Object[]> getCallbackMapper() {
+        return outputConverter;
+    }
+
+    @SuppressWarnings("unchecked")
+    final void onSuperCallbackReturn(Object obj, Object rawOutput) throws Throwable {
+        onCallbackReturn(obj, (OUTPUT) rawOutput);
+    }
+
+    public void onCallbackReturn(Object obj, OUTPUT rawOutput) throws Throwable {
     }
 
     public Flow<OUTPUT> onTrackInvoke(INPUT input) throws Throwable {
