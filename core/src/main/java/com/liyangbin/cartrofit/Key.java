@@ -4,8 +4,6 @@ import android.os.Build;
 
 import com.liyangbin.cartrofit.annotation.Bind;
 import com.liyangbin.cartrofit.annotation.Callback;
-import com.liyangbin.cartrofit.annotation.MethodCategory;
-import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.WrappedData;
 import com.liyangbin.cartrofit.flow.Flow;
 
@@ -34,8 +32,6 @@ public class Key {
     private Parameter[] parameters;
     private ParameterGroup[] parameterGroups;
     private ParameterGroup implicitParameterGroup;
-    private boolean implicitCallbackParameterResolved;
-    private boolean implicitCallbackParameterPresent;
     private Key delegateKey;
 
     Key(ApiRecord<?> record, Method method, boolean isCallbackEntry) {
@@ -278,50 +274,21 @@ public class Key {
         return parameterGroups[index];
     }
 
-    public boolean isImplicitCallbackParameterPresent() {
-        if (implicitCallbackParameterResolved) {
-            return implicitCallbackParameterPresent;
-        }
-        implicitCallbackParameterResolved = true;
-        if (getParameterCount() != 1) {
-            return implicitCallbackParameterPresent = false;
-        }
-        if (!getParameterAt(0).getType().isInterface()) {
-            return implicitCallbackParameterPresent = false;
-        }
-        Annotation[] annotations = getAnnotations();
-        for (Annotation annotation : annotations) {
-            if (annotation instanceof Register) {
-                return implicitCallbackParameterPresent = true;
-            } else {
-                MethodCategory methodCategory = annotation.annotationType()
-                        .getDeclaredAnnotation(MethodCategory.class);
-                if (methodCategory != null
-                        && (methodCategory.value() & MethodCategory.CATEGORY_TRACK) != 0) {
-                    return implicitCallbackParameterPresent = true;
-                }
-            }
-        }
-        return implicitCallbackParameterPresent = false;
-    }
-
     public ParameterGroup getImplicitParameterGroup() {
         if (implicitParameterGroup != null) {
             return implicitParameterGroup;
         }
         ArrayList<Parameter> parameterArrayList = new ArrayList<>();
-        if (!isImplicitCallbackParameterPresent()) {
-            final int count = getParameterCount();
-            anchor: for (int i = 0; i < count; i++) {
-                Parameter parameter = getParameterAt(i);
-                Annotation[] annotations = parameter.getAnnotations();
-                for (Annotation annotation : annotations) {
-                    if (annotation instanceof Bind || annotation instanceof Callback) {
-                        continue anchor;
-                    }
+        final int count = getParameterCount();
+        anchor: for (int i = 0; i < count; i++) {
+            Parameter parameter = getParameterAt(i);
+            Annotation[] annotations = parameter.getAnnotations();
+            for (Annotation annotation : annotations) {
+                if (annotation instanceof Bind || annotation instanceof Callback) {
+                    continue anchor;
                 }
-                parameterArrayList.add(parameter);
             }
+            parameterArrayList.add(parameter);
         }
         return implicitParameterGroup = new ParameterGroupImpl(new Tokenizer("implicit"), parameterArrayList);
     }

@@ -13,10 +13,10 @@ public interface DummyApi {
     void setDummyIntSignal(int value);
 
     @Delegate(TestCarApiId.registerStringChangeListenerAlias)
-    void registerDummyStringChangeListenerAlias(/*@Callback */DummyListener listener);
+    void registerDummyStringChangeListenerAlias(@Callback DummyListener listener);
 
     @Delegate(TestCarApiId.registerStringChangeListenerAlias)
-    void registerDummyStringChangeWithResultListenerAlias(/*@Callback */DummyListenerWithResult listener);
+    void registerDummyStringChangeWithResultListenerAlias(@Callback DummyListenerWithResult listener);
 
     interface DummyListener {
         @Callback

@@ -16,6 +16,7 @@ public class RegisterCall extends CallGroup<Call> {
 
     private final HashMap<Object, RegisterCallbackWrapper> callbackWrapperMapper = new HashMap<>();
     private int callbackParaIndex;
+    private Class<?> callbackType;
 
     private boolean coldTrackMode;
     private Key coldTrackKey;
@@ -53,9 +54,8 @@ public class RegisterCall extends CallGroup<Call> {
     public void onInit() {
         super.onInit();
         Parameter parameter = getKey().findParameterByAnnotation(Callback.class);
-        if (parameter != null) {
-            callbackParaIndex = parameter.getDeclaredIndex();
-        }
+        callbackParaIndex = parameter.getDeclaredIndex();
+        callbackType = parameter.getType();
     }
 
     @Override
@@ -129,6 +129,8 @@ public class RegisterCall extends CallGroup<Call> {
         Object callbackObj;
         Flow<?> upStream;
         final boolean shouldCallReturnBack;
+        CallbackInvoker acceptInvoker;
+        CallbackInvoker completeInvoker;
 
         InnerObserver(Call trackCall, Key callbackKey, Object callbackObj,
                       Flow<?> upStream) {
@@ -137,6 +139,12 @@ public class RegisterCall extends CallGroup<Call> {
             this.callbackObj = callbackObj;
             this.upStream = upStream;
             this.shouldCallReturnBack = callbackKey.getReturnType() != void.class;
+            this.acceptInvoker = trackCall.getKey().record
+                    .findCallbackInvoker(callbackType, callbackKey.getName());
+            if (coldCompleteKey != null) {
+                completeInvoker = coldCompleteKey.record
+                        .findCallbackInvoker(callbackType, coldCompleteKey.getName());
+            }
         }
 
         @Override
@@ -154,7 +162,8 @@ public class RegisterCall extends CallGroup<Call> {
                 }
             }
             if (key != null) {
-                safeInvoke(key, callbackObj, throwable);
+                CallbackInvoker invoker = key.record.findCallbackInvoker(callbackType, key.getName());
+                safeInvoke(invoker, key, callbackObj, throwable);
             } else if (!handleFlowCallbackException(throwable, callbackObj)) {
                 FlowConsumer.defaultThrow(throwable,
                         getKey().getParameterAt(callbackParaIndex).getType());
@@ -167,7 +176,7 @@ public class RegisterCall extends CallGroup<Call> {
                 callbackWrapperMapper.remove(callbackKey);
             }
             if (coldCompleteKey != null) {
-                safeInvoke(coldCompleteKey, callbackObj);
+                safeInvoke(completeInvoker, coldCompleteKey, callbackObj);
             }
             callbackKey = null;
         }
@@ -177,8 +186,8 @@ public class RegisterCall extends CallGroup<Call> {
             @SuppressWarnings("unchecked")
             Function<Object, Object[]> entryMapper =
                     (Function<Object, Object[]>) trackCall.getCallbackMapper();
-            Object returnedValue = safeInvoke(callbackKey, callbackObj,
-                    entryMapper != null ? entryMapper.apply(rawOutput) : rawOutput);
+            Object returnedValue = safeInvoke(acceptInvoker, callbackKey, callbackObj,
+                    entryMapper != null ? entryMapper.apply(rawOutput) : new Object[]{rawOutput});
             if (shouldCallReturnBack) {
                 try {
                     trackCall.onSuperCallbackReturn(returnedValue, rawOutput);
@@ -189,9 +198,13 @@ public class RegisterCall extends CallGroup<Call> {
         }
     }
 
-    private static Object safeInvoke(Key key, Object obj, Object... parameters) {
+    private static Object safeInvoke(CallbackInvoker callbackInvoker, Key key, Object obj, Object... parameters) {
         try {
-            return key.method.invoke(obj, parameters);
+            if (callbackInvoker != null) {
+                return callbackInvoker.invoke(obj, parameters);
+            } else {
+                return key.method.invoke(obj, parameters);
+            }
         } catch (IllegalArgumentException parameterError) {
             throw new RuntimeException("Parameter type mismatch. Expected:" + key.method
                     + " Actual:" + Arrays.toString(parameters));

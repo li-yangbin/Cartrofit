@@ -31,7 +31,7 @@ android {
 }
 
 dependencies {
-    implementation project(path: ':core')
+    api project(path: ':core')
     annotationProcessor project(':processorlib')
     testAnnotationProcessor project(':processorlib')
     androidTestAnnotationProcessor project(':processorlib')

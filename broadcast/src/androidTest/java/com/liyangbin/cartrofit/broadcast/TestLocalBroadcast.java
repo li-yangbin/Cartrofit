@@ -3,12 +3,13 @@ package com.liyangbin.cartrofit.broadcast;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
 
-import com.liyangbin.cartrofit.annotation.GenerateId;
+import com.liyangbin.cartrofit.annotation.Callback;
+import com.liyangbin.cartrofit.annotation.Process;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Unregister;
 
 @Broadcast(isLocal = true)
-@GenerateId
+@Process
 public interface TestLocalBroadcast {
 
     @Send(action = "action.test", synced = true)
@@ -24,7 +25,7 @@ public interface TestLocalBroadcast {
     void registerTestAction(OnTestListener listener);
 
     @Unregister(TestLocalBroadcastId.registerTestAction)
-    void unregisterTestListener(OnTestListener listener);
+    void unregisterTestListener(@Callback OnTestListener listener);
 
     interface OnTestListener {
         void onReceive(Intent intent, @Extra(key = "test_key", defNumber = 10000) int args);
@@ -34,7 +35,7 @@ public interface TestLocalBroadcast {
     void sendTestSecondActionWithExtra(@Extra(key = "test_key_second") String args);
 
     @Register
-    void registerMultipleReceiver(OnTestMultiListener listener);
+    void registerMultipleReceiver(@Callback OnTestMultiListener listener);
 
     interface OnTestMultiListener {
         @Receive(action = "action.test")
@@ -45,5 +46,5 @@ public interface TestLocalBroadcast {
     }
 
     @Unregister(TestLocalBroadcastId.registerMultipleReceiver)
-    void unregisterMultipleReceiver(OnTestMultiListener listener);
+    void unregisterMultipleReceiver(@Callback OnTestMultiListener listener);
 }

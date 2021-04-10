@@ -33,9 +33,6 @@ public abstract class CartrofitContext<CONTEXT extends Annotation> {
                     @Override
                     public RegisterCall provide(CartrofitContext<?> context, int category, Register annotation, Key key) {
                         Parameter callbackParameter = key.findParameterByAnnotation(Callback.class);
-                        if (callbackParameter == null && key.isImplicitCallbackParameterPresent()) {
-                            callbackParameter = key.getParameterAt(0);
-                        }
                         if (callbackParameter == null) {
                             throw new CartrofitGrammarException("Declare a Callback parameter as an interface " + key);
                         }
@@ -356,17 +353,16 @@ public abstract class CartrofitContext<CONTEXT extends Annotation> {
         }
         Parameter callbackParameter = originalKey.findParameterByAnnotation(Callback.class);
         if (callbackParameter == null) {
-            if (originalKey.isImplicitCallbackParameterPresent()) {
-                callbackParameter = originalKey.getParameterAt(0);
-            } else if (originalKey.getReturnType() == void.class) {
-                throw new CartrofitGrammarException("Must provide a callback parameter with Callback annotation "
-                        + originalKey);
-            } else {
-                return null;
+            if (originalKey.getReturnType() == void.class) {
+                throw new CartrofitGrammarException("Must either provide a callback with" +
+                        " Callback annotation or declare return by Flow/Observable " + originalKey);
             }
+            return null;
         } else if (!callbackParameter.getType().isInterface()) {
             throw new CartrofitGrammarException("Must provide a callback parameter declared by interface "
                     + originalKey);
+        } else if (originalKey.getReturnType() != void.class) {
+            throw new CartrofitGrammarException("Can not declare any return value " + originalKey);
         }
 
         Class<?> callbackType = callbackParameter.getType();

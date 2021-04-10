@@ -5,6 +5,7 @@ import android.car.hardware.CarPropertyValue;
 
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.Key;
+import com.liyangbin.cartrofit.annotation.Process;
 import com.liyangbin.cartrofit.flow.Flow;
 import com.liyangbin.cartrofit.solution.CallProvider;
 import com.liyangbin.cartrofit.solution.SolutionProvider;
@@ -39,6 +40,13 @@ public class ExampleUnitTest {
     @BeforeClass
     public static void onStart() {
         Cartrofit.register(new TestCarContext());
+    }
+
+    @Process
+    @CarPropertyScope("test")
+    public interface InternalApi {
+        @Get(propId = 0)
+        int getIntSignal();
     }
 
     @Test
@@ -103,6 +111,7 @@ public class ExampleUnitTest {
 
     @Test
     public void registerIntChangeTest() {
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTestTrackIntOrString(true);
         Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
             @Override
             public void onChange(int value) {
@@ -153,6 +162,7 @@ public class ExampleUnitTest {
     @Test
     public void timeoutTest() {
         Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTimeOutMillis(3000);
+        Cartrofit.<TestCarContext>defaultContextOf(TestCarApi.class).setTestTrackIntOrString(true);
         Cartrofit.from(TestCarApi.class).registerIntChangeListener(new TestCarApi.OnChangeListener() {
             @Override
             public void onChange(int value) {

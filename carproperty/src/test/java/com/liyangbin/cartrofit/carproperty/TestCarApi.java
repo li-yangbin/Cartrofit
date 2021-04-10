@@ -3,16 +3,18 @@ package com.liyangbin.cartrofit.carproperty;
 import android.car.CarNotConnectedException;
 
 import com.liyangbin.cartrofit.annotation.Callback;
-import com.liyangbin.cartrofit.annotation.GenerateId;
+import com.liyangbin.cartrofit.annotation.Process;
 import com.liyangbin.cartrofit.annotation.OnError;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Unregister;
 import com.liyangbin.cartrofit.flow.Flow;
 
+import java.security.interfaces.DSAKey;
+
 import io.reactivex.Observable;
 import io.reactivex.Single;
 
-@GenerateId
+@Process
 @CarPropertyScope("test")
 public interface TestCarApi {
 
@@ -68,22 +70,22 @@ public interface TestCarApi {
     Single<Integer> trackIntReactiveSingle();
 
     @Register
-    void registerIntChangeListener(/*@Callback */OnChangeListener listener);
+    void registerIntChangeListener(@Callback OnChangeListener listener);
 
     @Unregister(TestCarApiId.registerIntChangeListener)
-    void unregisterIntChangeListener(/*@Callback */OnChangeListener listener);
+    void unregisterIntChangeListener(@Callback OnChangeListener listener);
 
     @Track(propId = 2)
-    void registerStringChangeListenerAlias(/*@Callback */OnChangeListenerAlias listener);
+    void registerStringChangeListenerAlias(@Callback OnChangeListenerAlias listener);
 
     @Track(propId = 2)
-    void registerInvalidStringChangeListenerAlias(/*@Callback */InvalidOnChangeListener listener);
+    void registerInvalidStringChangeListenerAlias(@Callback InvalidOnChangeListener listener);
 
     @Unregister(TestCarApiId.registerStringChangeListenerAlias)
     void unregisterStringChangeListenerAlias(/*@Callback */OnChangeListenerAlias listener);
 
     @Track(propId = 0)
-    void registerIntErrorChangeListener(/*@Callback */OnErrorChangeListener listener);
+    void registerIntErrorChangeListener(@Callback OnErrorChangeListener listener);
 
     interface OnChangeListener {
 

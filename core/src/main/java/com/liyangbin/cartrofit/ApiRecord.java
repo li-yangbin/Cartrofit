@@ -1,20 +1,20 @@
 package com.liyangbin.cartrofit;
 
-import com.liyangbin.cartrofit.annotation.GenerateId;
+import com.liyangbin.cartrofit.annotation.Process;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class ApiRecord<T> {
     private static final String ID_SUFFIX = "Id";
 
-    private HashMap<Integer, Method> selfDependency = new HashMap<>();
-    private HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
-    private HashMap<Class<?>, ArrayList<Key>> childrenKeyCache = new HashMap<>();
+    private final HashMap<Integer, Method> selfDependency = new HashMap<>();
+    private final HashMap<Class<?>, HashMap<String, CallbackInvoker>> callbackInvokerMap = new HashMap<>();
+    private final HashMap<Method, Integer> selfDependencyReverse = new HashMap<>();
+    private final HashMap<Class<?>, ArrayList<Key>> childrenKeyCache = new HashMap<>();
 
     final Class<T> clazz;
     final Annotation scopeObj;
@@ -25,7 +25,7 @@ public class ApiRecord<T> {
         this.scopeType = scopeType;
         this.clazz = clazz;
 
-        if (clazz.isAnnotationPresent(GenerateId.class)) {
+        if (clazz.isAnnotationPresent(Process.class)) {
             try {
                 Class<?> selfScopeClass = Class.forName(clazz.getName() + ID_SUFFIX);
                 importDependency(selfScopeClass);
@@ -39,6 +39,11 @@ public class ApiRecord<T> {
         return selfDependency.get(id);
     }
 
+    CallbackInvoker findCallbackInvoker(Class<?> callbackType, String methodName) {
+        HashMap<String, CallbackInvoker> methodMap = callbackInvokerMap.get(callbackType);
+        return methodMap != null ? methodMap.get(methodName) : null;
+    }
+
     @SuppressWarnings("all")
     public int loadIdByCall(Key key) {
         return selfDependencyReverse.getOrDefault(key.method, 0);
@@ -46,8 +51,8 @@ public class ApiRecord<T> {
 
     private void importDependency(Class<?> target) {
         try {
-            Method method = target.getDeclaredMethod("init", HashMap.class);
-            method.invoke(null, selfDependency);
+            Method method = target.getDeclaredMethod("_init", HashMap.class, HashMap.class);
+            method.invoke(null, selfDependency, callbackInvokerMap);
         } catch (ReflectiveOperationException impossible) {
             throw new IllegalStateException(impossible);
         }
