@@ -184,7 +184,8 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
         }
 
         public boolean match(int propertyId, int area) {
-            return this.propertyId == propertyId && (this.area == area || (this.area & area) != 0);
+            return this.propertyId == propertyId
+                    && (this.area == area || (this.area & area) != 0);
         }
 
         public void publishUnchecked(CarPropertyValue<?> carPropertyValue) {
@@ -268,7 +269,6 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
         for (PropertyFlowSource flowSource : this.<PropertyFlowSource>getAllFlowSourceInQuick()) {
             if (flowSource.match(propertyId, area)) {
                 flowSource.publishError(new CarPropertyException(propertyId, area));
-                break;
             }
         }
     }
@@ -517,7 +517,10 @@ public abstract class CarPropertyContext<CAR> extends CarAbstractContext<CAR, Ca
                 for (int i = 0; i < key.getParameterCount(); i++) {
                     Parameter parameter = key.getParameterAt(i);
                     if (parameter.hasNoAnnotation()) {
-                        return parameter.getType();
+                        Class<?> clazz = parameter.getType();
+                        if (clazz != CarPropertyValue.class) {
+                            return parameter.getType();
+                        }
                     }
                 }
                 return void.class;

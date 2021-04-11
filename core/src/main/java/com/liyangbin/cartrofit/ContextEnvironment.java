@@ -31,7 +31,7 @@ public final class ContextEnvironment {
         this(null, where);
     }
 
-    ContextEnvironment(ContextEnvironment parentEnvironment, String where) {
+    public ContextEnvironment(ContextEnvironment parentEnvironment, String where) {
         this.parentEnvironment = parentEnvironment;
         this.where = where;
         add(EmptyContext.class, new DelegateContext());
@@ -170,7 +170,7 @@ public final class ContextEnvironment {
         }
         ArrayList<CartrofitContext<?>> cachedContextList = cachedContextMap.get(record.scopeType);
         final int count = cachedContextList != null ? cachedContextList.size() : 0;
-        for (int i = 0; i < count; i++) {
+        for (int i = count - 1; i >= 0; i--) {
             final CartrofitContext<Annotation> context = (CartrofitContext<Annotation>) cachedContextList.get(i);
             api = createApi(context, record);
             if (api != null) {
