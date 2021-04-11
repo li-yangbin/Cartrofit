@@ -19,7 +19,7 @@ Cartrofit是什么?
     }
 ```
 
-core 框架所在主目录, 应该作为依赖被使用方模块在build.gradle中导入
+core 框架所在主目录, 如果需要扩展其他功能的话应该作为依赖被使用方模块在build.gradle中导入
 ```groovy
     implementation 'com.gitee.li-yangbin.cartrofit:core:latest-version'
 ```
@@ -101,12 +101,12 @@ Flow是框架内置的被观察数据源的默认类型，除了该类型之外�
 ```
 
 ### 3. Register
-使用Register注解可以自动的将消息源数据（Observable，Flow，LiveData）转化为回调接口的注册
+使用Register注解可以自动的将消息源数据（Observable，Flow，LiveData）转化为回调的注册接口
 
 如下所示
 ```java
     @Register
-    void registerWarmChangeCallback(OnWarmLevelChangeCallback callback);
+    void registerWarmChangeCallback(@Callback OnWarmLevelChangeCallback callback);
 
     interface OnWarmLevelChangeCallback {
         @Track(propId = CarHvacManager.ID_ZONED_SEAT_TEMP, area = HvacPanelApi.DRIVER_ZONE_ID)
@@ -116,13 +116,13 @@ Flow是框架内置的被观察数据源的默认类型，除了该类型之外�
         void onPassengerLevelChange(int level);
     }
 ```
-registerWarmChangeCallback代表向CarService注册座椅加热档位变化回调，回调类型OnWarmLevelChangeCallback由使用方自定义，
+registerWarmChangeCallback代表向CarService注册座椅加热档位变化回调，使用Callback注解的回调类型OnWarmLevelChangeCallback由使用方自定义，
 其中onDriverLevelChange代表主驾侧温度变化档位值回调， onPassengerLevelChange代表副驾侧温度变化档位值回调
 
 当只注册单个property变化回调时，可以省略Register注解，代码如下所示
 ```java
     @Track(propId = CarHvacManager.ID_ZONED_FAN_DIRECTION, area = HvacPanelApi.SEAT_ALL)
-    void trackFanDirection(OnDanDirectionChangCallback callback);
+    void trackFanDirection(@Callback OnDanDirectionChangCallback callback);
 
     interface OnDanDirectionChangCallback {
         void onChange(int state);
@@ -133,22 +133,22 @@ registerWarmChangeCallback代表向CarService注册座椅加热档位变化回�
 使用Unregister注解可以反注册因为调用了Register接口从而保存在框架之内的Callback对象，代码如下所示
 ```java
     @Track(propId = CarHvacManager.ID_ZONED_FAN_SPEED_SETPOINT, area = HvacPanelApi.SEAT_ALL)
-    void registerFanSpeedChangeCallback(FanSpeedBarController.OnFanSpeedChangeCallback callback);
+    void registerFanSpeedChangeCallback(@Callback FanSpeedBarController.OnFanSpeedChangeCallback callback);
 
     @Unregister(FanSpeedApiId.registerFanSpeedChangeCallback)
     void unregisterFanSpeedChangeCallback(FanSpeedBarController.OnFanSpeedChangeCallback callback);
 ```
 registerFanSpeedChangeCallback为注册空调风速变化接口，unregisterFanSpeedChangeCallback为反注册前者的接口
 其中FanSpeedApiId.registerFanSpeedChangeCallback这个Id来自于框架自带的注解处理器processorLib，需要将其在
-build.gradle中导入，并且在对应的业务接口开头声明GenerateId注解，然后手动触发一次build方可生成
+build.gradle中导入，并且在对应的业务接口开头声明Process注解，然后手动触发一次build方可生成
 
 ### 5. Delegate
 代理注解，该注解允许调用方直接封装另外模块中的已经定义好的业务接口，使得使用方可以面向接口定义接口，
-该功能需要被调用方在定义已有业务接口的同时声明GenerateId注解，并且在build.gradle中声明注解处理器模块processorLib
+该功能需要被调用方在定义已有业务接口的同时声明Process注解，并且在build.gradle中声明注解处理器模块processorLib
 
 如下所示为面向实现的接口声明方
 ```java
-    @GenerateId
+    @Process
     @Scope(value = Car.HVAC_SERVICE)
     public interface HvacPanelApi {
         @Get(propId = CarHvacManager.ID_ZONED_SEAT_TEMP, area = DRIVER_ZONE_ID)
@@ -256,7 +256,7 @@ Broadcast注解支持普通广播与本地广播，使用本地广播需要将
 使用Send注解发送广播，代码如下所示
 ```java
     @Broadcast(isLocal = true)
-    @GenerateId
+    @Process
     public interface TestLocalBroadcast {
     
         @Send(action = "action.test")
@@ -296,7 +296,7 @@ Broadcast注解支持普通广播与本地广播，使用本地广播需要将
     @Broadcast
     public interface TimeTickerApi {
         @Register
-        void registerTimeChangeListener(TimeChangeListener listener);
+        void registerTimeChangeListener(@Callback TimeChangeListener listener);
     }
 
     interface TimeChangeListener {
@@ -331,16 +331,16 @@ Broadcast注解支持普通广播与本地广播，使用本地广播需要将
 代码如下所示
 ```java
     @Broadcast
-    @GenerateId
+    @Process
     public interface TimeTickerApi {
         @Register
-        void registerTimeChangeListener(TimeChangeListener listener);
+        void registerTimeChangeListener(@Callback TimeChangeListener listener);
     
         @Unregister(TimeTickerApiId.registerTimeChangeListener)
         void unregisterTimeChangeListener(TimeChangeListener listener);
     }
 ```
 其中TimeTickerApiId.registerTimeChangeListener是生成ID，App需要将processorLib在
-build.gradle中导入，并且在对应的业务接口开头声明GenerateId注解，然后手动触发一次build方可生成，
+build.gradle中导入，并且在对应的业务接口开头声明Process注解，然后手动触发一次build方可生成，
 当这个TimeTickerApi之中所有的TimeChangeListener都被解注册之后，框架会为其解注册内部的广播接收器(BroadcastReceiver)
 ，所以App需要根据特定情况来解注册来防止内存泄露
