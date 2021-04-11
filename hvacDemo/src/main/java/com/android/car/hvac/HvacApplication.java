@@ -1,30 +1,33 @@
 package com.android.car.hvac;
 
 import android.app.Application;
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
+import android.util.Log;
 
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.broadcast.BroadcastContext;
 import com.liyangbin.cartrofit.carproperty.context.HvacContext;
 
-public class HvacApplication extends Application {
+public class HvacApplication extends Application implements OnOffListener {
     private static final String TAG = "HvacApplication";
 
     @Override
     public void onCreate() {
         super.onCreate();
 
-        Cartrofit.register(new HvacContext(new MockHvacAccess(this)));
+        HvacContext hvacContext = new HvacContext(new MockHvacAccess(this));
+        hvacContext.setDebounceMillis(0);
+        Cartrofit.register(hvacContext);
         Cartrofit.register(new BroadcastContext(this, false));
-        registerReceiver(new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-
-            }
-        }, new IntentFilter(Intent.ACTION_TIME_TICK));
+        Cartrofit.from(TimeTickerApi.class).registerScreenOffListener(this);
     }
 
+    @Override
+    public void onScreenOff() {
+        Log.i(TAG, "onScreenOff");
+    }
+
+    @Override
+    public void onScreenOn() {
+        Log.i(TAG, "onScreenOn");
+    }
 }

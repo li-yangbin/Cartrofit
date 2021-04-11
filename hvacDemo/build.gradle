@@ -15,9 +15,6 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
-    dataBinding {
-        enabled = true
-    }
 
     buildTypes {
         release {
@@ -33,7 +30,6 @@ android {
 }
 
 dependencies {
-    implementation project(path: ':core')
     implementation project(path: ':carproperty')
     implementation project(path: ':broadcast')
     annotationProcessor project(':processorlib')

@@ -4,13 +4,14 @@ import android.car.Car;
 import android.car.hardware.hvac.CarHvacManager;
 
 import com.android.car.hvac.controllers.FanSpeedBarController;
-import com.liyangbin.cartrofit.annotation.GenerateId;
+import com.liyangbin.cartrofit.annotation.Callback;
+import com.liyangbin.cartrofit.annotation.Process;
 import com.liyangbin.cartrofit.annotation.Unregister;
 import com.liyangbin.cartrofit.carproperty.CarPropertyScope;
 import com.liyangbin.cartrofit.carproperty.Set;
 import com.liyangbin.cartrofit.carproperty.Track;
 
-@GenerateId
+@Process
 @CarPropertyScope(Car.HVAC_SERVICE)
 public interface FanSpeedApi {
 
@@ -21,7 +22,7 @@ public interface FanSpeedApi {
     void setFanSpeed(int fanSpeed);
 
     @Track(propId = CarHvacManager.ID_ZONED_FAN_SPEED_SETPOINT, area = HvacPanelApi.SEAT_ALL)
-    void registerFanSpeedChangeCallback(FanSpeedBarController.OnFanSpeedChangeCallback callback);
+    void registerFanSpeedChangeCallback(@Callback FanSpeedBarController.OnFanSpeedChangeCallback callback);
 
     @Unregister(FanSpeedApiId.registerFanSpeedChangeCallback)
     void unregisterFanSpeedChangeCallback(FanSpeedBarController.OnFanSpeedChangeCallback callback);

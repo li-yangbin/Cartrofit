@@ -37,8 +37,9 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
+import androidx.appcompat.app.AppCompatActivity;
+
 import com.android.car.hvac.controllers.HvacPanelController;
-import com.android.car.hvac.databinding.HvacPanelBinding;
 import com.android.car.hvac.ui.TemperatureBarOverlay;
 import com.liyangbin.cartrofit.Cartrofit;
 import com.liyangbin.cartrofit.broadcast.Extra;
@@ -46,9 +47,6 @@ import com.liyangbin.cartrofit.broadcast.Receive;
 
 import java.util.ArrayList;
 import java.util.List;
-
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.databinding.DataBindingUtil;
 
 interface OnOffListener {
     @Receive(action = Intent.ACTION_SCREEN_OFF)
@@ -105,7 +103,6 @@ public class HvacUiService extends AppCompatActivity implements OnOffListener, T
     private TemperatureBarOverlay mDriverTemperatureBarCollapsed;
     private TemperatureBarOverlay mPassengerTemperatureBarCollapsed;
     private FrameLayout mContent;
-    private HvacPanelBinding mBinding;
 
     @Override
     public void onScreenOff() {
@@ -172,7 +169,6 @@ public class HvacUiService extends AppCompatActivity implements OnOffListener, T
         super.onStart();
 
         Log.i(TAG, "onStart");
-        Cartrofit.from(TimeTickerApi.class).registerScreenOffListener(this);
         Cartrofit.from(TimeTickerApi.class).registerTimeChangeListener(this);
     }
 
@@ -181,7 +177,6 @@ public class HvacUiService extends AppCompatActivity implements OnOffListener, T
         super.onStop();
 
         Log.i(TAG, "onStop");
-        Cartrofit.from(TimeTickerApi.class).unregisterScreenOffListener(this);
         Cartrofit.from(TimeTickerApi.class).unregisterTimeChangeListener(this);
     }
 
@@ -259,9 +254,7 @@ public class HvacUiService extends AppCompatActivity implements OnOffListener, T
         // required of the sysui visiblity listener is not triggered.
 //        params.hasSystemUiListeners = true;
 
-        mBinding = DataBindingUtil
-                .inflate(inflater, R.layout.hvac_panel, null, false);
-        mContainer = mBinding.getRoot();
+        mContainer = View.inflate(this, R.layout.hvac_panel, null);
         mContainer.setLayoutParams(params);
 //        mContainer.setOnSystemUiVisibilityChangeListener(visibility -> {
 //            boolean systemUiVisible = (visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0;
@@ -295,7 +288,6 @@ public class HvacUiService extends AppCompatActivity implements OnOffListener, T
         mHvacPanelController = new HvacPanelController(this /* context */, mContainer,
                 mSelfWm, mDriverTemperatureBar, mPassengerTemperatureBar,
                 mDriverTemperatureBarCollapsed, mPassengerTemperatureBarCollapsed);
-        mBinding.setController(mHvacPanelController);
         Intent bindIntent = new Intent(this /* context */, HvacController.class);
         if (!bindService(bindIntent, mServiceConnection, Context.BIND_AUTO_CREATE)) {
             Log.e(TAG, "Failed to connect to HvacController.");
@@ -334,7 +326,6 @@ public class HvacUiService extends AppCompatActivity implements OnOffListener, T
             unbindService(mServiceConnection);
         }
         unregisterReceiver(mBroadcastReceiver);
-        mBinding.unbind();
     }
 
     private ServiceConnection mServiceConnection = new ServiceConnection() {

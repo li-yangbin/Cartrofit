@@ -30,12 +30,11 @@ import android.widget.ImageView;
 
 import androidx.annotation.IntDef;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.databinding.ObservableBoolean;
 import androidx.lifecycle.LifecycleObserver;
 
-import com.android.car.hvac.api.HvacPanelApi;
 import com.android.car.hvac.HvacController;
 import com.android.car.hvac.R;
+import com.android.car.hvac.api.HvacPanelApi;
 import com.android.car.hvac.ui.FanDirectionButtons;
 import com.android.car.hvac.ui.FanSpeedBar;
 import com.android.car.hvac.ui.HvacPanelRow;
@@ -131,7 +130,6 @@ public class HvacPanelController implements LifecycleObserver {
     private boolean mAutoMode;
 
     private final HvacPanelApi mHvacApi = Cartrofit.from(HvacPanelApi.class);
-    public ObservableBoolean acObservable = mHvacApi.trackACState();
     private AppCompatActivity mActivity;
 
     public HvacPanelController(AppCompatActivity activity, View container,
@@ -145,6 +143,10 @@ public class HvacPanelController implements LifecycleObserver {
         mShowCollapsed = res.getBoolean(R.bool.config_showCollapsedBars);
         mActivity = activity;
         activity.getLifecycle().addObserver(this);
+        mHvacApi.trackACState().observe(activity, on -> {
+            ToggleButton toggleButton = activity.findViewById(R.id.ac_button);
+            toggleButton.setIsOn(on);
+        });
 
         mDriverTemperatureBarCollapsed = driverTemperatureBarCollapsed;
         mPassengerTemperatureBarCollapsed = passengerTemperatureBarCollapsed;

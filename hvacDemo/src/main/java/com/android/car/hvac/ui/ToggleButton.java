@@ -21,8 +21,6 @@ import android.util.AttributeSet;
 import android.view.View;
 import android.widget.ImageButton;
 
-import androidx.databinding.BindingAdapter;
-
 /**
  * A toggle button that has two states, each with a different drawable icon.
  */
@@ -92,10 +90,5 @@ public class ToggleButton extends ImageButton {
         } else {
             setImageDrawable(mDrawableOff);
         }
-    }
-
-    @BindingAdapter("toggle")
-    public static void bindToggle(ToggleButton button, boolean isOn) {
-        button.setIsOn(isOn);
     }
 }

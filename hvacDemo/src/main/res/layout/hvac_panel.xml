@@ -19,123 +19,112 @@
 <!-- The HVAC panel is added as an overlay in the WindowManager, so animating
 the container height would cause janking. The FrameLayout allows us to maintain constant height
 and animate only the children -->
-<layout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:binding="http://schemas.android.com/apk/res-auto">
-
-    <data>
-        <variable
-            name="controller"
-            type="com.android.car.hvac.controllers.HvacPanelController" />
-    </data>
-
-    <FrameLayout
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/hvac_background_color"
+    android:paddingHorizontal="@dimen/temperature_bar_width_expanded">
+    <!-- A dark background that animates in to cover the facet buttons-->
+    <View
+        android:id="@+id/hvac_center_panel"
+        android:background="@drawable/hvac_panel_button_bg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@color/hvac_background_color"
-        android:paddingHorizontal="@dimen/temperature_bar_width_expanded">
-        <!-- A dark background that animates in to cover the facet buttons-->
-        <View
-            android:id="@+id/hvac_center_panel"
-            android:background="@drawable/hvac_panel_button_bg"
+        android:layout_marginVertical="100dp"/>
+    <LinearLayout
+        android:id="@+id/fan_control"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center">
+        <com.android.car.hvac.ui.HvacPanelRow
+            android:id="@+id/top_row"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_marginVertical="100dp"/>
-        <LinearLayout
-            android:id="@+id/fan_control"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:gravity="center">
-            <com.android.car.hvac.ui.HvacPanelRow
-                android:id="@+id/top_row"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:alpha="0"
+            android:layout_height="wrap_content"
+            android:alpha="0"
+            android:gravity="center"
+            android:layout_marginBottom="@dimen/hvac_panel_row_animation_height_shift">
+            <com.android.car.hvac.ui.ToggleButton
+                android:id="@+id/recycle_air_button"
+                android:scaleType="center"
+                android:layout_width="@dimen/hvac_panel_button_dimen"
+                android:layout_height="@dimen/hvac_panel_button_dimen"
+                android:background="@drawable/hvac_panel_button_bg"/>
+            <LinearLayout
+                android:id="@+id/fan_group"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="@dimen/hvac_panel_group_height"
+                android:layout_marginStart="@dimen/hvac_panel_center_group_margin"
+                android:layout_marginEnd="@dimen/hvac_panel_center_group_margin"
                 android:gravity="center"
-                android:layout_marginBottom="@dimen/hvac_panel_row_animation_height_shift">
-                <com.android.car.hvac.ui.ToggleButton
-                    android:id="@+id/recycle_air_button"
-                    android:scaleType="center"
-                    android:layout_width="@dimen/hvac_panel_button_dimen"
-                    android:layout_height="@dimen/hvac_panel_button_dimen"
-                    android:background="@drawable/hvac_panel_button_bg"/>
-                <LinearLayout
-                    android:id="@+id/fan_group"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="@dimen/hvac_panel_group_height"
-                    android:layout_marginStart="@dimen/hvac_panel_center_group_margin"
-                    android:layout_marginEnd="@dimen/hvac_panel_center_group_margin"
-                    android:gravity="center"
-                    android:orientation="vertical">
+                android:orientation="vertical">
 
-                    <com.android.car.hvac.ui.FanSpeedBar
-                        android:id="@+id/fan_speed_bar"
-                        android:layout_marginTop="@dimen/hvac_fan_speed_top_margin"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"/>
+                <com.android.car.hvac.ui.FanSpeedBar
+                    android:id="@+id/fan_speed_bar"
+                    android:layout_marginTop="@dimen/hvac_fan_speed_top_margin"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"/>
 
-                    <com.android.car.hvac.ui.FanDirectionButtons
-                        android:id="@+id/fan_direction_buttons"
-                        android:layout_marginStart="@dimen/hvac_panel_fan_direction_margin"
-                        android:layout_marginEnd="@dimen/hvac_panel_fan_direction_margin"
-                        android:layout_marginBottom="@dimen/hvac_panel_fan_direction_margin"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"/>
-
-                </LinearLayout>
-                <com.android.car.hvac.ui.ToggleButton
-                    android:id="@+id/ac_button"
-                    android:scaleType="center"
-                    android:layout_width="@dimen/hvac_panel_button_dimen"
-                    android:layout_height="@dimen/hvac_panel_button_dimen"
-                    android:background="@drawable/hvac_panel_button_bg"
-                    binding:toggle="@{controller.acObservable}"/>
-            </com.android.car.hvac.ui.HvacPanelRow>
-
-            <com.android.car.hvac.ui.HvacPanelRow
-                android:id="@+id/bottom_row"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:alpha="0"
-                android:translationY="@dimen/hvac_panel_row_animation_height_shift"
-                android:layout_marginTop="@dimen/hvac_panel_margin"
-                android:layout_marginBottom="@dimen/hvac_panel_row_margin">
-                <com.android.car.hvac.ui.ToggleButton
-                    android:id="@+id/hvac_master_switch"
-                    android:background="@drawable/hvac_panel_button_bg"
-                    android:layout_marginStart="@dimen/hvac_panel_margin"
-                    style="@style/HvacButton"/>
-                <com.android.car.hvac.ui.SeatWarmerButton
-                    android:id="@+id/left_seat_heater"
-                    android:src="@drawable/ic_seat_heat_off"
-                    android:layout_marginEnd="@dimen/hvac_panel_margin"
-                    style="@style/HvacButton"/>
-                <com.android.car.hvac.ui.ToggleButton
-                    android:id="@+id/front_defroster"
-                    android:background="@drawable/hvac_panel_button_bg"
-                    android:layout_marginEnd="@dimen/hvac_panel_margin"
-                    style="@style/HvacButton"/>
-                <ImageView
-                    android:id="@+id/auto_button"
-                    android:background="@drawable/hvac_panel_button_bg"
-                    android:src="@drawable/ic_auto_off"
-                    android:scaleType="center"
-                    android:layout_gravity="center"
+                <com.android.car.hvac.ui.FanDirectionButtons
+                    android:id="@+id/fan_direction_buttons"
+                    android:layout_marginStart="@dimen/hvac_panel_fan_direction_margin"
+                    android:layout_marginEnd="@dimen/hvac_panel_fan_direction_margin"
+                    android:layout_marginBottom="@dimen/hvac_panel_fan_direction_margin"
                     android:layout_width="wrap_content"
-                    style="@style/HvacButton"/>
-                <com.android.car.hvac.ui.ToggleButton
-                    android:id="@+id/rear_defroster"
-                    android:background="@drawable/hvac_panel_button_bg"
-                    android:layout_marginStart="@dimen/hvac_panel_margin"
-                    style="@style/HvacButton"/>
-                <com.android.car.hvac.ui.SeatWarmerButton
-                    android:id="@+id/right_seat_heater"
-                    android:src="@drawable/ic_seat_heat_off"
-                    android:layout_marginStart="@dimen/hvac_panel_margin"
-                    style="@style/HvacButton"/>
-            </com.android.car.hvac.ui.HvacPanelRow>
-        </LinearLayout>
-    </FrameLayout>
-</layout>
+                    android:layout_height="wrap_content"/>
+
+            </LinearLayout>
+            <com.android.car.hvac.ui.ToggleButton
+                android:id="@+id/ac_button"
+                android:scaleType="center"
+                android:layout_width="@dimen/hvac_panel_button_dimen"
+                android:layout_height="@dimen/hvac_panel_button_dimen"
+                android:background="@drawable/hvac_panel_button_bg"/>
+        </com.android.car.hvac.ui.HvacPanelRow>
+
+        <com.android.car.hvac.ui.HvacPanelRow
+            android:id="@+id/bottom_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:alpha="0"
+            android:translationY="@dimen/hvac_panel_row_animation_height_shift"
+            android:layout_marginTop="@dimen/hvac_panel_margin"
+            android:layout_marginBottom="@dimen/hvac_panel_row_margin">
+            <com.android.car.hvac.ui.ToggleButton
+                android:id="@+id/hvac_master_switch"
+                android:background="@drawable/hvac_panel_button_bg"
+                android:layout_marginStart="@dimen/hvac_panel_margin"
+                style="@style/HvacButton"/>
+            <com.android.car.hvac.ui.SeatWarmerButton
+                android:id="@+id/left_seat_heater"
+                android:src="@drawable/ic_seat_heat_off"
+                android:layout_marginEnd="@dimen/hvac_panel_margin"
+                style="@style/HvacButton"/>
+            <com.android.car.hvac.ui.ToggleButton
+                android:id="@+id/front_defroster"
+                android:background="@drawable/hvac_panel_button_bg"
+                android:layout_marginEnd="@dimen/hvac_panel_margin"
+                style="@style/HvacButton"/>
+            <ImageView
+                android:id="@+id/auto_button"
+                android:background="@drawable/hvac_panel_button_bg"
+                android:src="@drawable/ic_auto_off"
+                android:scaleType="center"
+                android:layout_gravity="center"
+                android:layout_width="wrap_content"
+                style="@style/HvacButton"/>
+            <com.android.car.hvac.ui.ToggleButton
+                android:id="@+id/rear_defroster"
+                android:background="@drawable/hvac_panel_button_bg"
+                android:layout_marginStart="@dimen/hvac_panel_margin"
+                style="@style/HvacButton"/>
+            <com.android.car.hvac.ui.SeatWarmerButton
+                android:id="@+id/right_seat_heater"
+                android:src="@drawable/ic_seat_heat_off"
+                android:layout_marginStart="@dimen/hvac_panel_margin"
+                style="@style/HvacButton"/>
+        </com.android.car.hvac.ui.HvacPanelRow>
+    </LinearLayout>
+</FrameLayout>

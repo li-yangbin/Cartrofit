@@ -3,14 +3,15 @@ package com.android.car.hvac.api;
 import android.car.Car;
 import android.car.hardware.hvac.CarHvacManager;
 
+import com.liyangbin.cartrofit.annotation.Callback;
 import com.liyangbin.cartrofit.annotation.Delegate;
-import com.liyangbin.cartrofit.annotation.GenerateId;
+import com.liyangbin.cartrofit.annotation.Process;
 import com.liyangbin.cartrofit.annotation.Register;
 import com.liyangbin.cartrofit.annotation.Unregister;
 import com.liyangbin.cartrofit.carproperty.CarPropertyScope;
 import com.liyangbin.cartrofit.carproperty.Track;
 
-@GenerateId
+@Process
 @CarPropertyScope(Car.HVAC_SERVICE)
 public interface SeatWarmerApi {
 
@@ -30,7 +31,7 @@ public interface SeatWarmerApi {
     int getPassengerSeatWarmerLevel();
 
     @Register
-    void registerWarmChangeCallback(OnWarmLevelChangeCallback callback);
+    void registerWarmChangeCallback(@Callback OnWarmLevelChangeCallback callback);
 
     @Unregister(SeatWarmerApiId.registerWarmChangeCallback)
     void unregisterWarmChangeCallback(OnWarmLevelChangeCallback callback);

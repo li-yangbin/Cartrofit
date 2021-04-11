@@ -6,16 +6,15 @@ import android.car.VehicleAreaSeat;
 import android.car.VehicleAreaWindow;
 import android.car.hardware.hvac.CarHvacManager;
 
-import com.liyangbin.cartrofit.annotation.GenerateId;
+import com.liyangbin.cartrofit.annotation.Process;
 import com.liyangbin.cartrofit.carproperty.CarPropertyScope;
 import com.liyangbin.cartrofit.carproperty.Get;
 import com.liyangbin.cartrofit.carproperty.Set;
 import com.liyangbin.cartrofit.carproperty.Track;
 
-import androidx.databinding.ObservableBoolean;
 import androidx.lifecycle.LiveData;
 
-@GenerateId
+@Process
 @CarPropertyScope(Car.HVAC_SERVICE)
 public interface HvacPanelApi {
     int DRIVER_ZONE_ID = VehicleAreaSeat.SEAT_ROW_1_LEFT |
@@ -67,7 +66,7 @@ public interface HvacPanelApi {
     void setACState(boolean onOff);
 
     @Track(propId = CarHvacManager.ID_ZONED_AC_ON, area = SEAT_ALL)
-    ObservableBoolean trackACState();
+    LiveData<Boolean> trackACState();
 
     @Set(propId = CarHvacManager.ID_ZONED_AIR_RECIRCULATION_ON, area = SEAT_ALL)
     void setAirCirculation(boolean state);
